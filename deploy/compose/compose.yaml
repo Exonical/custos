@@ -1,0 +1,148 @@
+name: custos
+
+# Hardened local stack (ADR-013). Run `bash deploy/compose/init-secrets.sh`
+# first; every file under secrets: must exist or compose fails fast.
+
+secrets:
+  postgres-superuser-password:
+    file: ./.secrets/postgres-superuser-password
+  custos-migrate-password:
+    file: ./.secrets/custos-migrate-password
+  custos-app-password:
+    file: ./.secrets/custos-app-password
+  custos-migrate-url:
+    file: ./.secrets/custos-migrate-url
+  custos-app-url:
+    file: ./.secrets/custos-app-url
+  pg-server-cert:
+    file: ./.secrets/server.crt
+  pg-server-key:
+    file: ./.secrets/server.key
+  pg-server-ca:
+    file: ./.secrets/server.crt
+
+volumes:
+  pgdata:
+  pgcerts:
+
+x-custos-hardening: &custos-hardening
+  read_only: true
+  tmpfs:
+    - /tmp
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+  user: "65532:65532"
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres-superuser-password
+      # auth-local stays trust only for the bootstrap/initdb window;
+      # initdb/00-harden-hba.sh rewrites it to scram before first start.
+      POSTGRES_INITDB_ARGS: >-
+        --auth-host=scram-sha-256 --data-checksums
+    # Secret mounts arrive root:root 0444 and uid/mode attrs aren't
+    # portable (podman ignores them), so copy TLS material into a volume
+    # with the ownership postgres requires before docker-entrypoint.sh
+    # runs — the bootstrap server already needs ssl=on.
+    command:
+      - sh
+      - -c
+      - >-
+        install -o postgres -g postgres -m 600 /run/secrets/pg-server-key /certs/server.key &&
+        install -o postgres -g postgres -m 644 /run/secrets/pg-server-cert /certs/server.crt &&
+        exec docker-entrypoint.sh postgres
+        -c password_encryption=scram-sha-256
+        -c ssl=on
+        -c ssl_cert_file=/certs/server.crt
+        -c ssl_key_file=/certs/server.key
+        -c ssl_min_protocol_version=TLSv1.3
+        -c log_connections=on
+        -c log_disconnections=on
+    secrets:
+      - postgres-superuser-password
+      - custos-migrate-password
+      - custos-app-password
+      - pg-server-cert
+      - pg-server-key
+    volumes:
+      - ./initdb:/docker-entrypoint-initdb.d:ro
+      - pgdata:/var/lib/postgresql/data
+      - pgcerts:/certs
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+    security_opt:
+      - no-new-privileges:true
+    # No published port: custos talks over the compose network.
+
+  migrate:
+    image: custos:local
+    build:
+      context: ../..
+      dockerfile: Containerfile
+    command: ["migrate", "up"]
+    <<: *custos-hardening
+    volumes:
+      - ./custos.yaml:/etc/custos/config.yaml:ro
+    secrets:
+      - custos-migrate-url
+      - pg-server-ca
+    environment:
+      CUSTOS_CONFIG: /etc/custos/config.yaml
+      CUSTOS_DATABASE__URL_FILE: /run/secrets/custos-migrate-url
+      CUSTOS_DATABASE__APP_ROLE: custos_app
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  custos:
+    image: custos:local
+    command: ["serve"]
+    <<: *custos-hardening
+    volumes:
+      - ./custos.yaml:/etc/custos/config.yaml:ro
+    secrets:
+      - custos-app-url
+      - pg-server-ca
+    environment:
+      CUSTOS_CONFIG: /etc/custos/config.yaml
+      CUSTOS_DATABASE__URL_FILE: /run/secrets/custos-app-url
+    ports:
+      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:9090:9090"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  worker:
+    image: custos:local
+    command: ["worker"]
+    <<: *custos-hardening
+    volumes:
+      - ./custos.yaml:/etc/custos/config.yaml:ro
+    secrets:
+      - custos-app-url
+      - pg-server-ca
+    environment:
+      CUSTOS_CONFIG: /etc/custos/config.yaml
+      CUSTOS_DATABASE__URL_FILE: /run/secrets/custos-app-url
+    ports:
+      - "127.0.0.1:9190:9090"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully

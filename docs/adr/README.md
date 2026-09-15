@@ -18,6 +18,7 @@ decisions get a new ADR that references the old one.
 | [ADR-010](ADR-010-frontend-bff-auth.md) | Next.js BFF server-side session, HttpOnly cookies, CSRF double-submit | [frontend.md](../frontend.md) |
 | [ADR-011](ADR-011-execution-spec-and-submission-envelope.md) | Immutable `ExecutionSpec` sole source of policy fields; `#SBATCH` rejected; base64 payload wrapper | [script-validation.md](../script-validation.md) |
 | [ADR-012](ADR-012-script-validation-tooling.md) | mvdan/sh in-process; ShellCheck/ruff in credential-less sidecar; `ScriptValidator` port; persisted results | [script-validation.md](../script-validation.md) |
+| [ADR-013](ADR-013-postgresql-hardening-baseline.md) | SCRAM-only, TLS verify-full outside dev, pgcrypto, append-only audit triggers, split migrate/app roles, fail-closed preflight | [architecture.md](../architecture.md) §7 |
 
 ## Process
 

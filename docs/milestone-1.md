@@ -23,7 +23,8 @@ later milestone plugs into these seams.
    - Signal handling; `errgroup`-based lifecycle; graceful shutdown with
      configurable timeout (default 20s).
 
-3. **`internal/platform/config`**
+3. **`internal/platform/config`** (+ `internal/platform/apperr`, the
+   shared domain error type it and everything else uses)
    - Sources: config file (YAML) → env overrides (`CUSTOS_` prefix, `__`
      nesting). Secrets fields accept `_FILE` suffix variants pointing at
      mounted files. No secret values in env by default.
@@ -43,8 +44,9 @@ later milestone plugs into these seams.
      `migrations/`. Migration `0001_init.sql`: `schema_migrations` (goose's),
      `work_items`, `idempotency_keys`, `audit_events` (partitioned parent +
      first partitions) — infrastructure tables only.
-   - Test helper: testcontainers-go PostgreSQL 16, one database per test
-     package, migrations applied, `TRUNCATE` between tests.
+   - Test helper: `CUSTOS_TEST_DATABASE_URL` when set (CI service
+     container), else `embedded-postgres` PostgreSQL 16; one database per
+     test package, migrations applied, `TRUNCATE` between tests.
 
 6. **`internal/platform/httpx`**
    - Middleware: recover (→ `INTERNAL` envelope, logs panic with request id),
@@ -66,10 +68,11 @@ later milestone plugs into these seams.
      openapi-check` diffs regenerated output.
    - Handlers for the three endpoints above.
 
-8. **Health**
+8. **`internal/platform/health`**
    - `/health/live` trivially 200.
    - `/health/ready` runs registered `Checker`s (`db` required) with a
-     500ms budget each; JSON body `{status, checks:[{name,status,latency_ms}]}`.
+     500ms budget each; JSON body `{status, checks:[{name,status,latency_ms}]}`;
+     checker error strings are logged, never returned in the body.
 
 9. **`internal/platform/otel`**
    - Resource attributes (service name, version, instance).
@@ -89,8 +92,9 @@ later milestone plugs into these seams.
 
 11. **`internal/audit`** (foundation only)
     - `Event` struct, `Recorder` port, PostgreSQL sink writing append-only
-      rows with `prev_hash` chaining per stream; a `slog`-based forwarder
-      stub. No emitters yet beyond a `system.started` event.
+      rows with `prev_hash` chaining per stream (`audit_streams` tracks
+      `seq`/`last_hash` per stream); a `slog`-based forwarder stub. No
+      emitters yet beyond a `system.started` event.
 
 12. **Containers & deploy**
     - Multi-stage `Containerfile` (distroless `static` or `scratch`,
@@ -141,8 +145,8 @@ later milestone plugs into these seams.
 | `github.com/pressly/goose/v3` | SQL migrations, embed support | hand-rolled runner is ~200 lines but goose's edge cases (dirty state, versioning) are worth it |
 | `go.opentelemetry.io/otel/*`, `otelhttp`, Prometheus exporter | traces + metrics | required by spec |
 | `github.com/prometheus/client_golang` (via exporter) | `/metrics` | required by spec |
-| `github.com/oapi-codegen/oapi-codegen/v2` (tool), `oapi-codegen/runtime` | types/server from OpenAPI | hand-maintaining DTOs drifts from the contract |
-| `github.com/testcontainers/testcontainers-go` (+postgres module) | real PG in tests | mocks can't test SQL/RLS |
+| `github.com/oapi-codegen/oapi-codegen/v2` (go.mod `tool` directive), `oapi-codegen/runtime` | types/server from OpenAPI | hand-maintaining DTOs drifts from the contract |
+| `github.com/fergusstrange/embedded-postgres` | real PG in tests without Docker; CI uses `CUSTOS_TEST_DATABASE_URL` against a service container instead | mocks can't test SQL/RLS |
 | `golang.org/x/sync/errgroup` | structured lifecycle | std-lib has no errgroup |
 | `github.com/google/uuid` | UUIDv7 | std-lib lacks UUID; small, ubiquitous |
 | `gopkg.in/yaml.v3` (or `goccy/go-yaml`) | config + later workflow YAML | std-lib has no YAML |

@@ -1,0 +1,20 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-custos-worker
+  labels:
+    {{- include "custos.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  replicas: {{ .Values.replicas.worker }}
+  selector:
+    matchLabels:
+      {{- include "custos.labels" . | nindent 6 }}
+      app.kubernetes.io/component: worker
+  template:
+    metadata:
+      labels:
+        {{- include "custos.labels" . | nindent 8 }}
+        app.kubernetes.io/component: worker
+    spec:
+      {{- include "custos.podSpec" (dict "component" "worker" "Values" .Values "Release" .Release) | nindent 6 }}

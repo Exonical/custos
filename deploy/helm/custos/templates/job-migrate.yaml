@@ -1,0 +1,58 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-custos-migrate
+  labels:
+    {{- include "custos.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migrate
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  template:
+    metadata:
+      labels:
+        {{- include "custos.labels" . | nindent 8 }}
+        app.kubernetes.io/component: migrate
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: migrate
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          args: ["--config", "/etc/custos/config.yaml", "migrate", "up"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          env:
+            - name: CUSTOS_DATABASE__URL_FILE
+              value: /etc/custos/secrets/database-url
+          volumeMounts:
+            - name: config
+              mountPath: /etc/custos/config.yaml
+              subPath: config.yaml
+              readOnly: true
+            - name: secrets
+              mountPath: /etc/custos/secrets
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: config
+          configMap:
+            name: {{ .Release.Name }}-custos-config
+        - name: secrets
+          secret:
+            secretName: {{ .Values.databaseURLSecret.name }}
+            items:
+              - key: {{ .Values.databaseURLSecret.key }}
+                path: database-url
+        - name: tmp
+          emptyDir: {}

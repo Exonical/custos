@@ -1,0 +1,26 @@
+dev_mode: true
+
+server:
+  listen: ":8080"
+  tls:
+    mode: disabled
+
+metrics:
+  enabled: true
+  listen: ":9090"
+  tls:
+    mode: disabled
+
+database:
+  # verify-full even in dev_mode: dev_mode only relaxes the HTTP
+  # listener TLS and OIDC, never the database path (ADR-013).
+  ssl_mode: verify-full
+  tls:
+    root_ca_file: /run/secrets/pg-server-ca
+
+log:
+  level: info
+  format: json
+
+telemetry:
+  exporter: none

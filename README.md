@@ -39,7 +39,7 @@ documentation only; no application code exists yet. Milestone 1
 - [API conventions](docs/api.md) — OpenAPI contract, routing, envelopes
 - [Threat model](docs/threat-model.md) — assets, actors, STRIDE threats
 - [Milestone 1 plan](docs/milestone-1.md) — foundation implementation plan
-- [Architecture Decision Records](docs/adr/README.md) — ADR-001 … ADR-012
+- [Architecture Decision Records](docs/adr/README.md) — ADR-001 … ADR-013
 
 ## Planned stack
 
@@ -53,6 +53,34 @@ documentation only; no application code exists yet. Milestone 1
   editing with backend diagnostics).
 - **Deploy**: container image, Helm chart; API and workers as separate
   Deployments of the same image.
+
+## Quick start (local, Docker/Podman)
+
+```sh
+bash deploy/compose/init-secrets.sh   # generates .secrets/ (gitignored)
+docker compose -f deploy/compose/compose.yaml up -d --wait
+```
+
+Then:
+
+- API: `http://localhost:8080` (`/health/live`, `/health/ready`)
+- OpenAPI document: `http://localhost:8080/api/v1/openapi.json`
+- Metrics: `http://localhost:9090/metrics`
+
+The compose stack runs a hardened PostgreSQL 16 (SCRAM-only auth, TLS —
+see [ADR-013](docs/adr/ADR-013-postgresql-hardening-baseline.md)), a
+one-shot `migrate` job as the `custos_migrate` role, `serve`, and a
+`worker`, both connecting as the least-privilege `custos_app` role with
+`ssl_mode: verify-full`; config lives in `deploy/compose/custos.yaml`
+(dev_mode relaxes only the HTTP listener, never the database path).
+
+For Kubernetes, see the Helm skeleton in `deploy/helm/custos`.
+
+## Development on Windows
+
+This repo is developed on Windows without Docker/make/local PostgreSQL —
+see `AGENTS.md` for the working commands (embedded-postgres test
+fallback, golangci-lint version requirement, `-race` limitation).
 
 ## Non-goals
 

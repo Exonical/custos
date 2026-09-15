@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-custos-config
+  labels:
+    {{- include "custos.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+    {{- toYaml .Values.config | nindent 4 }}

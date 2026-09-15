@@ -1,0 +1,20 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-custos-serve
+  labels:
+    {{- include "custos.labels" . | nindent 4 }}
+    app.kubernetes.io/component: serve
+spec:
+  replicas: {{ .Values.replicas.serve }}
+  selector:
+    matchLabels:
+      {{- include "custos.labels" . | nindent 6 }}
+      app.kubernetes.io/component: serve
+  template:
+    metadata:
+      labels:
+        {{- include "custos.labels" . | nindent 8 }}
+        app.kubernetes.io/component: serve
+    spec:
+      {{- include "custos.podSpec" (dict "component" "serve" "Values" .Values "Release" .Release) | nindent 6 }}

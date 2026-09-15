@@ -298,6 +298,11 @@ Refinements versus the prompt's list:
 - **JSONB** used only for genuinely document-shaped data (workflow spec,
   layout, resource request/usage, capability snapshots). Everything queried
   by is a real column.
+- **Hardening baseline** (ADR-013): SCRAM-only auth, TLS `verify-full`
+  outside dev, `pgcrypto`, `audit_events` append-only enforced by triggers
+  (UPDATE/DELETE/TRUNCATE), split migrate vs. least-privilege app roles,
+  and a fail-closed startup preflight — test stacks held to the same
+  standard.
 - **CockroachDB compatibility**: avoid `SERIAL`, advisory locks, `LISTEN/NOTIFY`,
   and DDL inside transactions with DML. `SKIP LOCKED` is supported in CRDB
   23.2+. Partitioning syntax differs; partitioning is isolated in

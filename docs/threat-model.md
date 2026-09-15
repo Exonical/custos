@@ -62,7 +62,7 @@ anything a job reports back.
 | TM-19 | CSRF against BFF | T1 | S, T | SameSite=Lax + CSRF token + Origin checks; API itself is bearer-only (no ambient credentials) |
 | TM-20 | XSS in UI (workflow names, job comments, stdout) | T2 | S | React escaping; CSP with nonces; stdout rendered as text in `<pre>`; no `dangerouslySetInnerHTML` |
 | TM-21 | Open redirect after login | T1 | S | `returnTo` validated as same-origin relative path |
-| TM-22 | Audit tampering | T3, T8 | R | Append-only table, DB grants; hash chain (`prev_hash`) per tenant stream; forward to external SIEM |
+| TM-22 | Audit tampering | T3, T8 | R | Append-only table enforced by DB triggers (UPDATE/DELETE/TRUNCATE raise), least-privilege app role vs. migrate role split; hash chain (`prev_hash`) per tenant stream; forward to external SIEM |
 | TM-23 | Tenant enumeration | T2 | I | 404 for tenants the principal isn't a member of; slugs not sequential |
 | TM-24 | Malicious tenant admin harvesting members' identities | T3 | I | Members see only display name/email that the IdP exposes and the user consented to; no `sub` exposure beyond admins |
 | TM-25 | Dependency / supply chain | any | T | `govulncheck`, dependabot, pinned module versions, `minimumReleaseAge`-style policy for new deps, SBOM in release |

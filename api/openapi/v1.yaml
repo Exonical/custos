@@ -1,0 +1,168 @@
+openapi: "3.1.0"
+info:
+  title: Custos API
+  version: "0.1.0"
+  description: |
+    Multi-tenant Slurm gateway / HPC control plane. Conventions per
+    docs/api.md: JSON, snake_case fields, RFC 3339 UTC timestamps,
+    keyset pagination via opaque cursors, UUIDv7 identifiers.
+servers:
+  - url: /api/v1
+
+paths:
+  /openapi.json:
+    get:
+      summary: This OpenAPI document, as JSON
+      operationId: openapiSpec
+      responses:
+        "200":
+          description: The OpenAPI document.
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /health/live:
+    get:
+      summary: Liveness probe
+      operationId: healthLive
+      tags: [health]
+      responses:
+        "200":
+          description: Process is alive.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  /health/ready:
+    get:
+      summary: Readiness probe
+      operationId: healthReady
+      tags: [health]
+      responses:
+        "200":
+          description: All required dependencies OK (degraded if only optional checks fail).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadyStatus"
+        "503":
+          description: A required dependency is failing.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadyStatus"
+
+components:
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              description: Stable machine-readable error code.
+            message:
+              type: string
+            request_id:
+              type: string
+            details:
+              type: array
+              items:
+                type: object
+                required: [field, reason]
+                properties:
+                  field:
+                    type: string
+                  reason:
+                    type: string
+
+    ListEnvelope:
+      type: object
+      description: |
+        Generic list envelope template. Concrete list responses use
+        `{items: [...], next_cursor: string|null}`; `total` may be added
+        only where the count is cheap (never for jobs/usage).
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: {}
+        next_cursor:
+          type: string
+          nullable: true
+          description: Opaque base64url keyset cursor (HMAC-signed).
+
+    HealthStatus:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ok]
+
+    CheckResult:
+      type: object
+      required: [name, status, latency_ms]
+      properties:
+        name:
+          type: string
+        status:
+          type: string
+          enum: [ok, fail]
+        latency_ms:
+          type: integer
+
+    ReadyStatus:
+      type: object
+      required: [status, checks]
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded, unavailable]
+        checks:
+          type: array
+          items:
+            $ref: "#/components/schemas/CheckResult"
+
+  parameters:
+    Cursor:
+      name: cursor
+      in: query
+      description: Opaque keyset cursor from a previous list response.
+      schema:
+        type: string
+    Limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 50
+    TenantSlug:
+      name: tenant
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: "^[a-z0-9][a-z0-9-]{1,62}$"
+    Idempotency-Key:
+      name: Idempotency-Key
+      in: header
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+    X-Request-ID:
+      name: X-Request-ID
+      in: header
+      description: Client-supplied request id; echoed back on responses.
+      schema:
+        type: string
+        maxLength: 128

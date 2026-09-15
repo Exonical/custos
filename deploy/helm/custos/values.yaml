@@ -1,0 +1,66 @@
+image:
+  repository: custos
+  tag: "0.1.0"
+  pullPolicy: IfNotPresent
+
+replicas:
+  serve: 2
+  worker: 1
+
+# Rendered into the custos ConfigMap and mounted at /etc/custos/config.yaml.
+config:
+  dev_mode: false
+  server:
+    listen: ":8443"
+    tls:
+      mode: required
+      cert_file: /etc/custos/tls/tls.crt
+      key_file: /etc/custos/tls/tls.key
+  metrics:
+    enabled: true
+    listen: ":9090"
+    tls:
+      mode: upstream
+  database:
+    ssl_mode: verify-full
+  log:
+    level: info
+    format: json
+  telemetry:
+    exporter: none
+
+# Existing secrets / volumes mounted into the pods.
+databaseURLSecret:
+  # Secret whose `url` key is mounted as CUSTOS_DATABASE__URL_FILE.
+  name: custos-database
+  key: url
+
+tlsSecret:
+  # TLS cert/key for the API listener (mounted at /etc/custos/tls).
+  name: custos-tls
+  enabled: true
+
+service:
+  type: ClusterIP
+  port: 8443
+  metricsPort: 9090
+
+serviceMonitor:
+  enabled: false
+  interval: 30s
+
+networkPolicy:
+  enabled: true
+  # Namespaces allowed to reach the API port; empty = same namespace only.
+  ingressFromNamespaces: []
+  egress:
+    postgresCIDR: ""
+    oidcCIDR: ""
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: "1"
+    memory: 512Mi

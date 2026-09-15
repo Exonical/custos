@@ -45,7 +45,8 @@ The partial unique index gives **enqueue-time deduplication**: enqueueing
 loop:
   BEGIN
   SELECT ... FROM work_items
-   WHERE state='pending' AND run_at <= now()
+   WHERE (state='pending' AND run_at <= now())
+      OR (state='leased' AND leased_until < now())   -- expired leases
    ORDER BY priority DESC, run_at
    LIMIT $batch FOR UPDATE SKIP LOCKED;
   UPDATE ... SET state='leased', leased_by=$me, leased_until=now()+$lease, attempt=attempt+1
@@ -129,7 +130,7 @@ successes → active). Submissions to `unreachable` clusters are held in
 ## Worker process model
 
 - `custos worker` runs the lease loop with per-kind concurrency limits from
-  config (`workers.kinds.job.submit.concurrency: 8`).
+  config (`worker.kinds.job.submit.concurrency: 8`).
 - `custos serve` can optionally embed the worker (`--embed-worker`) for
   small deployments; production runs them separately.
 - Graceful shutdown: stop leasing, let in-flight handlers finish until

@@ -1,0 +1,93 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.13.2
+
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: custos
+          POSTGRES_PASSWORD: custos
+          POSTGRES_DB: custos
+          POSTGRES_HOST_AUTH_METHOD: scram-sha-256
+          POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      CUSTOS_TEST_DATABASE_URL: postgres://custos:custos@localhost:5432/custos?sslmode=disable
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - run: go test -race ./...
+
+  openapi-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - run: go generate ./pkg/api/v1
+      - run: git diff --exit-code -- pkg/api
+      - run: go run ./tools/docsconfig
+      - run: git diff --exit-code -- docs/configuration.md
+
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - run: bash deploy/compose/init-secrets.sh
+      - run: docker compose -f deploy/compose/compose.yaml build
+      - run: docker compose -f deploy/compose/compose.yaml up -d --wait
+      - run: |
+          curl -fsS http://localhost:8080/health/ready
+          curl -fsS http://localhost:8080/api/v1/openapi.json
+          curl -fsS http://localhost:9090/metrics | grep -q custos_build_info
+      - run: docker compose -f deploy/compose/compose.yaml down -v
+
+  vuln:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
+  gitleaks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
