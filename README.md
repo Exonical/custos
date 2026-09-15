@@ -1,0 +1,62 @@
+# Custos
+
+Custos is a multi-tenant control plane / Slurm gateway: it sits between
+people and automation on one side and one or more Slurm clusters on the
+other, owning identity mapping, tenancy, authorization, policy, workflow
+orchestration, job bookkeeping, accounting visibility, and audit. Slurm
+remains the scheduler and execution authority — Custos never schedules
+work itself.
+
+## Status
+
+**Milestone 0 — architecture.** This repository currently contains design
+documentation only; no application code exists yet. Milestone 1
+(foundation binary) is planned in [docs/milestone-1.md](docs/milestone-1.md).
+
+## Documentation
+
+- [Architecture](docs/architecture.md) — system overview, trust
+  boundaries, modular monolith, domain model, PostgreSQL strategy
+- [Authentication](docs/authentication.md) — OIDC relying party, JWT
+  verification, JIT provisioning
+- [Authorization](docs/authorization.md) — Authorizer port, permission
+  catalog, RBAC
+- [Tenancy](docs/tenancy.md) — isolation model, tenant context, test
+  matrix
+- [Secrets](docs/secrets.md) — OpenBao namespaces, SecretReference, job
+  delivery
+- [Slurm integration](docs/slurm.md) — adapter ports, Slinky clients,
+  reconciliation
+- [Workflows](docs/workflows.md) — `custos.io/v1alpha1` spec, state
+  machines, engine
+- [Script validation](docs/script-validation.md) — payload validation,
+  `ExecutionSpec` admission, submission wrapper
+- [Workers](docs/workers.md) — durable PostgreSQL work queue,
+  reconciliation loops
+- [Observability](docs/observability.md) — metrics, logs, accounting
+  pipeline, health
+- [Frontend](docs/frontend.md) — Next.js BFF, sessions, editor
+- [API conventions](docs/api.md) — OpenAPI contract, routing, envelopes
+- [Threat model](docs/threat-model.md) — assets, actors, STRIDE threats
+- [Milestone 1 plan](docs/milestone-1.md) — foundation implementation plan
+- [Architecture Decision Records](docs/adr/README.md) — ADR-001 … ADR-012
+
+## Planned stack
+
+- **Backend**: Go 1.27, one binary (`custos serve` / `worker` /
+  `migrate`), pgx/v5 + PostgreSQL (goose migrations), OpenBao for
+  secrets, coreos/go-oidc for OIDC, SlinkyProject slurm-client generated
+  clients (baseline Slurm 26.05 / slurmrestd v0.0.45; Slurm 25.11 /
+  v0.0.44 also supported), OpenTelemetry + Prometheus.
+- **Frontend**: Next.js (App Router, TypeScript strict) as a BFF;
+  shadcn/ui + Tailwind; React Flow + Monaco (workflow editor, script
+  editing with backend diagnostics).
+- **Deploy**: container image, Helm chart; API and workers as separate
+  Deployments of the same image.
+
+## Non-goals
+
+- Replacing or wrapping every slurmrestd endpoint.
+- Acting as an identity provider.
+- Acting as a general secrets store.
+- Meta-scheduling in the first milestones (interfaces only).
