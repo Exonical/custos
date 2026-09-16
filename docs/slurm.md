@@ -192,12 +192,29 @@ spec cannot express cannot reach Slurm.
 
 ## Cluster synchronization
 
-Work item `cluster.sync` (per cluster, every 60s default, jittered):
-`Ping` → `Capabilities` → `GetPartitions` → `GetNodes` → summarize to
-`clusters.capabilities` JSONB + `cluster_partitions` rows + a node summary
-(counts by state; per-node detail kept in a short-retention table only if a
-site opts in). Consecutive failures move cluster `state` to `unreachable`
-and readiness reports it (without failing readiness).
+Work item `cluster.sync` is a **self-rescheduling chain** per cluster: each
+run re-enqueues itself with `run_at = now + interval` where the interval is
+`worker.cluster_sync_interval` (default 60s) ±10% jitter. `custos worker`
+bootstraps one item per non-disabled cluster at startup; dedupe on
+`(kind, key)` keeps the chain single. Slurm errors never return an error to
+the queue — they are recorded and the *next scheduled run* is the retry.
+
+Each run does `Ping` → `Capabilities` (which already contains partitions —
+no extra partition call) → `RecordSyncResult`: one transaction updates
+`clusters.capabilities` JSONB + `last_sync_at` + the hysteresis counters
+(`consecutive_failures` / `consecutive_successes`, `last_error` truncated
+to 1024 chars and token-scrubbed), and replaces `cluster_partitions` rows
+atomically. State: 2 consecutive successes → `active`; a failure →
+`degraded`; 3 consecutive failures → `unreachable`; `disabled` never
+changes (and stops the chain — no re-enqueue). While `unreachable` the
+re-enqueue interval is 5× the base, capped at 10 min.
+
+For `visibility = all_tenants` clusters a successful run also reconciles
+`cluster_tenant_assignments`: `source = auto` rows are upserted for every
+tenant in `active`/`suspended` state and removed for tenants that leave
+those states; `manual` rows are never touched. Readiness reports an
+unreachable non-disabled cluster as a degraded (optional) check — still
+HTTP 200.
 
 ## Job reconciliation
 

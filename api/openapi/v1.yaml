@@ -309,7 +309,7 @@ paths:
           description: Last tenant-admin protection or state conflict.
           content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
 
-  /tenants/{tenant}/users:lookup:
+  /tenants/{tenant}/users/lookup:
     get:
       summary: Look up users by exact email (tenant.members.manage)
       operationId: lookupUsers
@@ -725,6 +725,327 @@ paths:
           content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
         "409":
           description: Last platform-admin protection.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+
+  /clusters:
+    get:
+      summary: List clusters
+      operationId: listClusters
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Cluster list (platform view).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClusterList"
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "403":
+          description: Requires cluster.read or cluster.manage.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+    post:
+      summary: Register a cluster
+      operationId: createCluster
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClusterCreate"
+      responses:
+        "201":
+          description: Cluster registered.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Cluster"
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "403":
+          description: Requires cluster.manage.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "409":
+          description: Cluster name already exists.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "422":
+          description: Invalid endpoint (SSRF denied) or unresolvable token_ref.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+
+  /clusters/{cluster}:
+    get:
+      summary: Get a cluster
+      operationId: getCluster
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ClusterRef"
+      responses:
+        "200":
+          description: Cluster detail.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Cluster"
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "403":
+          description: Requires cluster.read or cluster.manage.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "404":
+          description: Cluster not found.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+    patch:
+      summary: Update a cluster
+      operationId: updateCluster
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ClusterRef"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClusterUpdate"
+      responses:
+        "200":
+          description: Cluster updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Cluster"
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "403":
+          description: Requires cluster.manage.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "404":
+          description: Cluster not found.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "409":
+          description: Version conflict.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "422":
+          description: Invalid endpoint or unresolvable token_ref.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+
+  /clusters/{cluster}/disable:
+    post:
+      summary: Disable a cluster
+      operationId: disableCluster
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ClusterRef"
+      responses:
+        "200":
+          description: Cluster disabled; the sync chain stops.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Cluster"
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "403":
+          description: Requires cluster.manage.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "404":
+          description: Cluster not found.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+
+  /clusters/{cluster}/test-connection:
+    post:
+      summary: Test connectivity to slurmrestd
+      operationId: testClusterConnection
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ClusterRef"
+      responses:
+        "200":
+          description: Connection test result (does not persist sync state).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClusterTestResult"
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "403":
+          description: Requires cluster.manage.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "404":
+          description: Cluster not found.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+
+  /clusters/{cluster}/tenants:
+    get:
+      summary: List cluster tenant assignments
+      operationId: listClusterAssignments
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ClusterRef"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Assignment list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssignmentList"
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "403":
+          description: Requires cluster.assign.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "404":
+          description: Cluster not found.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+
+  /clusters/{cluster}/tenants/{tenant}:
+    put:
+      summary: Assign a cluster to a tenant
+      operationId: assignCluster
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ClusterRef"
+        - $ref: "#/components/parameters/TenantSlug"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssignmentPut"
+      responses:
+        "204":
+          description: Assignment upserted.
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "403":
+          description: Requires cluster.assign.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "404":
+          description: Cluster or tenant not found.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "409":
+          description: Cluster visibility is all_tenants (rows are sync-managed).
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+    delete:
+      summary: Unassign a cluster from a tenant
+      operationId: unassignCluster
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ClusterRef"
+        - $ref: "#/components/parameters/TenantSlug"
+      responses:
+        "204":
+          description: Assignment removed.
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "403":
+          description: Requires cluster.assign.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "404":
+          description: Cluster or tenant not found.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "409":
+          description: Cluster visibility is all_tenants (rows are sync-managed).
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+
+  /tenants/{tenant}/clusters:
+    get:
+      summary: List clusters visible to the tenant
+      operationId: listTenantClusters
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+      responses:
+        "200":
+          description: Tenant-visible cluster summaries (no platform configuration).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClusterSummaryList"
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "403":
+          description: Not a tenant member with cluster.read.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "404":
+          description: Tenant not found.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+
+  /tenants/{tenant}/clusters/{cluster}:
+    get:
+      summary: Get a visible cluster summary
+      operationId: getTenantCluster
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+        - $ref: "#/components/parameters/ClusterRef"
+      responses:
+        "200":
+          description: Cluster summary.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClusterSummary"
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "403":
+          description: Not a tenant member with cluster.read.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "404":
+          description: Tenant or cluster not found (unassigned clusters are invisible).
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+
+  /tenants/{tenant}/clusters/{cluster}/partitions:
+    get:
+      summary: List partitions of a visible cluster
+      operationId: listTenantClusterPartitions
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+        - $ref: "#/components/parameters/ClusterRef"
+      responses:
+        "200":
+          description: Partition records, filtered by the assignment's allowed_partitions.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PartitionList"
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "403":
+          description: Not a tenant member with cluster.read.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "404":
+          description: Tenant or cluster not found.
           content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
 
 components:
@@ -1229,6 +1550,279 @@ components:
           items:
             $ref: "#/components/schemas/UserLookupResult"
 
+    SecretRef:
+      type: object
+      description: Reference to a secret value (docs/secrets.md); never the value.
+      required: [provider, path]
+      properties:
+        provider:
+          type: string
+          enum: [file]
+        path:
+          type: string
+        key:
+          type: string
+          description: Optional JSON key inside the file.
+
+    AssignmentDefaults:
+      type: object
+      properties:
+        default_account_prefix:
+          type: string
+        allowed_partitions:
+          type: array
+          items:
+            type: string
+
+    Cluster:
+      type: object
+      required: [id, name, display_name, base_url, api_version, identity_mode,
+                 service_user, token_ref, visibility, state, version,
+                 created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        display_name:
+          type: string
+        base_url:
+          type: string
+        api_version:
+          type: string
+          enum: [v0.0.45, v0.0.44]
+        ca_bundle_pem:
+          type: string
+        identity_mode:
+          type: string
+          enum: [service, impersonate]
+        service_user:
+          type: string
+        token_ref:
+          $ref: "#/components/schemas/SecretRef"
+        client_cert_ref:
+          $ref: "#/components/schemas/SecretRef"
+        visibility:
+          type: string
+          enum: [assigned, all_tenants]
+        state:
+          type: string
+          enum: [active, degraded, unreachable, disabled]
+        consecutive_failures:
+          type: integer
+        last_sync_at:
+          type: string
+          format: date-time
+        last_error:
+          type: string
+        capabilities_at:
+          type: string
+          format: date-time
+        version:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ClusterCreate:
+      type: object
+      required: [name, display_name, base_url, api_version, identity_mode,
+                 service_user, token_ref, visibility]
+      properties:
+        name:
+          type: string
+          pattern: '^[a-z0-9][a-z0-9-]{1,62}$'
+        display_name:
+          type: string
+        base_url:
+          type: string
+          description: https URL of slurmrestd; vetted against the SSRF dial policy.
+        api_version:
+          type: string
+          enum: [v0.0.45, v0.0.44]
+        ca_bundle_pem:
+          type: string
+        identity_mode:
+          type: string
+          enum: [service, impersonate]
+        service_user:
+          type: string
+        token_ref:
+          $ref: "#/components/schemas/SecretRef"
+        client_cert_ref:
+          $ref: "#/components/schemas/SecretRef"
+        visibility:
+          type: string
+          enum: [assigned, all_tenants]
+
+    ClusterUpdate:
+      type: object
+      required: [version]
+      properties:
+        display_name:
+          type: string
+        base_url:
+          type: string
+        api_version:
+          type: string
+          enum: [v0.0.45, v0.0.44]
+        ca_bundle_pem:
+          type: string
+        identity_mode:
+          type: string
+          enum: [service, impersonate]
+        service_user:
+          type: string
+        token_ref:
+          $ref: "#/components/schemas/SecretRef"
+        client_cert_ref:
+          $ref: "#/components/schemas/SecretRef"
+        visibility:
+          type: string
+          enum: [assigned, all_tenants]
+        version:
+          type: integer
+          description: Optimistic concurrency token.
+
+    ClusterTestResult:
+      type: object
+      required: [ok]
+      properties:
+        ok:
+          type: boolean
+        latency_ms:
+          type: integer
+        slurm_version:
+          type: string
+        api_version:
+          type: string
+        partitions:
+          type: array
+          items:
+            type: string
+        error_code:
+          type: string
+
+    Assignment:
+      type: object
+      required: [cluster_id, tenant_id, source, defaults, created_at, updated_at]
+      properties:
+        cluster_id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        source:
+          type: string
+          enum: [manual, auto]
+        defaults:
+          $ref: "#/components/schemas/AssignmentDefaults"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    AssignmentPut:
+      type: object
+      properties:
+        defaults:
+          $ref: "#/components/schemas/AssignmentDefaults"
+
+    ClusterSummary:
+      type: object
+      description: Tenant-facing view; contains no platform configuration
+        (base_url, token_ref, ca_bundle are never returned to tenants).
+      required: [id, name, display_name, state, partitions, defaults]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        display_name:
+          type: string
+        state:
+          type: string
+          enum: [active, degraded, unreachable, disabled]
+        slurm_version:
+          type: string
+        partitions:
+          type: array
+          items:
+            type: string
+        gres_types:
+          type: array
+          items:
+            type: string
+        node_summary:
+          type: object
+          additionalProperties:
+            type: integer
+        defaults:
+          $ref: "#/components/schemas/AssignmentDefaults"
+
+    PartitionRecord:
+      type: object
+      required: [name, attributes, synced_at]
+      properties:
+        name:
+          type: string
+        attributes:
+          type: object
+          description: slurm.Partition neutral attributes.
+        synced_at:
+          type: string
+          format: date-time
+
+    ClusterList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Cluster"
+        next_cursor:
+          type: string
+          nullable: true
+
+    AssignmentList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Assignment"
+        next_cursor:
+          type: string
+          nullable: true
+
+    ClusterSummaryList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ClusterSummary"
+
+    PartitionList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/PartitionRecord"
+
   parameters:
     Cursor:
       name: cursor
@@ -1279,6 +1873,13 @@ components:
       schema:
         type: string
         enum: [platform-admin, platform-auditor]
+    ClusterRef:
+      name: cluster
+      in: path
+      required: true
+      description: Cluster name or uuid.
+      schema:
+        type: string
     Idempotency-Key:
       name: Idempotency-Key
       in: header

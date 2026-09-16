@@ -96,6 +96,7 @@ func (c Config) Validate() error {
 		{"worker.lease_duration", c.Worker.LeaseDuration},
 		{"worker.heartbeat_interval", c.Worker.HeartbeatInterval},
 		{"worker.shutdown_timeout", c.Worker.ShutdownTimeout},
+		{"worker.cluster_sync_interval", c.Worker.ClusterSyncInterval},
 	} {
 		v.durPos(d.name, d.d)
 	}
@@ -121,6 +122,18 @@ func (c Config) Validate() error {
 			v.fail(fmt.Sprintf("secrets.file_roots[%d]", i),
 				"must be an absolute path")
 		}
+	}
+
+	for i, cidr := range c.Slurm.DialPolicy.DenyCIDRs {
+		if _, err := netip.ParsePrefix(cidr); err != nil {
+			v.fail(fmt.Sprintf("slurm.dial_policy.deny_cidrs[%d]", i),
+				"invalid CIDR")
+		}
+	}
+	if !c.DevMode && (c.Slurm.DialPolicy.AllowLoopback ||
+		c.Slurm.DialPolicy.AllowHTTP) {
+		v.fail("slurm.dial_policy",
+			"allow_loopback/allow_http require dev_mode")
 	}
 
 	v.oneOf("log.level", c.Log.Level, "debug", "info", "warn", "error")

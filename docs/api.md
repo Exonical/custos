@@ -79,9 +79,11 @@ Error codes are an enum in the OpenAPI document.
 - `PATCH` with JSON Merge Patch for mutable resources; `If-Match` with
   resource `etag` (the `version` column) for optimistic concurrency on
   state-bearing resources.
-- Actions that aren't CRUD use a sub-resource verb:
-  `POST .../jobs/{job}:cancel`, `POST .../workflows/{w}/versions/{v}:publish`,
-  `POST .../workflows/{w}/versions:validate`.
+- Actions that aren't CRUD are POST sub-paths named with a verb:
+  `/{resource}/{id}/{verb}` (e.g. `POST .../jobs/{job}/cancel`,
+  `POST .../workflows/{w}/versions/{v}/publish`). No `:verb` suffixes —
+  ServeMux patterns and OpenAPI path templating both prefer plain
+  sub-paths.
 - `Idempotency-Key` header required on `POST .../jobs` and
   `POST .../workflow-executions`; optional elsewhere.
 - Filtering via explicit query parameters (`state=`, `cluster=`,
@@ -104,7 +106,7 @@ GET    /api/v1/tenants/{tenant}/members
 POST   /api/v1/tenants/{tenant}/members
 PATCH  /api/v1/tenants/{tenant}/members/{user}
 DELETE /api/v1/tenants/{tenant}/members/{user}
-GET    /api/v1/tenants/{tenant}/users:lookup        exact email match
+GET    /api/v1/tenants/{tenant}/users/lookup        exact email match
 GET    /api/v1/tenants/{tenant}/groups
 POST   /api/v1/tenants/{tenant}/groups
 GET    /api/v1/tenants/{tenant}/groups/{group}
@@ -125,32 +127,41 @@ DELETE /api/v1/platform/role-bindings/{user}/{role} platform
 ...    /api/v1/tenants/{tenant}/projects
 ...    /api/v1/tenants/{tenant}/projects/{project}/members
 ...    /api/v1/tenants/{tenant}/projects/{project}/cluster-bindings
-GET    /api/v1/tenants/{tenant}/clusters            clusters visible to tenant (+ capabilities)
+GET    /api/v1/tenants/{tenant}/clusters            clusters visible to tenant (summaries; no base_url/credentials)
+GET    /api/v1/tenants/{tenant}/clusters/{cluster}  visible cluster summary
 GET    /api/v1/tenants/{tenant}/clusters/{cluster}/partitions
 ...    /api/v1/tenants/{tenant}/policies
 ...    /api/v1/tenants/{tenant}/secret-references
 ...    /api/v1/tenants/{tenant}/workflows
 ...    /api/v1/tenants/{tenant}/workflows/{workflow}/versions
-POST   /api/v1/tenants/{tenant}/workflows/{workflow}/versions:validate
-POST   /api/v1/tenants/{tenant}/workflows/{workflow}/versions/{version}:publish
-POST   /api/v1/tenants/{tenant}/workflows/{workflow}/versions/{version}/tasks/{task}:validate
-POST   /api/v1/tenants/{tenant}/workflows/{workflow}/versions/{version}/tasks/{task}:import-sbatch
-POST   /api/v1/tenants/{tenant}/workflows/{workflow}/versions/{version}/tasks/{task}:preview-submission
+POST   /api/v1/tenants/{tenant}/workflows/{workflow}/versions/validate
+POST   /api/v1/tenants/{tenant}/workflows/{workflow}/versions/{version}/publish
+POST   /api/v1/tenants/{tenant}/workflows/{workflow}/versions/{version}/tasks/{task}/validate
+POST   /api/v1/tenants/{tenant}/workflows/{workflow}/versions/{version}/tasks/{task}/import-sbatch
+POST   /api/v1/tenants/{tenant}/workflows/{workflow}/versions/{version}/tasks/{task}/preview-submission
 GET    /api/v1/tenants/{tenant}/workflows/{workflow}/versions/{version}/validations
-POST   /api/v1/tenants/{tenant}/scripts:validate                (ad-hoc editor validation; see script-validation.md)
+POST   /api/v1/tenants/{tenant}/scripts/validate                (ad-hoc editor validation; see script-validation.md)
 GET    /api/v1/tenants/{tenant}/workflow-executions/{execution}/tasks/{task}/execution-spec
 GET    /api/v1/tenants/{tenant}/workflow-executions/{execution}/tasks/{task}/validation
 ...    /api/v1/tenants/{tenant}/workflow-executions
-POST   /api/v1/tenants/{tenant}/workflow-executions/{execution}:cancel
+POST   /api/v1/tenants/{tenant}/workflow-executions/{execution}/cancel
 GET    /api/v1/tenants/{tenant}/workflow-executions/{execution}/tasks
 ...    /api/v1/tenants/{tenant}/jobs
-POST   /api/v1/tenants/{tenant}/jobs/{job}:cancel
+POST   /api/v1/tenants/{tenant}/jobs/{job}/cancel
 GET    /api/v1/tenants/{tenant}/jobs/{job}/output?stream=stdout   (Milestone 7+, via cluster file access policy)
 GET    /api/v1/tenants/{tenant}/accounting/usage?group_by=...&from=&to=
 GET    /api/v1/tenants/{tenant}/accounting/allocations
 GET    /api/v1/tenants/{tenant}/audit-events
-...    /api/v1/clusters                             platform registry (register, TLS, credential ref, tenant assignments)
-GET    /api/v1/clusters/{cluster}/nodes | partitions | health
+GET    /api/v1/clusters                             platform registry list
+POST   /api/v1/clusters                             register cluster (SSRF-vetted base_url, token_ref)
+GET    /api/v1/clusters/{cluster}                   platform detail
+PATCH  /api/v1/clusters/{cluster}                   update (optimistic version)
+POST   /api/v1/clusters/{cluster}/disable           disable (stops the sync chain)
+POST   /api/v1/clusters/{cluster}/test-connection   open + ping + capabilities (no state change)
+GET    /api/v1/clusters/{cluster}/tenants           list assignments
+PUT    /api/v1/clusters/{cluster}/tenants/{tenant}  assign (defaults)
+DELETE /api/v1/clusters/{cluster}/tenants/{tenant}  unassign
+...    /api/v1/clusters/{cluster}/nodes | partitions | health   (M4+)
 ...    /api/v1/admin/work-items                     platform
 GET    /api/v1/audit-events                         platform auditor
 GET    /api/v1/openapi.json

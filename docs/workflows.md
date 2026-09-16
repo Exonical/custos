@@ -162,7 +162,7 @@ Order:
 Validation returns **all** errors (path-addressed: `spec.tasks[2].resources.walltime`)
 so the editor can annotate nodes.
 
-`POST .../workflows/{id}/versions:validate` runs 1-8 without persisting;
+`POST .../workflows/{id}/versions/validate` runs 1-8 without persisting;
 `publish` runs them again.
 
 ## Execution state machines

@@ -18,6 +18,9 @@ import (
 	"github.com/Exonical/custos/internal/audit/pgaudit"
 	"github.com/Exonical/custos/internal/authn"
 	"github.com/Exonical/custos/internal/authz"
+	clusterpg "github.com/Exonical/custos/internal/clusters/postgres"
+	clustersvc "github.com/Exonical/custos/internal/clusters/service"
+	clustersync "github.com/Exonical/custos/internal/clusters/sync"
 	"github.com/Exonical/custos/internal/platform/config"
 	"github.com/Exonical/custos/internal/platform/db"
 	"github.com/Exonical/custos/internal/platform/health"
@@ -114,6 +117,20 @@ func cmdServe(parent context.Context, configPath string, lookupEnv config.Lookup
 	tenantSvc := tenantsvc.NewService(tenantRepo, tenantRepo, tenantRepo,
 		userRepo, authz.RBAC{}, recorder)
 
+	sdeps, err := newSlurmDeps(cfg)
+	if err != nil {
+		logger.ErrorContext(ctx, "slurm setup", "error", err)
+		return 1
+	}
+	clusterRepo := clusterpg.New(pool)
+	clusterSvc := clustersvc.New(clustersvc.Deps{
+		Repository: clusterRepo, Tenants: tenantRepo,
+		Factory: sdeps.Factory, Authorizer: authz.RBAC{},
+		Recorder: recorder, DialPolicy: sdeps.Policy,
+		Resolver: sdeps.Resolver, Enqueuer: pool,
+	})
+	reg.Register(clustersync.UnreachableChecker(clusterRepo), false)
+
 	mux := http.NewServeMux()
 	api.Mount(mux, api.Deps{
 		Health:      reg,
@@ -125,6 +142,7 @@ func cmdServe(parent context.Context, configPath string, lookupEnv config.Lookup
 		Tenants:     tenantSvc,
 		TenantRepo:  tenantRepo,
 		Users:       provisioner,
+		Clusters:    clusterSvc,
 	})
 
 	handler := otel.Instrument(httpx.Chain(

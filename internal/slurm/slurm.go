@@ -228,19 +228,19 @@ type Node struct {
 
 // Partition is the neutral partition record.
 type Partition struct {
-	Name            string
-	State           string
-	Nodes           int
-	TotalCPUs       int
-	MaxTime         *time.Duration
-	DefaultTime     *time.Duration
-	MaxNodes        int
-	MinNodes        int
-	AllowedAccounts []string
-	DeniedAccounts  []string
-	AllowedQoS      []string
-	DefaultQoS      string
-	IsDefault       bool
+	Name            string         `json:"name"`
+	State           string         `json:"state"`
+	Nodes           int            `json:"nodes"`
+	TotalCPUs       int            `json:"total_cpus"`
+	MaxTime         *time.Duration `json:"max_time,omitempty"`
+	DefaultTime     *time.Duration `json:"default_time,omitempty"`
+	MaxNodes        int            `json:"max_nodes"`
+	MinNodes        int            `json:"min_nodes"`
+	AllowedAccounts []string       `json:"allowed_accounts"`
+	DeniedAccounts  []string       `json:"denied_accounts"`
+	AllowedQoS      []string       `json:"allowed_qos"`
+	DefaultQoS      string         `json:"default_qos"`
+	IsDefault       bool           `json:"is_default"`
 }
 
 // Reservation is the neutral reservation record.

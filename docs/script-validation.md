@@ -40,7 +40,7 @@ User edits payload in Monaco
     ↓ (debounced, cancellable)
 Frontend diagnostics                       usability only; never authoritative
     ↓
-POST .../versions/{v}/tasks/{task}:validate
+POST .../versions/{v}/tasks/{task}/validate
     ↓
 Backend parse            shsyntax (mvdan/sh) | python AST | yaml | json
     ↓
@@ -61,7 +61,7 @@ slurmrestd
 
 Two moments of enforcement:
 
-- **Author time** (`:validate`, `:publish`): full validation, results persisted
+- **Author time** (`.../validate`, `.../publish`): full validation, results persisted
   against the script digest.
 - **Execution time** (`TaskExecution: READY → ADMITTING`): verify the payload
   digest equals the validated digest, the validation is still current
@@ -295,7 +295,7 @@ Environment).
 ## Legacy import mode
 
 Enabled per tenant by `allowLegacySbatchImport: true` **and** requested
-explicitly by the author (`POST .../tasks/{task}:import-sbatch`). Steps:
+explicitly by the author (`POST .../tasks/{task}/import-sbatch`). Steps:
 
 1. Run the scanner; convert `controlled` directives with a known mapping
    into a `workflowspec.Resources` + placement fragment
@@ -364,7 +364,7 @@ authn → authz(job.submit on project) → ResourcePolicy (limits, allowed parti
 `execution_spec_digest`. It is never updated. The API exposes it as the
 read-only **submission preview** (`GET .../tasks/{task}/execution-spec`),
 including a dry-run form during authoring
-(`POST .../versions/{v}/tasks/{task}:preview-submission`) that runs the
+(`POST .../versions/{v}/tasks/{task}/preview-submission`) that runs the
 same builder without persisting or reserving allocation. The UI renders
 the preview from this response and nothing else.
 
@@ -522,16 +522,16 @@ sidecar; **no execution of user code** — `ast.parse` does not execute.
 ## API
 
 ```text
-POST /api/v1/tenants/{t}/workflows/{w}/versions/{v}/tasks/{task}:validate
-POST /api/v1/tenants/{t}/workflows/{w}/versions/{v}/tasks/{task}:import-sbatch
-POST /api/v1/tenants/{t}/workflows/{w}/versions/{v}/tasks/{task}:preview-submission
+POST /api/v1/tenants/{t}/workflows/{w}/versions/{v}/tasks/{task}/validate
+POST /api/v1/tenants/{t}/workflows/{w}/versions/{v}/tasks/{task}/import-sbatch
+POST /api/v1/tenants/{t}/workflows/{w}/versions/{v}/tasks/{task}/preview-submission
 GET  /api/v1/tenants/{t}/workflows/{w}/versions/{v}/validations
 GET  /api/v1/tenants/{t}/workflow-executions/{e}/tasks/{task}/validation
 GET  /api/v1/tenants/{t}/workflow-executions/{e}/tasks/{task}/execution-spec
-POST /api/v1/tenants/{t}/scripts:validate        # ad-hoc, for the editor before a task exists
+POST /api/v1/tenants/{t}/scripts/validate        # ad-hoc, for the editor before a task exists
 ```
 
-`:validate` request/response:
+`.../validate` request/response:
 
 ```json
 { "language": "bash", "script": "…", "resources": {…}, "environment": {…}, "software": […] }
@@ -597,7 +597,7 @@ canonical fields).
   "Scheduler configuration".
 - Diagnostics: local (Monaco's built-in tokenization, a lightweight
   client-side `#SBATCH` highlighter that shows a *hint* immediately) plus
-  backend results from `:validate` (debounced 600 ms, in-flight request
+  backend results from the validate endpoint (debounced 600 ms, in-flight request
   aborted on new edits, response ignored if digest ≠ current) mapped to
   `monaco.editor.setModelMarkers` with severity mapping
   `INFO→Hint, WARNING→Warning, ERROR/POLICY/SECURITY→Error` and the code
@@ -606,7 +606,7 @@ canonical fields).
 - Snippets: `#!/bin/bash` header with `set -euo pipefail`, `srun` step,
   array-index loop, module loads (inserted as structured software instead
   where possible), stage-in/out placeholders.
-- Read-only **Submission preview** tab renders `:preview-submission`
+- Read-only **Submission preview** tab renders `.../preview-submission`
   (the backend `ExecutionSpec` projection) — including the generated
   wrapper text, so users see exactly what Slurm receives.
 - Legacy import: "Import #SBATCH directives" action appears only when the
@@ -666,7 +666,7 @@ persistence, M8 for UI):
 | Milestone | Delivered |
 | --- | --- |
 | M4 Jobs | `scripts` storage + digests; `shsyntax`; `sbatchscan` (reject mode); `envcheck`; `admission.ExecutionSpec`; `submission` wrapper; invariant + bypass tests. A batch job cannot be submitted without them. |
-| M5 Workflows | Validation pipeline + persistence, `ValidationPolicy`, ShellCheck sidecar, `:validate`/`:preview-submission` endpoints, `ADMITTING` state, publish gate, import mode |
+| M5 Workflows | Validation pipeline + persistence, `ValidationPolicy`, ShellCheck sidecar, validate/preview-submission endpoints, `ADMITTING` state, publish gate, import mode |
 | M6 Secrets | secret-injected env class, wrapped tokens in `SecurityContext` |
 | M7 Accounting/Policy | `softwareenv` catalog sync; `policy.sync` to slurmdbd associations |
 | M8 UI | Monaco editor, Resources/Problems panels, preview tab, import UX |

@@ -119,9 +119,29 @@ func vetDial(ctx context.Context, d *net.Dialer, policy DialPolicy,
 	if err != nil {
 		return nil, fmt.Errorf("slurm dial: %w", err)
 	}
+	first, err := vetAddrs(ctx, host, policy, httpOnlyLoopback)
+	if err != nil {
+		return nil, err
+	}
+	return d.DialContext(ctx, network, net.JoinHostPort(first.String(), port))
+}
+
+// VetHost resolves host and applies the dial policy to every returned
+// address without dialing — used at cluster registration as an early
+// error. httpOnlyLoopback restricts plaintext endpoints to loopback.
+func VetHost(ctx context.Context, host string, policy DialPolicy,
+	httpOnlyLoopback bool) error {
+	_, err := vetAddrs(ctx, host, policy, httpOnlyLoopback)
+	return err
+}
+
+// vetAddrs resolves host and returns the first permitted address; any
+// denied address fails closed.
+func vetAddrs(ctx context.Context, host string, policy DialPolicy,
+	httpOnlyLoopback bool) (netip.Addr, error) {
 	ips, err := lookupIP(ctx, host)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", slurm.ErrUnavailable, err)
+		return netip.Addr{}, fmt.Errorf("%w: %v", slurm.ErrUnavailable, err)
 	}
 	var first netip.Addr
 	for _, ip := range ips {
@@ -131,7 +151,8 @@ func vetDial(ctx context.Context, d *net.Dialer, policy DialPolicy,
 		}
 		a = a.Unmap()
 		if !allowed(a, policy, httpOnlyLoopback) {
-			return nil, apperr.New(apperr.Forbidden, "slurm.dial_denied",
+			return netip.Addr{}, apperr.New(apperr.Forbidden,
+				"slurm.dial_denied",
 				"a resolved address is denied by the cluster dial policy")
 		}
 		if !first.IsValid() {
@@ -139,10 +160,10 @@ func vetDial(ctx context.Context, d *net.Dialer, policy DialPolicy,
 		}
 	}
 	if !first.IsValid() {
-		return nil, apperr.New(apperr.Forbidden, "slurm.dial_denied",
+		return netip.Addr{}, apperr.New(apperr.Forbidden, "slurm.dial_denied",
 			"no resolved address is permitted by the cluster dial policy")
 	}
-	return d.DialContext(ctx, network, net.JoinHostPort(first.String(), port))
+	return first, nil
 }
 
 func allowed(a netip.Addr, policy DialPolicy, httpOnlyLoopback bool) bool {

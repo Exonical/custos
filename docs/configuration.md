@@ -101,6 +101,12 @@ Validation aborts startup (`config.invalid`) when:
 | `server.tls.require_client_cert` | bool | `false` | `CUSTOS_SERVER__TLS__REQUIRE_CLIENT_CERT` | Require and verify client certificates (mTLS) |
 | `server.trusted_proxies` | slice | `` | `CUSTOS_SERVER__TRUSTED_PROXIES` | CIDRs whose X-Forwarded-For values are trusted |
 | `server.write_timeout` | duration | `1m0s` | `CUSTOS_SERVER__WRITE_TIMEOUT` | Max time to write the response |
+| `slurm` | section | `` | `CUSTOS_SLURM` | Slurm adapter defaults (docs/slurm.md) |
+| `slurm.dial_policy` | section | `` | `CUSTOS_SLURM__DIAL_POLICY` | SSRF policy enforced when dialing slurmrestd |
+| `slurm.dial_policy.allow_http` | bool | `false` | `CUSTOS_SLURM__DIAL_POLICY__ALLOW_HTTP` | Permit plaintext http endpoints (dev only; loopback required) |
+| `slurm.dial_policy.allow_loopback` | bool | `false` | `CUSTOS_SLURM__DIAL_POLICY__ALLOW_LOOPBACK` | Permit loopback endpoints (dev only) |
+| `slurm.dial_policy.allow_private` | bool | `false` | `CUSTOS_SLURM__DIAL_POLICY__ALLOW_PRIVATE` | Permit RFC1918/ULA slurmrestd endpoints |
+| `slurm.dial_policy.deny_cidrs` | slice | `` | `CUSTOS_SLURM__DIAL_POLICY__DENY_CIDRS` | Additional CIDRs always denied |
 | `telemetry` | section | `` | `CUSTOS_TELEMETRY` | OpenTelemetry export |
 | `telemetry.endpoint` | string | `` | `CUSTOS_TELEMETRY__ENDPOINT` | OTLP collector endpoint (required when exporter=otlp) |
 | `telemetry.exporter` | string | `none` | `CUSTOS_TELEMETRY__EXPORTER` | none\|otlp |
@@ -108,6 +114,7 @@ Validation aborts startup (`config.invalid`) when:
 | `telemetry.sample_ratio` | float64 | `0.1` | `CUSTOS_TELEMETRY__SAMPLE_RATIO` | Trace sampling ratio in [0,1] |
 | `telemetry.service_name` | string | `custos` | `CUSTOS_TELEMETRY__SERVICE_NAME` | service.name resource attribute |
 | `worker` | section | `` | `CUSTOS_WORKER` | Work-queue lease loop |
+| `worker.cluster_sync_interval` | duration | `1m0s` | `CUSTOS_WORKER__CLUSTER_SYNC_INTERVAL` | Base interval between cluster.sync runs per cluster |
 | `worker.default_concurrency` | int | `4` | `CUSTOS_WORKER__DEFAULT_CONCURRENCY` | Default per-kind handler concurrency |
 | `worker.heartbeat_interval` | duration | `10s` | `CUSTOS_WORKER__HEARTBEAT_INTERVAL` | Lease heartbeat cadence |
 | `worker.kinds` | map<string,kind_limits> | `` | `CUSTOS_WORKER__KINDS (unsupported)` | Per-kind limits keyed by work-item kind |

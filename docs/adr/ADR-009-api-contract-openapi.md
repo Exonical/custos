@@ -32,8 +32,8 @@ semantics (existence-hiding 404s, path-addressed 422 details, idempotency
   upstream error bodies never echoed. List envelope with opaque
   HMAC-signed keyset cursor; `total` only when cheap.
 - Conventions: `snake_case` JSON, RFC 3339 UTC, JSON Merge Patch +
-  `If-Match`/`etag` optimistic concurrency, sub-resource action verbs
-  (`:cancel`, `:publish`, `:validate`), `Idempotency-Key` on creation
+  `If-Match`/`etag` optimistic concurrency,
+  (`/cancel`, `/publish`, `/validate` verb sub-paths), `Idempotency-Key` on creation
   endpoints, explicit filter params only, per-principal rate limits,
   Deprecation/Sunset headers, `/api/v1` stable after Milestone 8.
 

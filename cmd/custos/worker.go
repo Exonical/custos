@@ -12,6 +12,8 @@ import (
 
 	"github.com/Exonical/custos/internal/audit"
 	"github.com/Exonical/custos/internal/audit/pgaudit"
+	clusterpg "github.com/Exonical/custos/internal/clusters/postgres"
+	clustersync "github.com/Exonical/custos/internal/clusters/sync"
 	"github.com/Exonical/custos/internal/platform/config"
 	"github.com/Exonical/custos/internal/platform/db"
 	"github.com/Exonical/custos/internal/platform/log"
@@ -60,6 +62,22 @@ func cmdWorker(parent context.Context, configPath string, lookupEnv config.Looku
 		workqueue.WithMeterProvider(prov.Meter),
 		workqueue.WithAuditor(recorder))
 	registerBuiltins(q, pool, recorder)
+
+	// Cluster sync: self-rescheduling chain per cluster; bootstrap
+	// enqueues every non-disabled cluster (dedupe makes it idempotent).
+	sdeps, err := newSlurmDeps(cfg)
+	if err != nil {
+		logger.ErrorContext(ctx, "slurm setup", "error", err)
+		return 1
+	}
+	clusterRepo := clusterpg.New(pool)
+	q.Register(clustersync.Kind, clustersync.Handler(clusterRepo,
+		sdeps.Factory, pool, cfg.Worker.ClusterSyncInterval,
+		clustersync.NewMetrics(prov.Meter)))
+	if err := clustersync.Bootstrap(ctx, pool, clusterRepo); err != nil {
+		logger.ErrorContext(ctx, "cluster.sync bootstrap", "error", err)
+		return 1
+	}
 
 	// Ensure audit partitions stay ahead; dedupe makes this idempotent.
 	if _, err := workqueue.Enqueue(ctx, pool, workqueue.EnqueueRequest{

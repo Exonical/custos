@@ -65,9 +65,14 @@ stored server-side — it's always in the request path.
 
 Rather than a nullable tenant on clusters, a cluster has `visibility` in
 `{assigned, all_tenants}`. For `all_tenants`, the cluster-sync worker keeps a
-`cluster_tenant_assignments` row per tenant (source = `auto`). Queries never
-special-case NULL; access remains a join on the assignment table. Projects
-still need an explicit `ProjectClusterBinding` to *submit*.
+`cluster_tenant_assignments` row per qualifying tenant (`source = auto`):
+on each successful sync it upserts rows for tenants in `active`/`suspended`
+state and drops auto rows for tenants that leave those states
+(`deleting`/`deleted`). `manual` assignment rows are never touched by the
+reconciler, and manual assign/unassign is refused (409 `CLUSTER_VISIBILITY`)
+on `all_tenants` clusters. Queries never special-case NULL; access remains
+a join on the assignment table. Projects still need an explicit
+`ProjectClusterBinding` to *submit*.
 
 ## Groups
 

@@ -24,6 +24,24 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+// Defines values for AssignmentSource.
+const (
+	AssignmentSourceAuto   AssignmentSource = "auto"
+	AssignmentSourceManual AssignmentSource = "manual"
+)
+
+// Valid indicates whether the value is a known member of the AssignmentSource enum.
+func (e AssignmentSource) Valid() bool {
+	switch e {
+	case AssignmentSourceAuto:
+		return true
+	case AssignmentSourceManual:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for CheckResultStatus.
 const (
 	CheckResultStatusFail CheckResultStatus = "fail"
@@ -96,6 +114,216 @@ func (e ClaimRuleUpdateRoles) Valid() bool {
 	case ClaimRuleUpdateRolesViewer:
 		return true
 	case ClaimRuleUpdateRolesWorkflowAuthor:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ClusterApiVersion.
+const (
+	ClusterApiVersionV0044 ClusterApiVersion = "v0.0.44"
+	ClusterApiVersionV0045 ClusterApiVersion = "v0.0.45"
+)
+
+// Valid indicates whether the value is a known member of the ClusterApiVersion enum.
+func (e ClusterApiVersion) Valid() bool {
+	switch e {
+	case ClusterApiVersionV0044:
+		return true
+	case ClusterApiVersionV0045:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ClusterIdentityMode.
+const (
+	ClusterIdentityModeImpersonate ClusterIdentityMode = "impersonate"
+	ClusterIdentityModeService     ClusterIdentityMode = "service"
+)
+
+// Valid indicates whether the value is a known member of the ClusterIdentityMode enum.
+func (e ClusterIdentityMode) Valid() bool {
+	switch e {
+	case ClusterIdentityModeImpersonate:
+		return true
+	case ClusterIdentityModeService:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ClusterState.
+const (
+	ClusterStateActive      ClusterState = "active"
+	ClusterStateDegraded    ClusterState = "degraded"
+	ClusterStateDisabled    ClusterState = "disabled"
+	ClusterStateUnreachable ClusterState = "unreachable"
+)
+
+// Valid indicates whether the value is a known member of the ClusterState enum.
+func (e ClusterState) Valid() bool {
+	switch e {
+	case ClusterStateActive:
+		return true
+	case ClusterStateDegraded:
+		return true
+	case ClusterStateDisabled:
+		return true
+	case ClusterStateUnreachable:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ClusterVisibility.
+const (
+	ClusterVisibilityAllTenants ClusterVisibility = "all_tenants"
+	ClusterVisibilityAssigned   ClusterVisibility = "assigned"
+)
+
+// Valid indicates whether the value is a known member of the ClusterVisibility enum.
+func (e ClusterVisibility) Valid() bool {
+	switch e {
+	case ClusterVisibilityAllTenants:
+		return true
+	case ClusterVisibilityAssigned:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ClusterCreateApiVersion.
+const (
+	ClusterCreateApiVersionV0044 ClusterCreateApiVersion = "v0.0.44"
+	ClusterCreateApiVersionV0045 ClusterCreateApiVersion = "v0.0.45"
+)
+
+// Valid indicates whether the value is a known member of the ClusterCreateApiVersion enum.
+func (e ClusterCreateApiVersion) Valid() bool {
+	switch e {
+	case ClusterCreateApiVersionV0044:
+		return true
+	case ClusterCreateApiVersionV0045:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ClusterCreateIdentityMode.
+const (
+	ClusterCreateIdentityModeImpersonate ClusterCreateIdentityMode = "impersonate"
+	ClusterCreateIdentityModeService     ClusterCreateIdentityMode = "service"
+)
+
+// Valid indicates whether the value is a known member of the ClusterCreateIdentityMode enum.
+func (e ClusterCreateIdentityMode) Valid() bool {
+	switch e {
+	case ClusterCreateIdentityModeImpersonate:
+		return true
+	case ClusterCreateIdentityModeService:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ClusterCreateVisibility.
+const (
+	ClusterCreateVisibilityAllTenants ClusterCreateVisibility = "all_tenants"
+	ClusterCreateVisibilityAssigned   ClusterCreateVisibility = "assigned"
+)
+
+// Valid indicates whether the value is a known member of the ClusterCreateVisibility enum.
+func (e ClusterCreateVisibility) Valid() bool {
+	switch e {
+	case ClusterCreateVisibilityAllTenants:
+		return true
+	case ClusterCreateVisibilityAssigned:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ClusterSummaryState.
+const (
+	ClusterSummaryStateActive      ClusterSummaryState = "active"
+	ClusterSummaryStateDegraded    ClusterSummaryState = "degraded"
+	ClusterSummaryStateDisabled    ClusterSummaryState = "disabled"
+	ClusterSummaryStateUnreachable ClusterSummaryState = "unreachable"
+)
+
+// Valid indicates whether the value is a known member of the ClusterSummaryState enum.
+func (e ClusterSummaryState) Valid() bool {
+	switch e {
+	case ClusterSummaryStateActive:
+		return true
+	case ClusterSummaryStateDegraded:
+		return true
+	case ClusterSummaryStateDisabled:
+		return true
+	case ClusterSummaryStateUnreachable:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ClusterUpdateApiVersion.
+const (
+	ClusterUpdateApiVersionV0044 ClusterUpdateApiVersion = "v0.0.44"
+	ClusterUpdateApiVersionV0045 ClusterUpdateApiVersion = "v0.0.45"
+)
+
+// Valid indicates whether the value is a known member of the ClusterUpdateApiVersion enum.
+func (e ClusterUpdateApiVersion) Valid() bool {
+	switch e {
+	case ClusterUpdateApiVersionV0044:
+		return true
+	case ClusterUpdateApiVersionV0045:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ClusterUpdateIdentityMode.
+const (
+	ClusterUpdateIdentityModeImpersonate ClusterUpdateIdentityMode = "impersonate"
+	ClusterUpdateIdentityModeService     ClusterUpdateIdentityMode = "service"
+)
+
+// Valid indicates whether the value is a known member of the ClusterUpdateIdentityMode enum.
+func (e ClusterUpdateIdentityMode) Valid() bool {
+	switch e {
+	case ClusterUpdateIdentityModeImpersonate:
+		return true
+	case ClusterUpdateIdentityModeService:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ClusterUpdateVisibility.
+const (
+	ClusterUpdateVisibilityAllTenants ClusterUpdateVisibility = "all_tenants"
+	ClusterUpdateVisibilityAssigned   ClusterUpdateVisibility = "assigned"
+)
+
+// Valid indicates whether the value is a known member of the ClusterUpdateVisibility enum.
+func (e ClusterUpdateVisibility) Valid() bool {
+	switch e {
+	case ClusterUpdateVisibilityAllTenants:
+		return true
+	case ClusterUpdateVisibilityAssigned:
 		return true
 	default:
 		return false
@@ -288,6 +516,21 @@ func (e ReadyStatusStatus) Valid() bool {
 	}
 }
 
+// Defines values for SecretRefProvider.
+const (
+	File SecretRefProvider = "file"
+)
+
+// Valid indicates whether the value is a known member of the SecretRefProvider enum.
+func (e SecretRefProvider) Valid() bool {
+	switch e {
+	case File:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for TenantState.
 const (
 	TenantStateActive       TenantState = "active"
@@ -405,6 +648,36 @@ func (e GrantRoleBindingParamsRole) Valid() bool {
 	}
 }
 
+// Assignment defines model for Assignment.
+type Assignment struct {
+	ClusterId openapi_types.UUID `json:"cluster_id"`
+	CreatedAt time.Time          `json:"created_at"`
+	Defaults  AssignmentDefaults `json:"defaults"`
+	Source    AssignmentSource   `json:"source"`
+	TenantId  openapi_types.UUID `json:"tenant_id"`
+	UpdatedAt time.Time          `json:"updated_at"`
+}
+
+// AssignmentSource defines model for Assignment.Source.
+type AssignmentSource string
+
+// AssignmentDefaults defines model for AssignmentDefaults.
+type AssignmentDefaults struct {
+	AllowedPartitions    *[]string `json:"allowed_partitions,omitempty"`
+	DefaultAccountPrefix *string   `json:"default_account_prefix,omitempty"`
+}
+
+// AssignmentList defines model for AssignmentList.
+type AssignmentList struct {
+	Items      []Assignment `json:"items"`
+	NextCursor *string      `json:"next_cursor,omitempty"`
+}
+
+// AssignmentPut defines model for AssignmentPut.
+type AssignmentPut struct {
+	Defaults *AssignmentDefaults `json:"defaults,omitempty"`
+}
+
 // CheckResult defines model for CheckResult.
 type CheckResult struct {
 	LatencyMs int               `json:"latency_ms"`
@@ -457,6 +730,140 @@ type ClaimRuleUpdate struct {
 
 // ClaimRuleUpdateRoles defines model for ClaimRuleUpdate.Roles.
 type ClaimRuleUpdateRoles string
+
+// Cluster defines model for Cluster.
+type Cluster struct {
+	ApiVersion     ClusterApiVersion `json:"api_version"`
+	BaseUrl        string            `json:"base_url"`
+	CaBundlePem    *string           `json:"ca_bundle_pem,omitempty"`
+	CapabilitiesAt *time.Time        `json:"capabilities_at,omitempty"`
+
+	// ClientCertRef Reference to a secret value (docs/secrets.md); never the value.
+	ClientCertRef       *SecretRef          `json:"client_cert_ref,omitempty"`
+	ConsecutiveFailures *int                `json:"consecutive_failures,omitempty"`
+	CreatedAt           time.Time           `json:"created_at"`
+	DisplayName         string              `json:"display_name"`
+	Id                  openapi_types.UUID  `json:"id"`
+	IdentityMode        ClusterIdentityMode `json:"identity_mode"`
+	LastError           *string             `json:"last_error,omitempty"`
+	LastSyncAt          *time.Time          `json:"last_sync_at,omitempty"`
+	Name                string              `json:"name"`
+	ServiceUser         string              `json:"service_user"`
+	State               ClusterState        `json:"state"`
+
+	// TokenRef Reference to a secret value (docs/secrets.md); never the value.
+	TokenRef   SecretRef         `json:"token_ref"`
+	UpdatedAt  time.Time         `json:"updated_at"`
+	Version    int               `json:"version"`
+	Visibility ClusterVisibility `json:"visibility"`
+}
+
+// ClusterApiVersion defines model for Cluster.ApiVersion.
+type ClusterApiVersion string
+
+// ClusterIdentityMode defines model for Cluster.IdentityMode.
+type ClusterIdentityMode string
+
+// ClusterState defines model for Cluster.State.
+type ClusterState string
+
+// ClusterVisibility defines model for Cluster.Visibility.
+type ClusterVisibility string
+
+// ClusterCreate defines model for ClusterCreate.
+type ClusterCreate struct {
+	ApiVersion ClusterCreateApiVersion `json:"api_version"`
+
+	// BaseUrl https URL of slurmrestd; vetted against the SSRF dial policy.
+	BaseUrl     string  `json:"base_url"`
+	CaBundlePem *string `json:"ca_bundle_pem,omitempty"`
+
+	// ClientCertRef Reference to a secret value (docs/secrets.md); never the value.
+	ClientCertRef *SecretRef                `json:"client_cert_ref,omitempty"`
+	DisplayName   string                    `json:"display_name"`
+	IdentityMode  ClusterCreateIdentityMode `json:"identity_mode"`
+	Name          string                    `json:"name"`
+	ServiceUser   string                    `json:"service_user"`
+
+	// TokenRef Reference to a secret value (docs/secrets.md); never the value.
+	TokenRef   SecretRef               `json:"token_ref"`
+	Visibility ClusterCreateVisibility `json:"visibility"`
+}
+
+// ClusterCreateApiVersion defines model for ClusterCreate.ApiVersion.
+type ClusterCreateApiVersion string
+
+// ClusterCreateIdentityMode defines model for ClusterCreate.IdentityMode.
+type ClusterCreateIdentityMode string
+
+// ClusterCreateVisibility defines model for ClusterCreate.Visibility.
+type ClusterCreateVisibility string
+
+// ClusterList defines model for ClusterList.
+type ClusterList struct {
+	Items      []Cluster `json:"items"`
+	NextCursor *string   `json:"next_cursor,omitempty"`
+}
+
+// ClusterSummary Tenant-facing view; contains no platform configuration (base_url, token_ref, ca_bundle are never returned to tenants).
+type ClusterSummary struct {
+	Defaults     AssignmentDefaults  `json:"defaults"`
+	DisplayName  string              `json:"display_name"`
+	GresTypes    *[]string           `json:"gres_types,omitempty"`
+	Id           openapi_types.UUID  `json:"id"`
+	Name         string              `json:"name"`
+	NodeSummary  *map[string]int     `json:"node_summary,omitempty"`
+	Partitions   []string            `json:"partitions"`
+	SlurmVersion *string             `json:"slurm_version,omitempty"`
+	State        ClusterSummaryState `json:"state"`
+}
+
+// ClusterSummaryState defines model for ClusterSummary.State.
+type ClusterSummaryState string
+
+// ClusterSummaryList defines model for ClusterSummaryList.
+type ClusterSummaryList struct {
+	Items []ClusterSummary `json:"items"`
+}
+
+// ClusterTestResult defines model for ClusterTestResult.
+type ClusterTestResult struct {
+	ApiVersion   *string   `json:"api_version,omitempty"`
+	ErrorCode    *string   `json:"error_code,omitempty"`
+	LatencyMs    *int      `json:"latency_ms,omitempty"`
+	Ok           bool      `json:"ok"`
+	Partitions   *[]string `json:"partitions,omitempty"`
+	SlurmVersion *string   `json:"slurm_version,omitempty"`
+}
+
+// ClusterUpdate defines model for ClusterUpdate.
+type ClusterUpdate struct {
+	ApiVersion  *ClusterUpdateApiVersion `json:"api_version,omitempty"`
+	BaseUrl     *string                  `json:"base_url,omitempty"`
+	CaBundlePem *string                  `json:"ca_bundle_pem,omitempty"`
+
+	// ClientCertRef Reference to a secret value (docs/secrets.md); never the value.
+	ClientCertRef *SecretRef                 `json:"client_cert_ref,omitempty"`
+	DisplayName   *string                    `json:"display_name,omitempty"`
+	IdentityMode  *ClusterUpdateIdentityMode `json:"identity_mode,omitempty"`
+	ServiceUser   *string                    `json:"service_user,omitempty"`
+
+	// TokenRef Reference to a secret value (docs/secrets.md); never the value.
+	TokenRef *SecretRef `json:"token_ref,omitempty"`
+
+	// Version Optimistic concurrency token.
+	Version    int                      `json:"version"`
+	Visibility *ClusterUpdateVisibility `json:"visibility,omitempty"`
+}
+
+// ClusterUpdateApiVersion defines model for ClusterUpdate.ApiVersion.
+type ClusterUpdateApiVersion string
+
+// ClusterUpdateIdentityMode defines model for ClusterUpdate.IdentityMode.
+type ClusterUpdateIdentityMode string
+
+// ClusterUpdateVisibility defines model for ClusterUpdate.Visibility.
+type ClusterUpdateVisibility string
 
 // Error defines model for Error.
 type Error struct {
@@ -588,6 +995,19 @@ type MembershipRef struct {
 	TenantId openapi_types.UUID `json:"tenant_id"`
 }
 
+// PartitionList defines model for PartitionList.
+type PartitionList struct {
+	Items []PartitionRecord `json:"items"`
+}
+
+// PartitionRecord defines model for PartitionRecord.
+type PartitionRecord struct {
+	// Attributes slurm.Partition neutral attributes.
+	Attributes map[string]interface{} `json:"attributes"`
+	Name       string                 `json:"name"`
+	SyncedAt   time.Time              `json:"synced_at"`
+}
+
 // PlatformRoleBinding defines model for PlatformRoleBinding.
 type PlatformRoleBinding struct {
 	CreatedAt time.Time               `json:"created_at"`
@@ -628,6 +1048,17 @@ type ReadyStatusStatus string
 type RoleBindingList struct {
 	Items []PlatformRoleBinding `json:"items"`
 }
+
+// SecretRef Reference to a secret value (docs/secrets.md); never the value.
+type SecretRef struct {
+	// Key Optional JSON key inside the file.
+	Key      *string           `json:"key,omitempty"`
+	Path     string            `json:"path"`
+	Provider SecretRefProvider `json:"provider"`
+}
+
+// SecretRefProvider defines model for SecretRef.Provider.
+type SecretRefProvider string
 
 // Tenant defines model for Tenant.
 type Tenant struct {
@@ -685,6 +1116,9 @@ type UserLookupResult struct {
 // UserLookupResultKind defines model for UserLookupResult.Kind.
 type UserLookupResultKind string
 
+// ClusterRef defines model for ClusterRef.
+type ClusterRef = string
+
 // Cursor defines model for Cursor.
 type Cursor = string
 
@@ -705,6 +1139,20 @@ type TenantSlug = string
 
 // UserRef defines model for UserRef.
 type UserRef = openapi_types.UUID
+
+// ListClustersParams defines parameters for ListClusters.
+type ListClustersParams struct {
+	// Cursor Opaque keyset cursor from a previous list response.
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ListClusterAssignmentsParams defines parameters for ListClusterAssignments.
+type ListClusterAssignmentsParams struct {
+	// Cursor Opaque keyset cursor from a previous list response.
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
+}
 
 // RevokeRoleBindingParamsRole defines parameters for RevokeRoleBinding.
 type RevokeRoleBindingParamsRole string
@@ -752,6 +1200,15 @@ type LookupUsersParams struct {
 	Email string `form:"email" json:"email"`
 }
 
+// CreateClusterJSONRequestBody defines body for CreateCluster for application/json ContentType.
+type CreateClusterJSONRequestBody = ClusterCreate
+
+// UpdateClusterJSONRequestBody defines body for UpdateCluster for application/json ContentType.
+type UpdateClusterJSONRequestBody = ClusterUpdate
+
+// AssignClusterJSONRequestBody defines body for AssignCluster for application/json ContentType.
+type AssignClusterJSONRequestBody = AssignmentPut
+
 // CreateTenantJSONRequestBody defines body for CreateTenant for application/json ContentType.
 type CreateTenantJSONRequestBody = TenantCreate
 
@@ -781,6 +1238,33 @@ type UpdateMemberJSONRequestBody = MemberUpdate
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// ListClusters List clusters
+	// (GET /clusters)
+	ListClusters(w http.ResponseWriter, r *http.Request, params ListClustersParams)
+	// CreateCluster Register a cluster
+	// (POST /clusters)
+	CreateCluster(w http.ResponseWriter, r *http.Request)
+	// GetCluster Get a cluster
+	// (GET /clusters/{cluster})
+	GetCluster(w http.ResponseWriter, r *http.Request, cluster ClusterRef)
+	// UpdateCluster Update a cluster
+	// (PATCH /clusters/{cluster})
+	UpdateCluster(w http.ResponseWriter, r *http.Request, cluster ClusterRef)
+	// DisableCluster Disable a cluster
+	// (POST /clusters/{cluster}/disable)
+	DisableCluster(w http.ResponseWriter, r *http.Request, cluster ClusterRef)
+	// ListClusterAssignments List cluster tenant assignments
+	// (GET /clusters/{cluster}/tenants)
+	ListClusterAssignments(w http.ResponseWriter, r *http.Request, cluster ClusterRef, params ListClusterAssignmentsParams)
+	// UnassignCluster Unassign a cluster from a tenant
+	// (DELETE /clusters/{cluster}/tenants/{tenant})
+	UnassignCluster(w http.ResponseWriter, r *http.Request, cluster ClusterRef, tenant TenantSlug)
+	// AssignCluster Assign a cluster to a tenant
+	// (PUT /clusters/{cluster}/tenants/{tenant})
+	AssignCluster(w http.ResponseWriter, r *http.Request, cluster ClusterRef, tenant TenantSlug)
+	// TestClusterConnection Test connectivity to slurmrestd
+	// (POST /clusters/{cluster}/test-connection)
+	TestClusterConnection(w http.ResponseWriter, r *http.Request, cluster ClusterRef)
 	// HealthLive Liveness probe
 	// (GET /health/live)
 	HealthLive(w http.ResponseWriter, r *http.Request)
@@ -832,6 +1316,15 @@ type ServerInterface interface {
 	// UpdateClaimRule Update a claim-mapping rule
 	// (PATCH /tenants/{tenant}/claim-rules/{rule})
 	UpdateClaimRule(w http.ResponseWriter, r *http.Request, tenant TenantSlug, rule RuleRef)
+	// ListTenantClusters List clusters visible to the tenant
+	// (GET /tenants/{tenant}/clusters)
+	ListTenantClusters(w http.ResponseWriter, r *http.Request, tenant TenantSlug)
+	// GetTenantCluster Get a visible cluster summary
+	// (GET /tenants/{tenant}/clusters/{cluster})
+	GetTenantCluster(w http.ResponseWriter, r *http.Request, tenant TenantSlug, cluster ClusterRef)
+	// ListTenantClusterPartitions List partitions of a visible cluster
+	// (GET /tenants/{tenant}/clusters/{cluster}/partitions)
+	ListTenantClusterPartitions(w http.ResponseWriter, r *http.Request, tenant TenantSlug, cluster ClusterRef)
 	// ListGroups List tenant groups
 	// (GET /tenants/{tenant}/groups)
 	ListGroups(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params ListGroupsParams)
@@ -869,7 +1362,7 @@ type ServerInterface interface {
 	// (PATCH /tenants/{tenant}/members/{user})
 	UpdateMember(w http.ResponseWriter, r *http.Request, tenant TenantSlug, user UserRef)
 	// LookupUsers Look up users by exact email (tenant.members.manage)
-	// (GET /tenants/{tenant}/users:lookup)
+	// (GET /tenants/{tenant}/users/lookup)
 	LookupUsers(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params LookupUsersParams)
 }
 
@@ -881,6 +1374,295 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// ListClusters operation middleware
+func (siw *ServerInterfaceWrapper) ListClusters(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListClustersParams
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListClusters(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateCluster operation middleware
+func (siw *ServerInterfaceWrapper) CreateCluster(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateCluster(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetCluster operation middleware
+func (siw *ServerInterfaceWrapper) GetCluster(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "cluster" -------------
+	var cluster ClusterRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "cluster", r.PathValue("cluster"), &cluster, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cluster", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetCluster(w, r, cluster)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateCluster operation middleware
+func (siw *ServerInterfaceWrapper) UpdateCluster(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "cluster" -------------
+	var cluster ClusterRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "cluster", r.PathValue("cluster"), &cluster, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cluster", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateCluster(w, r, cluster)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DisableCluster operation middleware
+func (siw *ServerInterfaceWrapper) DisableCluster(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "cluster" -------------
+	var cluster ClusterRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "cluster", r.PathValue("cluster"), &cluster, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cluster", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DisableCluster(w, r, cluster)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListClusterAssignments operation middleware
+func (siw *ServerInterfaceWrapper) ListClusterAssignments(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "cluster" -------------
+	var cluster ClusterRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "cluster", r.PathValue("cluster"), &cluster, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cluster", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListClusterAssignmentsParams
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListClusterAssignments(w, r, cluster, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UnassignCluster operation middleware
+func (siw *ServerInterfaceWrapper) UnassignCluster(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "cluster" -------------
+	var cluster ClusterRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "cluster", r.PathValue("cluster"), &cluster, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cluster", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UnassignCluster(w, r, cluster, tenant)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AssignCluster operation middleware
+func (siw *ServerInterfaceWrapper) AssignCluster(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "cluster" -------------
+	var cluster ClusterRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "cluster", r.PathValue("cluster"), &cluster, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cluster", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AssignCluster(w, r, cluster, tenant)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// TestClusterConnection operation middleware
+func (siw *ServerInterfaceWrapper) TestClusterConnection(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "cluster" -------------
+	var cluster ClusterRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "cluster", r.PathValue("cluster"), &cluster, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cluster", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.TestClusterConnection(w, r, cluster)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // HealthLive operation middleware
 func (siw *ServerInterfaceWrapper) HealthLive(w http.ResponseWriter, r *http.Request) {
@@ -1337,6 +2119,102 @@ func (siw *ServerInterfaceWrapper) UpdateClaimRule(w http.ResponseWriter, r *htt
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateClaimRule(w, r, tenant, rule)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListTenantClusters operation middleware
+func (siw *ServerInterfaceWrapper) ListTenantClusters(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListTenantClusters(w, r, tenant)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetTenantCluster operation middleware
+func (siw *ServerInterfaceWrapper) GetTenantCluster(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "cluster" -------------
+	var cluster ClusterRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "cluster", r.PathValue("cluster"), &cluster, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cluster", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetTenantCluster(w, r, tenant, cluster)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListTenantClusterPartitions operation middleware
+func (siw *ServerInterfaceWrapper) ListTenantClusterPartitions(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "cluster" -------------
+	var cluster ClusterRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "cluster", r.PathValue("cluster"), &cluster, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cluster", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListTenantClusterPartitions(w, r, tenant, cluster)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2001,7 +2879,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/tenants/{tenant}/members", wrapper.AddMember)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/tenants/{tenant}/members/{user}", wrapper.RemoveMember)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/tenants/{tenant}/members/{user}", wrapper.UpdateMember)
-	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/tenants/{tenant}/users:lookup", wrapper.LookupUsers)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/tenants/{tenant}/users/lookup", wrapper.LookupUsers)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/tenants/{tenant}/groups", wrapper.ListGroups)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/tenants/{tenant}/groups", wrapper.CreateGroup)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/tenants/{tenant}/groups/{group}", wrapper.DeleteGroup)
@@ -2018,8 +2896,645 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/platform/role-bindings", wrapper.ListRoleBindings)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/platform/role-bindings/{user}/{role}", wrapper.RevokeRoleBinding)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/platform/role-bindings/{user}/{role}", wrapper.GrantRoleBinding)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/clusters", wrapper.ListClusters)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/clusters", wrapper.CreateCluster)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/clusters/{cluster}", wrapper.GetCluster)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/clusters/{cluster}", wrapper.UpdateCluster)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/clusters/{cluster}/disable", wrapper.DisableCluster)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/clusters/{cluster}/test-connection", wrapper.TestClusterConnection)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/clusters/{cluster}/tenants", wrapper.ListClusterAssignments)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/clusters/{cluster}/tenants/{tenant}", wrapper.UnassignCluster)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/clusters/{cluster}/tenants/{tenant}", wrapper.AssignCluster)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/tenants/{tenant}/clusters", wrapper.ListTenantClusters)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/tenants/{tenant}/clusters/{cluster}", wrapper.GetTenantCluster)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/tenants/{tenant}/clusters/{cluster}/partitions", wrapper.ListTenantClusterPartitions)
 
 	return m
+}
+
+type ListClustersRequestObject struct {
+	Params ListClustersParams
+}
+
+type ListClustersResponseObject interface {
+	VisitListClustersResponse(w http.ResponseWriter) error
+}
+
+type ListClusters200JSONResponse ClusterList
+
+func (response ListClusters200JSONResponse) VisitListClustersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListClusters401JSONResponse Error
+
+func (response ListClusters401JSONResponse) VisitListClustersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListClusters403JSONResponse Error
+
+func (response ListClusters403JSONResponse) VisitListClustersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateClusterRequestObject struct {
+	Body *CreateClusterJSONRequestBody
+}
+
+type CreateClusterResponseObject interface {
+	VisitCreateClusterResponse(w http.ResponseWriter) error
+}
+
+type CreateCluster201JSONResponse Cluster
+
+func (response CreateCluster201JSONResponse) VisitCreateClusterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateCluster401JSONResponse Error
+
+func (response CreateCluster401JSONResponse) VisitCreateClusterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateCluster403JSONResponse Error
+
+func (response CreateCluster403JSONResponse) VisitCreateClusterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateCluster409JSONResponse Error
+
+func (response CreateCluster409JSONResponse) VisitCreateClusterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateCluster422JSONResponse Error
+
+func (response CreateCluster422JSONResponse) VisitCreateClusterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetClusterRequestObject struct {
+	Cluster ClusterRef `json:"cluster"`
+}
+
+type GetClusterResponseObject interface {
+	VisitGetClusterResponse(w http.ResponseWriter) error
+}
+
+type GetCluster200JSONResponse Cluster
+
+func (response GetCluster200JSONResponse) VisitGetClusterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCluster401JSONResponse Error
+
+func (response GetCluster401JSONResponse) VisitGetClusterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCluster403JSONResponse Error
+
+func (response GetCluster403JSONResponse) VisitGetClusterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCluster404JSONResponse Error
+
+func (response GetCluster404JSONResponse) VisitGetClusterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateClusterRequestObject struct {
+	Cluster ClusterRef `json:"cluster"`
+	Body    *UpdateClusterJSONRequestBody
+}
+
+type UpdateClusterResponseObject interface {
+	VisitUpdateClusterResponse(w http.ResponseWriter) error
+}
+
+type UpdateCluster200JSONResponse Cluster
+
+func (response UpdateCluster200JSONResponse) VisitUpdateClusterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateCluster401JSONResponse Error
+
+func (response UpdateCluster401JSONResponse) VisitUpdateClusterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateCluster403JSONResponse Error
+
+func (response UpdateCluster403JSONResponse) VisitUpdateClusterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateCluster404JSONResponse Error
+
+func (response UpdateCluster404JSONResponse) VisitUpdateClusterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateCluster409JSONResponse Error
+
+func (response UpdateCluster409JSONResponse) VisitUpdateClusterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateCluster422JSONResponse Error
+
+func (response UpdateCluster422JSONResponse) VisitUpdateClusterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DisableClusterRequestObject struct {
+	Cluster ClusterRef `json:"cluster"`
+}
+
+type DisableClusterResponseObject interface {
+	VisitDisableClusterResponse(w http.ResponseWriter) error
+}
+
+type DisableCluster200JSONResponse Cluster
+
+func (response DisableCluster200JSONResponse) VisitDisableClusterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DisableCluster401JSONResponse Error
+
+func (response DisableCluster401JSONResponse) VisitDisableClusterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DisableCluster403JSONResponse Error
+
+func (response DisableCluster403JSONResponse) VisitDisableClusterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DisableCluster404JSONResponse Error
+
+func (response DisableCluster404JSONResponse) VisitDisableClusterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListClusterAssignmentsRequestObject struct {
+	Cluster ClusterRef `json:"cluster"`
+	Params  ListClusterAssignmentsParams
+}
+
+type ListClusterAssignmentsResponseObject interface {
+	VisitListClusterAssignmentsResponse(w http.ResponseWriter) error
+}
+
+type ListClusterAssignments200JSONResponse AssignmentList
+
+func (response ListClusterAssignments200JSONResponse) VisitListClusterAssignmentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListClusterAssignments401JSONResponse Error
+
+func (response ListClusterAssignments401JSONResponse) VisitListClusterAssignmentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListClusterAssignments403JSONResponse Error
+
+func (response ListClusterAssignments403JSONResponse) VisitListClusterAssignmentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListClusterAssignments404JSONResponse Error
+
+func (response ListClusterAssignments404JSONResponse) VisitListClusterAssignmentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UnassignClusterRequestObject struct {
+	Cluster ClusterRef `json:"cluster"`
+	Tenant  TenantSlug `json:"tenant"`
+}
+
+type UnassignClusterResponseObject interface {
+	VisitUnassignClusterResponse(w http.ResponseWriter) error
+}
+
+type UnassignCluster204Response struct {
+}
+
+func (response UnassignCluster204Response) VisitUnassignClusterResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type UnassignCluster401JSONResponse Error
+
+func (response UnassignCluster401JSONResponse) VisitUnassignClusterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UnassignCluster403JSONResponse Error
+
+func (response UnassignCluster403JSONResponse) VisitUnassignClusterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UnassignCluster404JSONResponse Error
+
+func (response UnassignCluster404JSONResponse) VisitUnassignClusterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UnassignCluster409JSONResponse Error
+
+func (response UnassignCluster409JSONResponse) VisitUnassignClusterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AssignClusterRequestObject struct {
+	Cluster ClusterRef `json:"cluster"`
+	Tenant  TenantSlug `json:"tenant"`
+	Body    *AssignClusterJSONRequestBody
+}
+
+type AssignClusterResponseObject interface {
+	VisitAssignClusterResponse(w http.ResponseWriter) error
+}
+
+type AssignCluster204Response struct {
+}
+
+func (response AssignCluster204Response) VisitAssignClusterResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type AssignCluster401JSONResponse Error
+
+func (response AssignCluster401JSONResponse) VisitAssignClusterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AssignCluster403JSONResponse Error
+
+func (response AssignCluster403JSONResponse) VisitAssignClusterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AssignCluster404JSONResponse Error
+
+func (response AssignCluster404JSONResponse) VisitAssignClusterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AssignCluster409JSONResponse Error
+
+func (response AssignCluster409JSONResponse) VisitAssignClusterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TestClusterConnectionRequestObject struct {
+	Cluster ClusterRef `json:"cluster"`
+}
+
+type TestClusterConnectionResponseObject interface {
+	VisitTestClusterConnectionResponse(w http.ResponseWriter) error
+}
+
+type TestClusterConnection200JSONResponse ClusterTestResult
+
+func (response TestClusterConnection200JSONResponse) VisitTestClusterConnectionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TestClusterConnection401JSONResponse Error
+
+func (response TestClusterConnection401JSONResponse) VisitTestClusterConnectionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TestClusterConnection403JSONResponse Error
+
+func (response TestClusterConnection403JSONResponse) VisitTestClusterConnectionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TestClusterConnection404JSONResponse Error
+
+func (response TestClusterConnection404JSONResponse) VisitTestClusterConnectionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type HealthLiveRequestObject struct {
@@ -2922,6 +4437,200 @@ func (response UpdateClaimRule422JSONResponse) VisitUpdateClaimRuleResponse(w ht
 	return err
 }
 
+type ListTenantClustersRequestObject struct {
+	Tenant TenantSlug `json:"tenant"`
+}
+
+type ListTenantClustersResponseObject interface {
+	VisitListTenantClustersResponse(w http.ResponseWriter) error
+}
+
+type ListTenantClusters200JSONResponse ClusterSummaryList
+
+func (response ListTenantClusters200JSONResponse) VisitListTenantClustersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListTenantClusters401JSONResponse Error
+
+func (response ListTenantClusters401JSONResponse) VisitListTenantClustersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListTenantClusters403JSONResponse Error
+
+func (response ListTenantClusters403JSONResponse) VisitListTenantClustersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListTenantClusters404JSONResponse Error
+
+func (response ListTenantClusters404JSONResponse) VisitListTenantClustersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTenantClusterRequestObject struct {
+	Tenant  TenantSlug `json:"tenant"`
+	Cluster ClusterRef `json:"cluster"`
+}
+
+type GetTenantClusterResponseObject interface {
+	VisitGetTenantClusterResponse(w http.ResponseWriter) error
+}
+
+type GetTenantCluster200JSONResponse ClusterSummary
+
+func (response GetTenantCluster200JSONResponse) VisitGetTenantClusterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTenantCluster401JSONResponse Error
+
+func (response GetTenantCluster401JSONResponse) VisitGetTenantClusterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTenantCluster403JSONResponse Error
+
+func (response GetTenantCluster403JSONResponse) VisitGetTenantClusterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTenantCluster404JSONResponse Error
+
+func (response GetTenantCluster404JSONResponse) VisitGetTenantClusterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListTenantClusterPartitionsRequestObject struct {
+	Tenant  TenantSlug `json:"tenant"`
+	Cluster ClusterRef `json:"cluster"`
+}
+
+type ListTenantClusterPartitionsResponseObject interface {
+	VisitListTenantClusterPartitionsResponse(w http.ResponseWriter) error
+}
+
+type ListTenantClusterPartitions200JSONResponse PartitionList
+
+func (response ListTenantClusterPartitions200JSONResponse) VisitListTenantClusterPartitionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListTenantClusterPartitions401JSONResponse Error
+
+func (response ListTenantClusterPartitions401JSONResponse) VisitListTenantClusterPartitionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListTenantClusterPartitions403JSONResponse Error
+
+func (response ListTenantClusterPartitions403JSONResponse) VisitListTenantClusterPartitionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListTenantClusterPartitions404JSONResponse Error
+
+func (response ListTenantClusterPartitions404JSONResponse) VisitListTenantClusterPartitionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListGroupsRequestObject struct {
 	Tenant TenantSlug `json:"tenant"`
 	Params ListGroupsParams
@@ -3680,6 +5389,33 @@ func (response LookupUsers404JSONResponse) VisitLookupUsersResponse(w http.Respo
 
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
+	// ListClusters List clusters
+	// (GET /clusters)
+	ListClusters(ctx context.Context, request ListClustersRequestObject) (ListClustersResponseObject, error)
+	// CreateCluster Register a cluster
+	// (POST /clusters)
+	CreateCluster(ctx context.Context, request CreateClusterRequestObject) (CreateClusterResponseObject, error)
+	// GetCluster Get a cluster
+	// (GET /clusters/{cluster})
+	GetCluster(ctx context.Context, request GetClusterRequestObject) (GetClusterResponseObject, error)
+	// UpdateCluster Update a cluster
+	// (PATCH /clusters/{cluster})
+	UpdateCluster(ctx context.Context, request UpdateClusterRequestObject) (UpdateClusterResponseObject, error)
+	// DisableCluster Disable a cluster
+	// (POST /clusters/{cluster}/disable)
+	DisableCluster(ctx context.Context, request DisableClusterRequestObject) (DisableClusterResponseObject, error)
+	// ListClusterAssignments List cluster tenant assignments
+	// (GET /clusters/{cluster}/tenants)
+	ListClusterAssignments(ctx context.Context, request ListClusterAssignmentsRequestObject) (ListClusterAssignmentsResponseObject, error)
+	// UnassignCluster Unassign a cluster from a tenant
+	// (DELETE /clusters/{cluster}/tenants/{tenant})
+	UnassignCluster(ctx context.Context, request UnassignClusterRequestObject) (UnassignClusterResponseObject, error)
+	// AssignCluster Assign a cluster to a tenant
+	// (PUT /clusters/{cluster}/tenants/{tenant})
+	AssignCluster(ctx context.Context, request AssignClusterRequestObject) (AssignClusterResponseObject, error)
+	// TestClusterConnection Test connectivity to slurmrestd
+	// (POST /clusters/{cluster}/test-connection)
+	TestClusterConnection(ctx context.Context, request TestClusterConnectionRequestObject) (TestClusterConnectionResponseObject, error)
 	// HealthLive Liveness probe
 	// (GET /health/live)
 	HealthLive(ctx context.Context, request HealthLiveRequestObject) (HealthLiveResponseObject, error)
@@ -3731,6 +5467,15 @@ type StrictServerInterface interface {
 	// UpdateClaimRule Update a claim-mapping rule
 	// (PATCH /tenants/{tenant}/claim-rules/{rule})
 	UpdateClaimRule(ctx context.Context, request UpdateClaimRuleRequestObject) (UpdateClaimRuleResponseObject, error)
+	// ListTenantClusters List clusters visible to the tenant
+	// (GET /tenants/{tenant}/clusters)
+	ListTenantClusters(ctx context.Context, request ListTenantClustersRequestObject) (ListTenantClustersResponseObject, error)
+	// GetTenantCluster Get a visible cluster summary
+	// (GET /tenants/{tenant}/clusters/{cluster})
+	GetTenantCluster(ctx context.Context, request GetTenantClusterRequestObject) (GetTenantClusterResponseObject, error)
+	// ListTenantClusterPartitions List partitions of a visible cluster
+	// (GET /tenants/{tenant}/clusters/{cluster}/partitions)
+	ListTenantClusterPartitions(ctx context.Context, request ListTenantClusterPartitionsRequestObject) (ListTenantClusterPartitionsResponseObject, error)
 	// ListGroups List tenant groups
 	// (GET /tenants/{tenant}/groups)
 	ListGroups(ctx context.Context, request ListGroupsRequestObject) (ListGroupsResponseObject, error)
@@ -3768,7 +5513,7 @@ type StrictServerInterface interface {
 	// (PATCH /tenants/{tenant}/members/{user})
 	UpdateMember(ctx context.Context, request UpdateMemberRequestObject) (UpdateMemberResponseObject, error)
 	// LookupUsers Look up users by exact email (tenant.members.manage)
-	// (GET /tenants/{tenant}/users:lookup)
+	// (GET /tenants/{tenant}/users/lookup)
 	LookupUsers(ctx context.Context, request LookupUsersRequestObject) (LookupUsersResponseObject, error)
 }
 
@@ -3809,6 +5554,262 @@ type strictHandler struct {
 	ssi         StrictServerInterface
 	middlewares []StrictMiddlewareFunc
 	options     StrictHTTPServerOptions
+}
+
+// ListClusters operation middleware
+func (sh *strictHandler) ListClusters(w http.ResponseWriter, r *http.Request, params ListClustersParams) {
+	var request ListClustersRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListClusters(ctx, request.(ListClustersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListClusters")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListClustersResponseObject); ok {
+		if err := validResponse.VisitListClustersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateCluster operation middleware
+func (sh *strictHandler) CreateCluster(w http.ResponseWriter, r *http.Request) {
+	var request CreateClusterRequestObject
+
+	var body CreateClusterJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateCluster(ctx, request.(CreateClusterRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateCluster")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateClusterResponseObject); ok {
+		if err := validResponse.VisitCreateClusterResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetCluster operation middleware
+func (sh *strictHandler) GetCluster(w http.ResponseWriter, r *http.Request, cluster ClusterRef) {
+	var request GetClusterRequestObject
+
+	request.Cluster = cluster
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetCluster(ctx, request.(GetClusterRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetCluster")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetClusterResponseObject); ok {
+		if err := validResponse.VisitGetClusterResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateCluster operation middleware
+func (sh *strictHandler) UpdateCluster(w http.ResponseWriter, r *http.Request, cluster ClusterRef) {
+	var request UpdateClusterRequestObject
+
+	request.Cluster = cluster
+
+	var body UpdateClusterJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateCluster(ctx, request.(UpdateClusterRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateCluster")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateClusterResponseObject); ok {
+		if err := validResponse.VisitUpdateClusterResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DisableCluster operation middleware
+func (sh *strictHandler) DisableCluster(w http.ResponseWriter, r *http.Request, cluster ClusterRef) {
+	var request DisableClusterRequestObject
+
+	request.Cluster = cluster
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DisableCluster(ctx, request.(DisableClusterRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DisableCluster")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DisableClusterResponseObject); ok {
+		if err := validResponse.VisitDisableClusterResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListClusterAssignments operation middleware
+func (sh *strictHandler) ListClusterAssignments(w http.ResponseWriter, r *http.Request, cluster ClusterRef, params ListClusterAssignmentsParams) {
+	var request ListClusterAssignmentsRequestObject
+
+	request.Cluster = cluster
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListClusterAssignments(ctx, request.(ListClusterAssignmentsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListClusterAssignments")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListClusterAssignmentsResponseObject); ok {
+		if err := validResponse.VisitListClusterAssignmentsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UnassignCluster operation middleware
+func (sh *strictHandler) UnassignCluster(w http.ResponseWriter, r *http.Request, cluster ClusterRef, tenant TenantSlug) {
+	var request UnassignClusterRequestObject
+
+	request.Cluster = cluster
+	request.Tenant = tenant
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UnassignCluster(ctx, request.(UnassignClusterRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UnassignCluster")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UnassignClusterResponseObject); ok {
+		if err := validResponse.VisitUnassignClusterResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// AssignCluster operation middleware
+func (sh *strictHandler) AssignCluster(w http.ResponseWriter, r *http.Request, cluster ClusterRef, tenant TenantSlug) {
+	var request AssignClusterRequestObject
+
+	request.Cluster = cluster
+	request.Tenant = tenant
+
+	var body AssignClusterJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.AssignCluster(ctx, request.(AssignClusterRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "AssignCluster")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(AssignClusterResponseObject); ok {
+		if err := validResponse.VisitAssignClusterResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// TestClusterConnection operation middleware
+func (sh *strictHandler) TestClusterConnection(w http.ResponseWriter, r *http.Request, cluster ClusterRef) {
+	var request TestClusterConnectionRequestObject
+
+	request.Cluster = cluster
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.TestClusterConnection(ctx, request.(TestClusterConnectionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "TestClusterConnection")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(TestClusterConnectionResponseObject); ok {
+		if err := validResponse.VisitTestClusterConnectionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
 }
 
 // HealthLive operation middleware
@@ -4275,6 +6276,86 @@ func (sh *strictHandler) UpdateClaimRule(w http.ResponseWriter, r *http.Request,
 	}
 }
 
+// ListTenantClusters operation middleware
+func (sh *strictHandler) ListTenantClusters(w http.ResponseWriter, r *http.Request, tenant TenantSlug) {
+	var request ListTenantClustersRequestObject
+
+	request.Tenant = tenant
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListTenantClusters(ctx, request.(ListTenantClustersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListTenantClusters")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListTenantClustersResponseObject); ok {
+		if err := validResponse.VisitListTenantClustersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetTenantCluster operation middleware
+func (sh *strictHandler) GetTenantCluster(w http.ResponseWriter, r *http.Request, tenant TenantSlug, cluster ClusterRef) {
+	var request GetTenantClusterRequestObject
+
+	request.Tenant = tenant
+	request.Cluster = cluster
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetTenantCluster(ctx, request.(GetTenantClusterRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetTenantCluster")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetTenantClusterResponseObject); ok {
+		if err := validResponse.VisitGetTenantClusterResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListTenantClusterPartitions operation middleware
+func (sh *strictHandler) ListTenantClusterPartitions(w http.ResponseWriter, r *http.Request, tenant TenantSlug, cluster ClusterRef) {
+	var request ListTenantClusterPartitionsRequestObject
+
+	request.Tenant = tenant
+	request.Cluster = cluster
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListTenantClusterPartitions(ctx, request.(ListTenantClusterPartitionsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListTenantClusterPartitions")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListTenantClusterPartitionsResponseObject); ok {
+		if err := validResponse.VisitListTenantClusterPartitionsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListGroups operation middleware
 func (sh *strictHandler) ListGroups(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params ListGroupsParams) {
 	var request ListGroupsRequestObject
@@ -4666,63 +6747,88 @@ func (sh *strictHandler) LookupUsers(w http.ResponseWriter, r *http.Request, ten
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
-	"lbqL7FyvJUO/3DADYyJC3MP6jX6d4TGe3E7+OwA=",
+	"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",
+	"AXxqwZjyyDvzBjghg+mp93z3/O8BAA==",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

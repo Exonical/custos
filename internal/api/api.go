@@ -18,6 +18,7 @@ import (
 
 	"github.com/Exonical/custos/internal/audit"
 	"github.com/Exonical/custos/internal/authn"
+	clustersvc "github.com/Exonical/custos/internal/clusters/service"
 	"github.com/Exonical/custos/internal/platform/apperr"
 	"github.com/Exonical/custos/internal/platform/health"
 	"github.com/Exonical/custos/internal/platform/httpx"
@@ -50,12 +51,13 @@ type Deps struct {
 	Health      *health.Registry
 	ReadyBudget time.Duration
 	Logger      *slog.Logger
-	Verifier    authn.Verifier     // required for bearer routes
-	Provisioner authn.Provisioner  // optional; enriches principal
-	Audit       audit.Recorder     // may be nil (skips audit records)
-	Tenants     *tenantsvc.Service // nil disables tenant routes
-	TenantRepo  tenants.Repository // required when Tenants is set
-	Users       *users.Service     // enables platform role-binding routes
+	Verifier    authn.Verifier      // required for bearer routes
+	Provisioner authn.Provisioner   // optional; enriches principal
+	Audit       audit.Recorder      // may be nil (skips audit records)
+	Tenants     *tenantsvc.Service  // nil disables tenant routes
+	TenantRepo  tenants.Repository  // required when Tenants is set
+	Users       *users.Service      // enables platform role-binding routes
+	Clusters    *clustersvc.Service // enables cluster registry routes
 }
 
 // Mount registers the v1 routes on mux. The generated types in
@@ -86,7 +88,7 @@ func Mount(mux *http.ServeMux, deps Deps) {
 			mux.Handle("PATCH /api/v1/tenants/{tenant}/members/{user}", tr(http.HandlerFunc(h.updateMember)))
 			mux.Handle("DELETE /api/v1/tenants/{tenant}/members/{user}", tr(http.HandlerFunc(h.removeMember)))
 			mux.Handle("DELETE /api/v1/tenants/{tenant}", tr(http.HandlerFunc(h.deleteTenant)))
-			mux.Handle("GET /api/v1/tenants/{tenant}/users:lookup", tr(http.HandlerFunc(h.lookupUsers)))
+			mux.Handle("GET /api/v1/tenants/{tenant}/users/lookup", tr(http.HandlerFunc(h.lookupUsers)))
 			mux.Handle("GET /api/v1/tenants/{tenant}/groups", tr(http.HandlerFunc(h.listGroups)))
 			mux.Handle("POST /api/v1/tenants/{tenant}/groups", tr(http.HandlerFunc(h.createGroup)))
 			mux.Handle("GET /api/v1/tenants/{tenant}/groups/{group}", tr(http.HandlerFunc(h.getGroup)))
@@ -100,6 +102,13 @@ func Mount(mux *http.ServeMux, deps Deps) {
 			mux.Handle("GET /api/v1/tenants/{tenant}/claim-rules/{rule}", tr(http.HandlerFunc(h.getClaimRule)))
 			mux.Handle("PATCH /api/v1/tenants/{tenant}/claim-rules/{rule}", tr(http.HandlerFunc(h.updateClaimRule)))
 			mux.Handle("DELETE /api/v1/tenants/{tenant}/claim-rules/{rule}", tr(http.HandlerFunc(h.deleteClaimRule)))
+		}
+
+		if deps.Clusters != nil {
+			ch := &clusterHandlers{svc: deps.Clusters}
+			tenantMW := tenants.Require(deps.TenantRepo, deps.Logger, deps.Audit)
+			tr := func(h http.Handler) http.Handler { return bearer(tenantMW(h)) }
+			mountClusterRoutes(mux, ch, bearer, tr)
 		}
 
 		if deps.Users != nil {

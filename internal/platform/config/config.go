@@ -26,6 +26,21 @@ type Config struct {
 	Telemetry Telemetry `yaml:"telemetry" doc:"OpenTelemetry export"`
 	Worker    Worker    `yaml:"worker" doc:"Work-queue lease loop"`
 	Secrets   Secrets   `yaml:"secrets" doc:"Secret-provider settings (docs/secrets.md)"`
+	Slurm     Slurm     `yaml:"slurm" doc:"Slurm adapter defaults (docs/slurm.md)"`
+}
+
+// Slurm configures Slurm connectivity policy.
+type Slurm struct {
+	DialPolicy DialPolicy `yaml:"dial_policy" doc:"SSRF policy enforced when dialing slurmrestd"`
+}
+
+// DialPolicy controls which resolved addresses slurmrestd endpoints may
+// dial (docs/slurm.md "SSRF protection").
+type DialPolicy struct {
+	AllowPrivate  bool     `yaml:"allow_private" doc:"Permit RFC1918/ULA slurmrestd endpoints"`
+	AllowLoopback bool     `yaml:"allow_loopback" doc:"Permit loopback endpoints (dev only)"`
+	AllowHTTP     bool     `yaml:"allow_http" doc:"Permit plaintext http endpoints (dev only; loopback required)"`
+	DenyCIDRs     []string `yaml:"deny_cidrs" doc:"Additional CIDRs always denied"`
 }
 
 // Secrets configures secret providers.
@@ -139,12 +154,13 @@ type Telemetry struct {
 
 // Worker configures the work-queue lease loop.
 type Worker struct {
-	PollInterval       time.Duration         `yaml:"poll_interval" doc:"Delay between empty lease polls"`
-	LeaseDuration      time.Duration         `yaml:"lease_duration" doc:"Duration of a work-item lease"`
-	HeartbeatInterval  time.Duration         `yaml:"heartbeat_interval" doc:"Lease heartbeat cadence"`
-	ShutdownTimeout    time.Duration         `yaml:"shutdown_timeout" doc:"Drain budget for in-flight handlers"`
-	DefaultConcurrency int                   `yaml:"default_concurrency" doc:"Default per-kind handler concurrency"`
-	Kinds              map[string]KindLimits `yaml:"kinds" doc:"Per-kind limits keyed by work-item kind"`
+	PollInterval        time.Duration         `yaml:"poll_interval" doc:"Delay between empty lease polls"`
+	LeaseDuration       time.Duration         `yaml:"lease_duration" doc:"Duration of a work-item lease"`
+	HeartbeatInterval   time.Duration         `yaml:"heartbeat_interval" doc:"Lease heartbeat cadence"`
+	ShutdownTimeout     time.Duration         `yaml:"shutdown_timeout" doc:"Drain budget for in-flight handlers"`
+	DefaultConcurrency  int                   `yaml:"default_concurrency" doc:"Default per-kind handler concurrency"`
+	Kinds               map[string]KindLimits `yaml:"kinds" doc:"Per-kind limits keyed by work-item kind"`
+	ClusterSyncInterval time.Duration         `yaml:"cluster_sync_interval" doc:"Base interval between cluster.sync runs per cluster"`
 }
 
 // KindLimits tunes one work-item kind. Zero fields inherit defaults.
@@ -196,6 +212,7 @@ func Default() Config {
 	c.Worker.HeartbeatInterval = 10 * time.Second
 	c.Worker.ShutdownTimeout = 20 * time.Second
 	c.Worker.DefaultConcurrency = 4
+	c.Worker.ClusterSyncInterval = 60 * time.Second
 	if runtime.GOOS == "windows" {
 		c.Secrets.FileRoots = []string{`C:\custos\secrets`}
 	} else {
