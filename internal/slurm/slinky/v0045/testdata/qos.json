@@ -1,0 +1,11 @@
+{
+  "qos": [
+    { "id": 1, "name": "normal", "description": "default QoS",
+      "priority": { "set": true, "number": 0 } },
+    { "id": 2, "name": "long", "description": "long-running",
+      "priority": { "set": true, "number": 10 } }
+  ],
+  "meta": { "plugin": { "data_parser": "v0.0.45" } },
+  "errors": [],
+  "warnings": []
+}

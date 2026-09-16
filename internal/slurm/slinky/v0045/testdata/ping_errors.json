@@ -1,0 +1,16 @@
+{
+  "pings": [],
+  "meta": {
+    "plugin": { "data_parser": "v0.0.45" },
+    "slurm": { "release": "26.05.4" }
+  },
+  "errors": [
+    {
+      "description": "slurmctld not responding",
+      "error_number": 7001,
+      "error": "SLURMCTL_COMM_ERR",
+      "source": "ping"
+    }
+  ],
+  "warnings": []
+}

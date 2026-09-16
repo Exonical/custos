@@ -60,6 +60,14 @@ linters:
               desc: "Slurm access belongs in internal/slurm/slinky"
             - pkg: "github.com/openbao"
               desc: "secrets access belongs in internal/secrets/openbao"
+        slinky-boundary:
+          list-mode: lax
+          files:
+            - "**/internal/**"
+            - "!**/internal/slurm/slinky/**"
+          deny:
+            - pkg: "github.com/SlinkyProject"
+              desc: "only internal/slurm/slinky may import the Slinky client"
   exclusions:
     rules:
       - path: '_test\.go'

@@ -1,0 +1,10 @@
+{
+  "nodes": [
+    {},
+    { "name": "node99", "state": [] }
+  ],
+  "meta": {
+    "plugin": { "data_parser": "v0.0.45" }
+  },
+  "errors": []
+}

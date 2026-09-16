@@ -81,6 +81,8 @@ Validation aborts startup (`config.invalid`) when:
 | `metrics.tls.key_file` | string | `` | `CUSTOS_METRICS__TLS__KEY_FILE` | PEM private key file (required when mode=required) |
 | `metrics.tls.mode` | string | `required` | `CUSTOS_METRICS__TLS__MODE` | required (default) \| disabled (dev only) \| upstream |
 | `metrics.tls.require_client_cert` | bool | `false` | `CUSTOS_METRICS__TLS__REQUIRE_CLIENT_CERT` | Require and verify client certificates (mTLS) |
+| `secrets` | section | `` | `CUSTOS_SECRETS` | Secret-provider settings (docs/secrets.md) |
+| `secrets.file_roots` | slice | `C:\custos\secrets` | `CUSTOS_SECRETS__FILE_ROOTS` | Allow-listed absolute roots for the file secret provider |
 | `server` | section | `` | `CUSTOS_SERVER` | Public HTTP API listener |
 | `server.cors` | section | `` | `CUSTOS_SERVER__CORS` | Cross-origin allow-list |
 | `server.cors.allowed_origins` | slice | `` | `CUSTOS_SERVER__CORS__ALLOWED_ORIGINS` | Exact-match allowed origins (no wildcards) |

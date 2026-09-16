@@ -1,0 +1,173 @@
+// Package httpclient builds SSRF-safe HTTP clients for talking to
+// slurmrestd (docs/slurm.md "SSRF protection", threat-model TM-08):
+// TLS 1.3 minimum, no redirects, pinned CA, optional mTLS, and a dialer
+// that re-checks resolved IPs against a policy before connecting — and
+// dials the vetted IP rather than the hostname so DNS cannot rebind
+// between check and dial.
+package httpclient
+
+import (
+	"context"
+	"crypto/tls"
+	"crypto/x509"
+	"fmt"
+	"net"
+	"net/http"
+	"net/netip"
+	"net/url"
+	"time"
+
+	"github.com/Exonical/custos/internal/platform/apperr"
+	"github.com/Exonical/custos/internal/slurm"
+)
+
+// DialPolicy controls which resolved addresses may be dialed.
+type DialPolicy struct {
+	// AllowPrivate permits RFC1918/ULA addresses (deployments whose
+	// clusters live on private networks set this).
+	AllowPrivate bool
+	// AllowLoopback permits loopback (dev/test only).
+	AllowLoopback bool
+	// DenyCIDRs are always refused, checked first.
+	DenyCIDRs []netip.Prefix
+	// AllowHTTP permits http:// endpoints, but only to loopback targets
+	// and only alongside AllowLoopback (dev).
+	AllowHTTP bool
+}
+
+var alwaysDenied = []netip.Prefix{
+	netip.MustParsePrefix("169.254.169.254/32"), // cloud metadata
+	netip.MustParsePrefix("fd00:ec2::254/128"),  // cloud metadata v6
+}
+
+// New builds an *http.Client for ep under policy. The client never
+// follows redirects and never uses InsecureSkipVerify.
+func New(ep slurm.Endpoint, policy DialPolicy) (*http.Client, error) {
+	u, err := url.Parse(ep.BaseURL)
+	if err != nil || u.Host == "" {
+		return nil, apperr.New(apperr.Invalid, "slurm.endpoint_invalid",
+			"cluster endpoint is not a valid URL")
+	}
+	switch u.Scheme {
+	case "https":
+	case "http":
+		if !policy.AllowHTTP || !policy.AllowLoopback {
+			return nil, apperr.New(apperr.Invalid, "slurm.endpoint_scheme",
+				"cluster endpoint must be https (http only to loopback in dev)")
+		}
+	default:
+		return nil, apperr.New(apperr.Invalid, "slurm.endpoint_scheme",
+			"cluster endpoint must be https")
+	}
+
+	roots, err := x509.SystemCertPool()
+	if err != nil || roots == nil {
+		roots = x509.NewCertPool()
+	}
+	if len(ep.CABundlePEM) > 0 {
+		roots = x509.NewCertPool()
+		if !roots.AppendCertsFromPEM(ep.CABundlePEM) {
+			return nil, apperr.New(apperr.Invalid, "slurm.ca_bundle_invalid",
+				"cluster CA bundle contains no parseable certificates")
+		}
+	}
+	tlsCfg := &tls.Config{
+		MinVersion: tls.VersionTLS13,
+		RootCAs:    roots,
+	}
+	if ep.ClientCert != nil {
+		tlsCfg.Certificates = []tls.Certificate{*ep.ClientCert}
+	}
+
+	dialer := &net.Dialer{Timeout: 5 * time.Second}
+	tr := &http.Transport{
+		TLSClientConfig:       tlsCfg,
+		ResponseHeaderTimeout: 30 * time.Second,
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			return vetDial(ctx, dialer, policy, network, addr,
+				u.Scheme == "http")
+		},
+		// http.Transport derives the TLS ServerName from the request URL
+		// host, not the dialed address, so dialing the vetted IP keeps
+		// certificate verification against the configured hostname
+		// (TestTLSServerAllowLoopback).
+	}
+	return &http.Client{
+		Transport: tr,
+		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+			return apperr.New(apperr.Forbidden, "slurm.redirect_refused",
+				"cluster endpoint returned a redirect")
+		},
+	}, nil
+}
+
+// lookupIP is the resolver used by vetDial; unexported and injectable so
+// tests can return crafted address lists.
+var lookupIP = func(ctx context.Context, host string) ([]net.IP, error) {
+	return net.DefaultResolver.LookupIP(ctx, "ip", host)
+}
+
+// vetDial resolves host, vets every returned IP against policy, and dials
+// the first address literal (defeats DNS rebinding between the check and
+// the dial). It fails closed: a single denied address in the answer —
+// e.g. a public/private mix — refuses the connection rather than
+// narrowing to a permitted IP. httpOnlyLoopback additionally restricts
+// plaintext endpoints to loopback targets.
+func vetDial(ctx context.Context, d *net.Dialer, policy DialPolicy,
+	network, addr string, httpOnlyLoopback bool) (net.Conn, error) {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return nil, fmt.Errorf("slurm dial: %w", err)
+	}
+	ips, err := lookupIP(ctx, host)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", slurm.ErrUnavailable, err)
+	}
+	var first netip.Addr
+	for _, ip := range ips {
+		a, ok := netip.AddrFromSlice(ip)
+		if !ok {
+			continue
+		}
+		a = a.Unmap()
+		if !allowed(a, policy, httpOnlyLoopback) {
+			return nil, apperr.New(apperr.Forbidden, "slurm.dial_denied",
+				"a resolved address is denied by the cluster dial policy")
+		}
+		if !first.IsValid() {
+			first = a
+		}
+	}
+	if !first.IsValid() {
+		return nil, apperr.New(apperr.Forbidden, "slurm.dial_denied",
+			"no resolved address is permitted by the cluster dial policy")
+	}
+	return d.DialContext(ctx, network, net.JoinHostPort(first.String(), port))
+}
+
+func allowed(a netip.Addr, policy DialPolicy, httpOnlyLoopback bool) bool {
+	for _, p := range policy.DenyCIDRs {
+		if p.Contains(a) {
+			return false
+		}
+	}
+	for _, p := range alwaysDenied {
+		if p.Contains(a) {
+			return false
+		}
+	}
+	if httpOnlyLoopback {
+		return a.IsLoopback()
+	}
+	switch {
+	case a.IsLoopback():
+		return policy.AllowLoopback
+	case a.IsLinkLocalUnicast(), a.IsLinkLocalMulticast(), a.IsMulticast(),
+		a.IsUnspecified():
+		return false
+	case a.IsPrivate():
+		return policy.AllowPrivate
+	default:
+		return true
+	}
+}

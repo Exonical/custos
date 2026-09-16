@@ -1,0 +1,8 @@
+{
+  "nodes": [],
+  "meta": {
+    "plugin": { "data_parser": "v0.0.44" },
+    "slurm": { "release": "25.11.2" }
+  },
+  "errors": []
+}

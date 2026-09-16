@@ -1,0 +1,14 @@
+{
+  "statistics": {
+    "agent_count": 3,
+    "jobs_submitted": 12040,
+    "jobs_started": 11800,
+    "jobs_completed": 11750
+  },
+  "meta": {
+    "plugin": { "data_parser": "v0.0.45" },
+    "slurm": { "release": "26.05.4" }
+  },
+  "errors": [],
+  "warnings": []
+}

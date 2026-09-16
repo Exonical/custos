@@ -1,0 +1,36 @@
+{
+  "nodes": [
+    {
+      "name": "node01",
+      "state": ["IDLE"],
+      "cpus": 64,
+      "alloc_cpus": 0,
+      "real_memory": 256000,
+      "alloc_memory": 0,
+      "gres": "",
+      "gres_used": "",
+      "partitions": ["normal"],
+      "features": ["zen4", "nvme"]
+    },
+    {
+      "name": "gpu01",
+      "state": ["ALLOCATED", "DRAIN"],
+      "cpus": 64,
+      "alloc_cpus": 48,
+      "real_memory": 512000,
+      "alloc_memory": 400000,
+      "gres": "gpu:h100:8(S:0-1)",
+      "gres_used": "gpu:h100:6(IDX:0-5)",
+      "partitions": ["gpu"],
+      "features": ["h100", "ib"],
+      "reason": "node unexpectedly rebooted"
+    }
+  ],
+  "last_update": { "set": true, "number": 1758000000 },
+  "meta": {
+    "plugin": { "data_parser": "v0.0.45" },
+    "slurm": { "release": "26.05.4" }
+  },
+  "errors": [],
+  "warnings": []
+}

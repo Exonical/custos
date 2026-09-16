@@ -1,0 +1,17 @@
+{
+  "accounts": [
+    {
+      "name": "chem",
+      "description": "Chemistry department",
+      "organization": "uni"
+    },
+    {
+      "name": "phys",
+      "description": "Physics department",
+      "organization": "uni"
+    }
+  ],
+  "meta": { "plugin": { "data_parser": "v0.0.45" } },
+  "errors": [],
+  "warnings": []
+}

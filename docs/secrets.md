@@ -103,6 +103,15 @@ func (v *Value) Zero()
 `Value` implements `fmt.Stringer`, `slog.LogValuer`, and `json.Marshaler` to
 redact itself, so accidental logging prints `[REDACTED]`.
 
+## Providers
+
+`secrets.Resolver` dispatches on `Reference.Provider`:
+
+| Provider | Status | Use |
+| --- | --- | --- |
+| `file` | implemented (M3) | Dev/test and interim deployments that mount cluster credentials as files. Paths must resolve — after `filepath.Clean` + `EvalSymlinks` — inside an allow-listed root from `secrets.file_roots` (absolute paths only); `..` escapes and symlinks escaping the root are denied (`secrets.path_outside_root`). Files ≤ 64 KiB, trailing newline trimmed; `Key` extracts a string field from a JSON document. |
+| `openbao` | M6 | OpenBao KV, the production provider (this doc). |
+
 ## Delivery to jobs (execution plane)
 
 Jobs are untrusted; delivering a secret to a job is a deliberate, audited

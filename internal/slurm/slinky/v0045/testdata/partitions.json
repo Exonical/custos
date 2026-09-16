@@ -1,0 +1,38 @@
+{
+  "partitions": [
+    {
+      "name": "normal",
+      "cluster": "hpc",
+      "flags": ["DEFAULT"],
+      "partition": { "state": ["UP"] },
+      "nodes": { "configured": "node[01-10]", "total": 10 },
+      "cpus": { "total": 640 },
+      "minimums": { "nodes": 1 },
+      "maximums": {
+        "nodes": { "set": true, "number": 10 },
+        "time": { "set": true, "number": 43200 }
+      },
+      "defaults": { "time": { "set": true, "number": 3600 } },
+      "accounts": { "allowed": "chem,phys", "deny": "guest" },
+      "qos": { "allowed": "normal,long", "assigned": "normal" }
+    },
+    {
+      "name": "gpu",
+      "cluster": "hpc",
+      "partition": { "state": ["UP"] },
+      "nodes": { "configured": "gpu[01-04]", "total": 4 },
+      "cpus": { "total": 256 },
+      "minimums": { "nodes": 1 },
+      "maximums": { "nodes": { "set": true, "number": 4 } },
+      "accounts": {},
+      "qos": { "allowed": "gpu", "assigned": "gpu" }
+    }
+  ],
+  "last_update": { "set": true, "number": 1758000000 },
+  "meta": {
+    "plugin": { "data_parser": "v0.0.45" },
+    "slurm": { "release": "26.05.4" }
+  },
+  "errors": [],
+  "warnings": []
+}

@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/netip"
 	"net/url"
+	"path/filepath"
 	"reflect"
 	"regexp"
 	"strings"
@@ -113,6 +114,13 @@ func (c Config) Validate() error {
 	if c.Metrics.Enabled {
 		v.listen("metrics.listen", c.Metrics.Listen)
 		v.tls("metrics.tls", c.Metrics.TLS)
+	}
+
+	for i, r := range c.Secrets.FileRoots {
+		if !filepath.IsAbs(r) {
+			v.fail(fmt.Sprintf("secrets.file_roots[%d]", i),
+				"must be an absolute path")
+		}
 	}
 
 	v.oneOf("log.level", c.Log.Level, "debug", "info", "warn", "error")

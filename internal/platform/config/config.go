@@ -7,6 +7,7 @@ package config
 
 import (
 	"os"
+	"runtime"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -24,6 +25,12 @@ type Config struct {
 	Auth      Auth      `yaml:"auth" doc:"OIDC authentication"`
 	Telemetry Telemetry `yaml:"telemetry" doc:"OpenTelemetry export"`
 	Worker    Worker    `yaml:"worker" doc:"Work-queue lease loop"`
+	Secrets   Secrets   `yaml:"secrets" doc:"Secret-provider settings (docs/secrets.md)"`
+}
+
+// Secrets configures secret providers.
+type Secrets struct {
+	FileRoots []string `yaml:"file_roots" doc:"Allow-listed absolute roots for the file secret provider"`
 }
 
 // Server configures the public HTTP listener.
@@ -189,6 +196,11 @@ func Default() Config {
 	c.Worker.HeartbeatInterval = 10 * time.Second
 	c.Worker.ShutdownTimeout = 20 * time.Second
 	c.Worker.DefaultConcurrency = 4
+	if runtime.GOOS == "windows" {
+		c.Secrets.FileRoots = []string{`C:\custos\secrets`}
+	} else {
+		c.Secrets.FileRoots = []string{"/run/secrets", "/etc/custos/secrets"}
+	}
 	return c
 }
 

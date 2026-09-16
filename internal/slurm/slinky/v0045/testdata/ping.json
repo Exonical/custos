@@ -1,0 +1,27 @@
+{
+  "pings": [
+    {
+      "hostname": "ctld-01",
+      "latency": 512,
+      "primary": true,
+      "responding": true
+    }
+  ],
+  "meta": {
+    "plugin": {
+      "type": "openapi/slurmctld",
+      "name": "Slurm REST API",
+      "data_parser": "v0.0.45",
+      "accounting_storage": "accounting_storage/slurmdbd"
+    },
+    "client": { "source": "custos", "user": "custos", "group": "custos" },
+    "command": [],
+    "slurm": {
+      "cluster": "hpc",
+      "release": "26.05.4",
+      "version": { "major": "26", "minor": "05", "micro": "4" }
+    }
+  },
+  "errors": [],
+  "warnings": []
+}

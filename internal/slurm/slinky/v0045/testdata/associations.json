@@ -1,0 +1,24 @@
+{
+  "associations": [
+    {
+      "id": 11,
+      "user": "alice",
+      "account": "chem",
+      "cluster": "hpc",
+      "partition": "normal",
+      "is_default": true,
+      "default": { "qos": "normal" }
+    },
+    {
+      "id": 12,
+      "user": "bob",
+      "account": "phys",
+      "cluster": "hpc",
+      "is_default": false,
+      "default": { "qos": "long" }
+    }
+  ],
+  "meta": { "plugin": { "data_parser": "v0.0.45" } },
+  "errors": [],
+  "warnings": []
+}

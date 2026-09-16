@@ -1,0 +1,20 @@
+{
+  "reservations": [
+    {
+      "name": "maint-oct",
+      "start_time": { "set": true, "number": 1760000000 },
+      "end_time": { "set": true, "number": 1760086400 },
+      "node_count": 10,
+      "users": "root,admin",
+      "accounts": "",
+      "flags": ["MAINT", "SPEC_NODES"]
+    }
+  ],
+  "last_update": { "set": true, "number": 1758000000 },
+  "meta": {
+    "plugin": { "data_parser": "v0.0.45" },
+    "slurm": { "release": "26.05.4" }
+  },
+  "errors": [],
+  "warnings": []
+}

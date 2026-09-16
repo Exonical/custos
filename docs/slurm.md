@@ -144,8 +144,16 @@ type Job struct {
      `ProjectClusterBinding`/tenant settings. This is the mode for classic
      HPC centers.
   Both are supported by the port (`UserName`); the choice is cluster config.
+  **Decision:** service identity is the default; impersonation is a
+  per-cluster opt-in (`identity_mode`), implemented in M4 — until then
+  `identity_mode: impersonate` is rejected at `Factory.Open`
+  (`slurm.identity_mode_unsupported`).
 - TLS: server CA pinning per cluster (`tls.ca_bundle_ref`), optional mTLS
   client cert from OpenBao. `InsecureSkipVerify` is not a config option.
+- Credentials resolve through `secrets.Resolver` at `Factory.Open` time,
+  never stored on the client struct. Until OpenBao lands (M6), the
+  interim `file` provider serves tokens/certs from allow-listed paths —
+  see `docs/secrets.md`.
 
 ### SSRF protection
 
@@ -170,9 +178,9 @@ a pure function of the admitted `ExecutionSpec` (`docs/script-validation.md`):
   args…`); argv elements are single-quoted through one escaping function;
 - for `type: shell` tasks the payload is the same wrapper-executed file;
   the difference is only what validation permits inside it. The task is
-  flagged `privileged: shell`, requiring the `workflow.shell` permission
-  plus `allowShellTasks` in the effective ValidationPolicy, and is shown
-  as such in the UI.
+  flagged `privileged: shell`, gated by `workflow.publish` plus
+  `allowShellTasks` in the effective ValidationPolicy (see
+  `docs/script-validation.md`), and is shown as such in the UI.
 
 Slurm option allow-list (v1) — the only `JobDescMsg` fields the adapter
 ever sets: account, partition, qos, reservation, nodes, tasks,
