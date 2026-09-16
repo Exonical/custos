@@ -36,14 +36,25 @@ Validation aborts startup (`config.invalid`) when:
 | --- | ---- | ------- | --- | ----------- |
 | `auth` | section | `` | `CUSTOS_AUTH` | OIDC authentication |
 | `auth.oidc` | section | `` | `CUSTOS_AUTH__OIDC` | OIDC relying-party settings |
+| `auth.oidc.accepted_token_types` | slice | `at+jwt,JWT,` | `CUSTOS_AUTH__OIDC__ACCEPTED_TOKEN_TYPES` | Permitted JOSE typ header values (empty string = typ absent) |
 | `auth.oidc.allowed_algorithms` | slice | `RS256,ES256` | `CUSTOS_AUTH__OIDC__ALLOWED_ALGORITHMS` | Permitted JWS algorithms |
 | `auth.oidc.audiences` | slice | `` | `CUSTOS_AUTH__OIDC__AUDIENCES` | Accepted token audiences |
+| `auth.oidc.claims` | section | `` | `CUSTOS_AUTH__OIDC__CLAIMS` | Claim names mapped onto Principal fields |
+| `auth.oidc.claims.email` | string | `email` | `CUSTOS_AUTH__OIDC__CLAIMS__EMAIL` | Claim carrying the email address |
+| `auth.oidc.claims.groups` | string | `groups` | `CUSTOS_AUTH__OIDC__CLAIMS__GROUPS` | Claim carrying group memberships (string array) |
+| `auth.oidc.claims.name` | string | `name` | `CUSTOS_AUTH__OIDC__CLAIMS__NAME` | Claim carrying the display name |
+| `auth.oidc.claims.subject` | string | `sub` | `CUSTOS_AUTH__OIDC__CLAIMS__SUBJECT` | Claim carrying the subject (default sub) |
 | `auth.oidc.client_id` | string | `` | `CUSTOS_AUTH__OIDC__CLIENT_ID` | OIDC client identifier |
 | `auth.oidc.client_secret` | secret | `` | `CUSTOS_AUTH__OIDC__CLIENT_SECRET` | OIDC client secret |
 | `auth.oidc.clock_skew` | duration | `30s` | `CUSTOS_AUTH__OIDC__CLOCK_SKEW` | Allowed issuer clock skew |
+| `auth.oidc.discovery` | bool | `true` | `CUSTOS_AUTH__OIDC__DISCOVERY` | Fetch issuer .well-known/openid-configuration for jwks_uri |
 | `auth.oidc.issuer` | string | `` | `CUSTOS_AUTH__OIDC__ISSUER` | OIDC issuer URL (https, no query/fragment) |
-| `auth.oidc.jwks_refresh_interval` | duration | `1h0m0s` | `CUSTOS_AUTH__OIDC__JWKS_REFRESH_INTERVAL` | JWKS refresh cadence |
+| `auth.oidc.jwks_cache_ttl` | duration | `1h0m0s` | `CUSTOS_AUTH__OIDC__JWKS_CACHE_TTL` | Background JWKS refresh cadence |
+| `auth.oidc.jwks_refresh_min_interval` | duration | `30s` | `CUSTOS_AUTH__OIDC__JWKS_REFRESH_MIN_INTERVAL` | Min interval between on-demand JWKS refreshes (unknown kid) |
+| `auth.oidc.jwks_uri` | string | `` | `CUSTOS_AUTH__OIDC__JWKS_URI` | JWKS endpoint override; required when discovery=false |
+| `auth.oidc.max_token_lifetime` | duration | `24h0m0s` | `CUSTOS_AUTH__OIDC__MAX_TOKEN_LIFETIME` | Max exp-iat; requires iat when > 0 |
 | `auth.oidc.redirect_url` | string | `` | `CUSTOS_AUTH__OIDC__REDIRECT_URL` | OIDC redirect URL for the frontend |
+| `auth.oidc.required_scopes` | slice | `` | `CUSTOS_AUTH__OIDC__REQUIRED_SCOPES` | Scopes every access token must carry (many IdPs omit openid; default empty) |
 | `database` | section | `` | `CUSTOS_DATABASE` | PostgreSQL connection pool |
 | `database.app_role` | string | `` | `CUSTOS_DATABASE__APP_ROLE` | Runtime role granted least-privilege DML by migrate up; empty = skip |
 | `database.connect_timeout` | duration | `5s` | `CUSTOS_DATABASE__CONNECT_TIMEOUT` | Connection establishment timeout |

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Exonical/custos/internal/api"
+	"github.com/Exonical/custos/internal/authn"
 	"github.com/Exonical/custos/internal/platform/health"
 )
 
@@ -48,7 +49,7 @@ func TestOpenAPIJSON(t *testing.T) {
 	if !ok {
 		t.Fatal("no paths object")
 	}
-	for _, p := range []string{"/openapi.json", "/health/live", "/health/ready"} {
+	for _, p := range []string{"/openapi.json", "/health/live", "/health/ready", "/me"} {
 		if _, ok := paths[p]; !ok {
 			t.Fatalf("path %q missing; have %v", p, paths)
 		}
@@ -79,6 +80,29 @@ func TestHealthRoutes(t *testing.T) {
 		if resp.StatusCode != 200 {
 			t.Fatalf("%s -> %d", p, resp.StatusCode)
 		}
+	}
+}
+
+func TestMeRequiresBearer(t *testing.T) {
+	mux := http.NewServeMux()
+	api.Mount(mux, api.Deps{
+		Health:      health.NewRegistry(),
+		ReadyBudget: time.Second,
+		Logger:      slog.New(slog.NewTextHandler(os.Stderr, nil)),
+		Verifier:    authn.DenyAll{},
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	resp, err := http.Get(srv.URL + "/api/v1/me")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("got %d", resp.StatusCode)
+	}
+	if resp.Header.Get("WWW-Authenticate") == "" {
+		t.Fatal("missing WWW-Authenticate")
 	}
 }
 

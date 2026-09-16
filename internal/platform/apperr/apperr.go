@@ -23,6 +23,7 @@ const (
 	Unavailable                 // upstream (DB, OpenBao, Slurm) failure
 	RateLimited                 // caller exceeded a rate limit
 	Internal                    // bug or unexpected failure
+	Validation                  // well-formed request, domain validation failed (422)
 )
 
 // String returns a stable lowercase name for the kind.
@@ -44,6 +45,8 @@ func (k Kind) String() string {
 		return "rate_limited"
 	case Internal:
 		return "internal"
+	case Validation:
+		return "validation"
 	default:
 		return "unknown"
 	}

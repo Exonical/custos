@@ -11,13 +11,17 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
 	"path"
 	"strings"
+	"time"
 
 	"github.com/getkin/kin-openapi/openapi3"
+	"github.com/oapi-codegen/runtime"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
 // Defines values for CheckResultStatus.
@@ -53,6 +57,102 @@ func (e HealthStatusStatus) Valid() bool {
 	}
 }
 
+// Defines values for MemberAddRoles.
+const (
+	MemberAddRolesAuditor        MemberAddRoles = "auditor"
+	MemberAddRolesResearcher     MemberAddRoles = "researcher"
+	MemberAddRolesTenantAdmin    MemberAddRoles = "tenant-admin"
+	MemberAddRolesTenantOperator MemberAddRoles = "tenant-operator"
+	MemberAddRolesViewer         MemberAddRoles = "viewer"
+	MemberAddRolesWorkflowAuthor MemberAddRoles = "workflow-author"
+)
+
+// Valid indicates whether the value is a known member of the MemberAddRoles enum.
+func (e MemberAddRoles) Valid() bool {
+	switch e {
+	case MemberAddRolesAuditor:
+		return true
+	case MemberAddRolesResearcher:
+		return true
+	case MemberAddRolesTenantAdmin:
+		return true
+	case MemberAddRolesTenantOperator:
+		return true
+	case MemberAddRolesViewer:
+		return true
+	case MemberAddRolesWorkflowAuthor:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for MemberUpdateRoles.
+const (
+	MemberUpdateRolesAuditor        MemberUpdateRoles = "auditor"
+	MemberUpdateRolesResearcher     MemberUpdateRoles = "researcher"
+	MemberUpdateRolesTenantAdmin    MemberUpdateRoles = "tenant-admin"
+	MemberUpdateRolesTenantOperator MemberUpdateRoles = "tenant-operator"
+	MemberUpdateRolesViewer         MemberUpdateRoles = "viewer"
+	MemberUpdateRolesWorkflowAuthor MemberUpdateRoles = "workflow-author"
+)
+
+// Valid indicates whether the value is a known member of the MemberUpdateRoles enum.
+func (e MemberUpdateRoles) Valid() bool {
+	switch e {
+	case MemberUpdateRolesAuditor:
+		return true
+	case MemberUpdateRolesResearcher:
+		return true
+	case MemberUpdateRolesTenantAdmin:
+		return true
+	case MemberUpdateRolesTenantOperator:
+		return true
+	case MemberUpdateRolesViewer:
+		return true
+	case MemberUpdateRolesWorkflowAuthor:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for MembershipSource.
+const (
+	Idp    MembershipSource = "idp"
+	Manual MembershipSource = "manual"
+)
+
+// Valid indicates whether the value is a known member of the MembershipSource enum.
+func (e MembershipSource) Valid() bool {
+	switch e {
+	case Idp:
+		return true
+	case Manual:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PrincipalKind.
+const (
+	Service PrincipalKind = "service"
+	User    PrincipalKind = "user"
+)
+
+// Valid indicates whether the value is a known member of the PrincipalKind enum.
+func (e PrincipalKind) Valid() bool {
+	switch e {
+	case Service:
+		return true
+	case User:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ReadyStatusStatus.
 const (
 	ReadyStatusStatusDegraded    ReadyStatusStatus = "degraded"
@@ -74,6 +174,51 @@ func (e ReadyStatusStatus) Valid() bool {
 	}
 }
 
+// Defines values for TenantState.
+const (
+	TenantStateActive       TenantState = "active"
+	TenantStateDeleted      TenantState = "deleted"
+	TenantStateDeleting     TenantState = "deleting"
+	TenantStateProvisioning TenantState = "provisioning"
+	TenantStateSuspended    TenantState = "suspended"
+)
+
+// Valid indicates whether the value is a known member of the TenantState enum.
+func (e TenantState) Valid() bool {
+	switch e {
+	case TenantStateActive:
+		return true
+	case TenantStateDeleted:
+		return true
+	case TenantStateDeleting:
+		return true
+	case TenantStateProvisioning:
+		return true
+	case TenantStateSuspended:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TenantUpdateState.
+const (
+	TenantUpdateStateActive    TenantUpdateState = "active"
+	TenantUpdateStateSuspended TenantUpdateState = "suspended"
+)
+
+// Valid indicates whether the value is a known member of the TenantUpdateState enum.
+func (e TenantUpdateState) Valid() bool {
+	switch e {
+	case TenantUpdateStateActive:
+		return true
+	case TenantUpdateStateSuspended:
+		return true
+	default:
+		return false
+	}
+}
+
 // CheckResult defines model for CheckResult.
 type CheckResult struct {
 	LatencyMs int               `json:"latency_ms"`
@@ -84,6 +229,20 @@ type CheckResult struct {
 // CheckResultStatus defines model for CheckResult.Status.
 type CheckResultStatus string
 
+// Error defines model for Error.
+type Error struct {
+	Error struct {
+		// Code Stable machine-readable error code.
+		Code    string `json:"code"`
+		Details *[]struct {
+			Field  string `json:"field"`
+			Reason string `json:"reason"`
+		} `json:"details,omitempty"`
+		Message   string  `json:"message"`
+		RequestId *string `json:"request_id,omitempty"`
+	} `json:"error"`
+}
+
 // HealthStatus defines model for HealthStatus.
 type HealthStatus struct {
 	Status HealthStatusStatus `json:"status"`
@@ -91,6 +250,72 @@ type HealthStatus struct {
 
 // HealthStatusStatus defines model for HealthStatus.Status.
 type HealthStatusStatus string
+
+// Me defines model for Me.
+type Me struct {
+	Memberships   []MembershipRef    `json:"memberships"`
+	PlatformRoles []string           `json:"platform_roles"`
+	Principal     Principal          `json:"principal"`
+	UserId        openapi_types.UUID `json:"user_id"`
+}
+
+// MemberAdd defines model for MemberAdd.
+type MemberAdd struct {
+	Roles  []MemberAddRoles   `json:"roles"`
+	UserId openapi_types.UUID `json:"user_id"`
+}
+
+// MemberAddRoles defines model for MemberAdd.Roles.
+type MemberAddRoles string
+
+// MemberUpdate defines model for MemberUpdate.
+type MemberUpdate struct {
+	Roles []MemberUpdateRoles `json:"roles"`
+}
+
+// MemberUpdateRoles defines model for MemberUpdate.Roles.
+type MemberUpdateRoles string
+
+// Membership defines model for Membership.
+type Membership struct {
+	CreatedAt time.Time          `json:"created_at"`
+	Roles     []string           `json:"roles"`
+	Source    MembershipSource   `json:"source"`
+	TenantId  openapi_types.UUID `json:"tenant_id"`
+	UpdatedAt time.Time          `json:"updated_at"`
+	UserId    openapi_types.UUID `json:"user_id"`
+}
+
+// MembershipSource defines model for Membership.Source.
+type MembershipSource string
+
+// MembershipList defines model for MembershipList.
+type MembershipList struct {
+	Items      []Membership `json:"items"`
+	NextCursor *string      `json:"next_cursor,omitempty"`
+}
+
+// MembershipRef defines model for MembershipRef.
+type MembershipRef struct {
+	Name     string             `json:"name"`
+	Roles    []string           `json:"roles"`
+	Slug     string             `json:"slug"`
+	TenantId openapi_types.UUID `json:"tenant_id"`
+}
+
+// Principal defines model for Principal.
+type Principal struct {
+	Email   *string       `json:"email,omitempty"`
+	Groups  *[]string     `json:"groups,omitempty"`
+	Issuer  string        `json:"issuer"`
+	Kind    PrincipalKind `json:"kind"`
+	Name    *string       `json:"name,omitempty"`
+	Scopes  *[]string     `json:"scopes,omitempty"`
+	Subject string        `json:"subject"`
+}
+
+// PrincipalKind defines model for Principal.Kind.
+type PrincipalKind string
 
 // ReadyStatus defines model for ReadyStatus.
 type ReadyStatus struct {
@@ -101,6 +326,84 @@ type ReadyStatus struct {
 // ReadyStatusStatus defines model for ReadyStatus.Status.
 type ReadyStatusStatus string
 
+// Tenant defines model for Tenant.
+type Tenant struct {
+	CreatedAt        time.Time              `json:"created_at"`
+	Id               openapi_types.UUID     `json:"id"`
+	Name             string                 `json:"name"`
+	OpenbaoNamespace *string                `json:"openbao_namespace,omitempty"`
+	Settings         map[string]interface{} `json:"settings"`
+	Slug             string                 `json:"slug"`
+	State            TenantState            `json:"state"`
+	UpdatedAt        time.Time              `json:"updated_at"`
+	Version          int                    `json:"version"`
+}
+
+// TenantState defines model for Tenant.State.
+type TenantState string
+
+// TenantCreate defines model for TenantCreate.
+type TenantCreate struct {
+	Name     string                  `json:"name"`
+	Settings *map[string]interface{} `json:"settings,omitempty"`
+	Slug     string                  `json:"slug"`
+}
+
+// TenantList defines model for TenantList.
+type TenantList struct {
+	Items      []Tenant `json:"items"`
+	NextCursor *string  `json:"next_cursor,omitempty"`
+}
+
+// TenantUpdate defines model for TenantUpdate.
+type TenantUpdate struct {
+	Name     *string                 `json:"name,omitempty"`
+	Settings *map[string]interface{} `json:"settings,omitempty"`
+	State    *TenantUpdateState      `json:"state,omitempty"`
+	Version  int                     `json:"version"`
+}
+
+// TenantUpdateState defines model for TenantUpdate.State.
+type TenantUpdateState string
+
+// Cursor defines model for Cursor.
+type Cursor = string
+
+// Limit defines model for Limit.
+type Limit = int
+
+// TenantSlug defines model for TenantSlug.
+type TenantSlug = string
+
+// UserRef defines model for UserRef.
+type UserRef = openapi_types.UUID
+
+// ListTenantsParams defines parameters for ListTenants.
+type ListTenantsParams struct {
+	// Cursor Opaque keyset cursor from a previous list response.
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ListMembersParams defines parameters for ListMembers.
+type ListMembersParams struct {
+	// Cursor Opaque keyset cursor from a previous list response.
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// CreateTenantJSONRequestBody defines body for CreateTenant for application/json ContentType.
+type CreateTenantJSONRequestBody = TenantCreate
+
+// UpdateTenantJSONRequestBody defines body for UpdateTenant for application/json ContentType.
+type UpdateTenantJSONRequestBody = TenantUpdate
+
+// AddMemberJSONRequestBody defines body for AddMember for application/json ContentType.
+type AddMemberJSONRequestBody = MemberAdd
+
+// UpdateMemberJSONRequestBody defines body for UpdateMember for application/json ContentType.
+type UpdateMemberJSONRequestBody = MemberUpdate
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// HealthLive Liveness probe
@@ -109,9 +412,36 @@ type ServerInterface interface {
 	// HealthReady Readiness probe
 	// (GET /health/ready)
 	HealthReady(w http.ResponseWriter, r *http.Request)
+	// GetMe The authenticated principal
+	// (GET /me)
+	GetMe(w http.ResponseWriter, r *http.Request)
 	// OpenapiSpec This OpenAPI document, as JSON
 	// (GET /openapi.json)
 	OpenapiSpec(w http.ResponseWriter, r *http.Request)
+	// ListTenants List tenants (platform)
+	// (GET /tenants)
+	ListTenants(w http.ResponseWriter, r *http.Request, params ListTenantsParams)
+	// CreateTenant Create a tenant (platform)
+	// (POST /tenants)
+	CreateTenant(w http.ResponseWriter, r *http.Request)
+	// GetTenant Get a tenant
+	// (GET /tenants/{tenant})
+	GetTenant(w http.ResponseWriter, r *http.Request, tenant TenantSlug)
+	// UpdateTenant Update a tenant
+	// (PATCH /tenants/{tenant})
+	UpdateTenant(w http.ResponseWriter, r *http.Request, tenant TenantSlug)
+	// ListMembers List tenant members
+	// (GET /tenants/{tenant}/members)
+	ListMembers(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params ListMembersParams)
+	// AddMember Add a tenant member
+	// (POST /tenants/{tenant}/members)
+	AddMember(w http.ResponseWriter, r *http.Request, tenant TenantSlug)
+	// RemoveMember Remove a tenant member
+	// (DELETE /tenants/{tenant}/members/{user})
+	RemoveMember(w http.ResponseWriter, r *http.Request, tenant TenantSlug, user UserRef)
+	// UpdateMember Replace a member's roles
+	// (PATCH /tenants/{tenant}/members/{user})
+	UpdateMember(w http.ResponseWriter, r *http.Request, tenant TenantSlug, user UserRef)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -151,11 +481,288 @@ func (siw *ServerInterfaceWrapper) HealthReady(w http.ResponseWriter, r *http.Re
 	handler.ServeHTTP(w, r)
 }
 
+// GetMe operation middleware
+func (siw *ServerInterfaceWrapper) GetMe(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetMe(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // OpenapiSpec operation middleware
 func (siw *ServerInterfaceWrapper) OpenapiSpec(w http.ResponseWriter, r *http.Request) {
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.OpenapiSpec(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListTenants operation middleware
+func (siw *ServerInterfaceWrapper) ListTenants(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListTenantsParams
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListTenants(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateTenant operation middleware
+func (siw *ServerInterfaceWrapper) CreateTenant(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateTenant(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetTenant operation middleware
+func (siw *ServerInterfaceWrapper) GetTenant(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetTenant(w, r, tenant)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateTenant operation middleware
+func (siw *ServerInterfaceWrapper) UpdateTenant(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateTenant(w, r, tenant)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListMembers operation middleware
+func (siw *ServerInterfaceWrapper) ListMembers(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListMembersParams
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListMembers(w, r, tenant, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AddMember operation middleware
+func (siw *ServerInterfaceWrapper) AddMember(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AddMember(w, r, tenant)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RemoveMember operation middleware
+func (siw *ServerInterfaceWrapper) RemoveMember(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "user" -------------
+	var user UserRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "user", r.PathValue("user"), &user, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "user", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RemoveMember(w, r, tenant, user)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateMember operation middleware
+func (siw *ServerInterfaceWrapper) UpdateMember(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "user" -------------
+	var user UserRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "user", r.PathValue("user"), &user, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "user", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateMember(w, r, tenant, user)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -288,6 +895,15 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/openapi.json", wrapper.OpenapiSpec)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/health/live", wrapper.HealthLive)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/health/ready", wrapper.HealthReady)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/me", wrapper.GetMe)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/tenants", wrapper.ListTenants)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/tenants", wrapper.CreateTenant)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/tenants/{tenant}", wrapper.GetTenant)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/tenants/{tenant}", wrapper.UpdateTenant)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/tenants/{tenant}/members", wrapper.ListMembers)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/tenants/{tenant}/members", wrapper.AddMember)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/tenants/{tenant}/members/{user}", wrapper.RemoveMember)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/tenants/{tenant}/members/{user}", wrapper.UpdateMember)
 
 	return m
 }
@@ -348,6 +964,41 @@ func (response HealthReady503JSONResponse) VisitHealthReadyResponse(w http.Respo
 	return err
 }
 
+type GetMeRequestObject struct {
+}
+
+type GetMeResponseObject interface {
+	VisitGetMeResponse(w http.ResponseWriter) error
+}
+
+type GetMe200JSONResponse Me
+
+func (response GetMe200JSONResponse) VisitGetMeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMe401JSONResponse Error
+
+func (response GetMe401JSONResponse) VisitGetMeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type OpenapiSpecRequestObject struct {
 }
 
@@ -369,6 +1020,490 @@ func (response OpenapiSpec200JSONResponse) VisitOpenapiSpecResponse(w http.Respo
 	return err
 }
 
+type ListTenantsRequestObject struct {
+	Params ListTenantsParams
+}
+
+type ListTenantsResponseObject interface {
+	VisitListTenantsResponse(w http.ResponseWriter) error
+}
+
+type ListTenants200JSONResponse TenantList
+
+func (response ListTenants200JSONResponse) VisitListTenantsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListTenants401JSONResponse Error
+
+func (response ListTenants401JSONResponse) VisitListTenantsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListTenants403JSONResponse Error
+
+func (response ListTenants403JSONResponse) VisitListTenantsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTenantRequestObject struct {
+	Body *CreateTenantJSONRequestBody
+}
+
+type CreateTenantResponseObject interface {
+	VisitCreateTenantResponse(w http.ResponseWriter) error
+}
+
+type CreateTenant201JSONResponse Tenant
+
+func (response CreateTenant201JSONResponse) VisitCreateTenantResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTenant401JSONResponse Error
+
+func (response CreateTenant401JSONResponse) VisitCreateTenantResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTenant403JSONResponse Error
+
+func (response CreateTenant403JSONResponse) VisitCreateTenantResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTenant409JSONResponse Error
+
+func (response CreateTenant409JSONResponse) VisitCreateTenantResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTenantRequestObject struct {
+	Tenant TenantSlug `json:"tenant"`
+}
+
+type GetTenantResponseObject interface {
+	VisitGetTenantResponse(w http.ResponseWriter) error
+}
+
+type GetTenant200JSONResponse Tenant
+
+func (response GetTenant200JSONResponse) VisitGetTenantResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTenant401JSONResponse Error
+
+func (response GetTenant401JSONResponse) VisitGetTenantResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTenant404JSONResponse Error
+
+func (response GetTenant404JSONResponse) VisitGetTenantResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateTenantRequestObject struct {
+	Tenant TenantSlug `json:"tenant"`
+	Body   *UpdateTenantJSONRequestBody
+}
+
+type UpdateTenantResponseObject interface {
+	VisitUpdateTenantResponse(w http.ResponseWriter) error
+}
+
+type UpdateTenant200JSONResponse Tenant
+
+func (response UpdateTenant200JSONResponse) VisitUpdateTenantResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateTenant401JSONResponse Error
+
+func (response UpdateTenant401JSONResponse) VisitUpdateTenantResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateTenant404JSONResponse Error
+
+func (response UpdateTenant404JSONResponse) VisitUpdateTenantResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateTenant409JSONResponse Error
+
+func (response UpdateTenant409JSONResponse) VisitUpdateTenantResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListMembersRequestObject struct {
+	Tenant TenantSlug `json:"tenant"`
+	Params ListMembersParams
+}
+
+type ListMembersResponseObject interface {
+	VisitListMembersResponse(w http.ResponseWriter) error
+}
+
+type ListMembers200JSONResponse MembershipList
+
+func (response ListMembers200JSONResponse) VisitListMembersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListMembers401JSONResponse Error
+
+func (response ListMembers401JSONResponse) VisitListMembersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListMembers404JSONResponse Error
+
+func (response ListMembers404JSONResponse) VisitListMembersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AddMemberRequestObject struct {
+	Tenant TenantSlug `json:"tenant"`
+	Body   *AddMemberJSONRequestBody
+}
+
+type AddMemberResponseObject interface {
+	VisitAddMemberResponse(w http.ResponseWriter) error
+}
+
+type AddMember201JSONResponse Membership
+
+func (response AddMember201JSONResponse) VisitAddMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AddMember401JSONResponse Error
+
+func (response AddMember401JSONResponse) VisitAddMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AddMember404JSONResponse Error
+
+func (response AddMember404JSONResponse) VisitAddMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AddMember422JSONResponse Error
+
+func (response AddMember422JSONResponse) VisitAddMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveMemberRequestObject struct {
+	Tenant TenantSlug `json:"tenant"`
+	User   UserRef    `json:"user"`
+}
+
+type RemoveMemberResponseObject interface {
+	VisitRemoveMemberResponse(w http.ResponseWriter) error
+}
+
+type RemoveMember204Response struct {
+}
+
+func (response RemoveMember204Response) VisitRemoveMemberResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type RemoveMember401JSONResponse Error
+
+func (response RemoveMember401JSONResponse) VisitRemoveMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveMember404JSONResponse Error
+
+func (response RemoveMember404JSONResponse) VisitRemoveMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveMember409JSONResponse Error
+
+func (response RemoveMember409JSONResponse) VisitRemoveMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateMemberRequestObject struct {
+	Tenant TenantSlug `json:"tenant"`
+	User   UserRef    `json:"user"`
+	Body   *UpdateMemberJSONRequestBody
+}
+
+type UpdateMemberResponseObject interface {
+	VisitUpdateMemberResponse(w http.ResponseWriter) error
+}
+
+type UpdateMember200JSONResponse Membership
+
+func (response UpdateMember200JSONResponse) VisitUpdateMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateMember401JSONResponse Error
+
+func (response UpdateMember401JSONResponse) VisitUpdateMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateMember404JSONResponse Error
+
+func (response UpdateMember404JSONResponse) VisitUpdateMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateMember409JSONResponse Error
+
+func (response UpdateMember409JSONResponse) VisitUpdateMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateMember422JSONResponse Error
+
+func (response UpdateMember422JSONResponse) VisitUpdateMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// HealthLive Liveness probe
@@ -377,9 +1512,36 @@ type StrictServerInterface interface {
 	// HealthReady Readiness probe
 	// (GET /health/ready)
 	HealthReady(ctx context.Context, request HealthReadyRequestObject) (HealthReadyResponseObject, error)
+	// GetMe The authenticated principal
+	// (GET /me)
+	GetMe(ctx context.Context, request GetMeRequestObject) (GetMeResponseObject, error)
 	// OpenapiSpec This OpenAPI document, as JSON
 	// (GET /openapi.json)
 	OpenapiSpec(ctx context.Context, request OpenapiSpecRequestObject) (OpenapiSpecResponseObject, error)
+	// ListTenants List tenants (platform)
+	// (GET /tenants)
+	ListTenants(ctx context.Context, request ListTenantsRequestObject) (ListTenantsResponseObject, error)
+	// CreateTenant Create a tenant (platform)
+	// (POST /tenants)
+	CreateTenant(ctx context.Context, request CreateTenantRequestObject) (CreateTenantResponseObject, error)
+	// GetTenant Get a tenant
+	// (GET /tenants/{tenant})
+	GetTenant(ctx context.Context, request GetTenantRequestObject) (GetTenantResponseObject, error)
+	// UpdateTenant Update a tenant
+	// (PATCH /tenants/{tenant})
+	UpdateTenant(ctx context.Context, request UpdateTenantRequestObject) (UpdateTenantResponseObject, error)
+	// ListMembers List tenant members
+	// (GET /tenants/{tenant}/members)
+	ListMembers(ctx context.Context, request ListMembersRequestObject) (ListMembersResponseObject, error)
+	// AddMember Add a tenant member
+	// (POST /tenants/{tenant}/members)
+	AddMember(ctx context.Context, request AddMemberRequestObject) (AddMemberResponseObject, error)
+	// RemoveMember Remove a tenant member
+	// (DELETE /tenants/{tenant}/members/{user})
+	RemoveMember(ctx context.Context, request RemoveMemberRequestObject) (RemoveMemberResponseObject, error)
+	// UpdateMember Replace a member's roles
+	// (PATCH /tenants/{tenant}/members/{user})
+	UpdateMember(ctx context.Context, request UpdateMemberRequestObject) (UpdateMemberResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -469,6 +1631,30 @@ func (sh *strictHandler) HealthReady(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// GetMe operation middleware
+func (sh *strictHandler) GetMe(w http.ResponseWriter, r *http.Request) {
+	var request GetMeRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetMe(ctx, request.(GetMeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetMe")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetMeResponseObject); ok {
+		if err := validResponse.VisitGetMeResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // OpenapiSpec operation middleware
 func (sh *strictHandler) OpenapiSpec(w http.ResponseWriter, r *http.Request) {
 	var request OpenapiSpecRequestObject
@@ -493,23 +1679,283 @@ func (sh *strictHandler) OpenapiSpec(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// ListTenants operation middleware
+func (sh *strictHandler) ListTenants(w http.ResponseWriter, r *http.Request, params ListTenantsParams) {
+	var request ListTenantsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListTenants(ctx, request.(ListTenantsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListTenants")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListTenantsResponseObject); ok {
+		if err := validResponse.VisitListTenantsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateTenant operation middleware
+func (sh *strictHandler) CreateTenant(w http.ResponseWriter, r *http.Request) {
+	var request CreateTenantRequestObject
+
+	var body CreateTenantJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateTenant(ctx, request.(CreateTenantRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateTenant")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateTenantResponseObject); ok {
+		if err := validResponse.VisitCreateTenantResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetTenant operation middleware
+func (sh *strictHandler) GetTenant(w http.ResponseWriter, r *http.Request, tenant TenantSlug) {
+	var request GetTenantRequestObject
+
+	request.Tenant = tenant
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetTenant(ctx, request.(GetTenantRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetTenant")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetTenantResponseObject); ok {
+		if err := validResponse.VisitGetTenantResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateTenant operation middleware
+func (sh *strictHandler) UpdateTenant(w http.ResponseWriter, r *http.Request, tenant TenantSlug) {
+	var request UpdateTenantRequestObject
+
+	request.Tenant = tenant
+
+	var body UpdateTenantJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateTenant(ctx, request.(UpdateTenantRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateTenant")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateTenantResponseObject); ok {
+		if err := validResponse.VisitUpdateTenantResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListMembers operation middleware
+func (sh *strictHandler) ListMembers(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params ListMembersParams) {
+	var request ListMembersRequestObject
+
+	request.Tenant = tenant
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListMembers(ctx, request.(ListMembersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListMembers")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListMembersResponseObject); ok {
+		if err := validResponse.VisitListMembersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// AddMember operation middleware
+func (sh *strictHandler) AddMember(w http.ResponseWriter, r *http.Request, tenant TenantSlug) {
+	var request AddMemberRequestObject
+
+	request.Tenant = tenant
+
+	var body AddMemberJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.AddMember(ctx, request.(AddMemberRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "AddMember")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(AddMemberResponseObject); ok {
+		if err := validResponse.VisitAddMemberResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RemoveMember operation middleware
+func (sh *strictHandler) RemoveMember(w http.ResponseWriter, r *http.Request, tenant TenantSlug, user UserRef) {
+	var request RemoveMemberRequestObject
+
+	request.Tenant = tenant
+	request.User = user
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RemoveMember(ctx, request.(RemoveMemberRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RemoveMember")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RemoveMemberResponseObject); ok {
+		if err := validResponse.VisitRemoveMemberResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateMember operation middleware
+func (sh *strictHandler) UpdateMember(w http.ResponseWriter, r *http.Request, tenant TenantSlug, user UserRef) {
+	var request UpdateMemberRequestObject
+
+	request.Tenant = tenant
+	request.User = user
+
+	var body UpdateMemberJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateMember(ctx, request.(UpdateMemberRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateMember")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateMemberResponseObject); ok {
+		if err := validResponse.VisitUpdateMemberResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // Base64 encoded, compressed with deflate, json marshaled OpenAPI spec.
 // Stored as a slice of fixed-width chunks rather than one concatenated
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"vFRNb+M2EP0rg2kPLaBK3hpFUd0CF8W6XzHi5LQJFhNqLHNNkVwO5UII/N8LUnZiJ25doGhPFs35eG/e",
-	"Gz6hcp13lm0UrJ9Q1Jo7yp+zNavNDUtvYjr64DyHqDlfGops1fCxy6c4eMYatY3ccsBdgZY6PrqRGLRt",
-	"04VEin1OYtt3WH9At8ECV6QNPhSv43cFBv7c68BNCs1Vn2sUxyhect3jJ1Yx9XrPZOJ6+dzxlMJZJBch",
-	"7LPOtbthaoa/6qbSNPOXjjxO7cvAK6zxi+pFgmo//+p4+LvnXhQCDX8zxYbbQA03WGBvaUva0KPhf0yq",
-	"OKB8yy5laLtyqWXDooL2UTuLNf7Wm6i/iWzJRliaPnTQUuQ/aIAK3i9moJyNwRnwhiyXMHN2yzYlC3gO",
-	"97ZxSiryuuyaGn5eXv9egFja8EdFwrDSbBop4OanGUyn0x/g7nYGUXcskTovxb3d8CAcwVOrLaW6sNUE",
-	"ztPnnkH1QVyQAu7u5j9uvwfdpN4rzUHKe4sFRh1NIjrrJTqBq8UcC9xykJHdpHxXTtLEnWdLXmON0/xX",
-	"gZ7iOktQrbPPKqO32fMt54VJ6mc88wbrvRd/TSFp9uKdldEZ304m6SeNiW3OJO+NVjm3+iTOvizmJduc",
-	"OD6LdirWIjjFIqAFKMEtsxWk7zoKA9aY8NkU4IN7TEgjtZIcMlLEhxR+4BuS3y8QzjvxXzI+XrozhK+M",
-	"gYPToWHPtmGrNAtc/wJfHfYF9AqcNQO4nEcGxkWA9Cx9XSb9v5tM/zfMZxAPoEc02ravRUvl9GXV9g4u",
-	"D1jPqnY9Bi09q3+r2pkX5JTn7Zoh9btazKFxqu/Yxtfcbtda3gQVQJJfirGqcEgLi/WHJ+yDwRrTc1Jt",
-	"3+HuYffnAA==",
+	"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",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

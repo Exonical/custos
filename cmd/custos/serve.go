@@ -16,12 +16,18 @@ import (
 	"github.com/Exonical/custos/internal/api"
 	"github.com/Exonical/custos/internal/audit"
 	"github.com/Exonical/custos/internal/audit/pgaudit"
+	"github.com/Exonical/custos/internal/authn"
+	"github.com/Exonical/custos/internal/authz"
 	"github.com/Exonical/custos/internal/platform/config"
 	"github.com/Exonical/custos/internal/platform/db"
 	"github.com/Exonical/custos/internal/platform/health"
 	"github.com/Exonical/custos/internal/platform/httpx"
 	"github.com/Exonical/custos/internal/platform/log"
 	"github.com/Exonical/custos/internal/platform/otel"
+	tenantpg "github.com/Exonical/custos/internal/tenants/postgres"
+	tenantsvc "github.com/Exonical/custos/internal/tenants/service"
+	"github.com/Exonical/custos/internal/users"
+	userpg "github.com/Exonical/custos/internal/users/postgres"
 )
 
 func cmdServe(parent context.Context, configPath string, lookupEnv config.LookupEnv, stderr io.Writer) int {
@@ -81,8 +87,39 @@ func cmdServe(parent context.Context, configPath string, lookupEnv config.Lookup
 		return 1
 	}
 
+	// Bearer verification: real OIDC verifier when configured or required;
+	// DenyAll in dev_mode without an issuer so bearer routes fail closed.
+	var verifier authn.Verifier = authn.DenyAll{}
+	if !cfg.DevMode || cfg.Auth.OIDC.Issuer != "" {
+		v, err := authn.NewOIDCVerifier(ctx, cfg.Auth.OIDC, nil, logger)
+		if err != nil {
+			logger.ErrorContext(ctx, "oidc verifier setup", "error", err)
+			return 1
+		}
+		defer v.Close()
+		reg.Register(v, true)
+		verifier = v
+	} else {
+		logger.WarnContext(ctx,
+			"authentication disabled: dev_mode without auth.oidc.issuer")
+	}
+
+	userRepo := userpg.New(pool)
+	tenantRepo := tenantpg.New(pool)
+	provisioner := users.NewService(userRepo, recorder)
+	tenantSvc := tenantsvc.NewService(tenantRepo, userRepo, authz.RBAC{}, recorder)
+
 	mux := http.NewServeMux()
-	api.Mount(mux, api.Deps{Health: reg, ReadyBudget: 500 * time.Millisecond, Logger: logger})
+	api.Mount(mux, api.Deps{
+		Health:      reg,
+		ReadyBudget: 500 * time.Millisecond,
+		Logger:      logger,
+		Verifier:    verifier,
+		Provisioner: provisioner,
+		Audit:       recorder,
+		Tenants:     tenantSvc,
+		TenantRepo:  tenantRepo,
+	})
 
 	handler := otel.Instrument(httpx.Chain(
 		httpx.Recover(logger),

@@ -51,7 +51,7 @@ tenant.read                tenant.manage         tenant.members.manage
 project.read               project.create        project.manage   project.members.manage
 cluster.read               cluster.manage        cluster.assign
 policy.read                policy.manage
-workflow.read              workflow.create       workflow.publish  workflow.execute  workflow.approve  workflow.shell
+workflow.read              workflow.create       workflow.publish  workflow.execute  workflow.approve
 execution.read.self        execution.read.tenant execution.cancel.self  execution.cancel.any
 job.submit                 job.read.self         job.read.tenant   job.cancel.self   job.cancel.any
 secret.reference.read      secret.reference.create  secret.reference.use
@@ -61,9 +61,10 @@ audit.read.tenant
 
 `*.self` permissions are satisfied only when `resource.OwnerID == principal.UserID`.
 
-`workflow.shell` gates authoring/publishing a version containing `type: shell`
-tasks. It is necessary but not sufficient: the effective `ValidationPolicy`
-must also set `allowShellTasks: true` (see "Policy vs authorization" below).
+Shell tasks (`type: shell`) in workflows are gated by `workflow.publish`
+plus the tenant `ValidationPolicy` flag `allowShellTasks: true`
+(`docs/script-validation.md`); there is no separate `workflow.shell`
+permission.
 Script validation endpoints require `workflow.create` (mutating) or
 `workflow.read` (reading results); legacy `#SBATCH` import additionally
 requires the tenant `ValidationPolicy` flag `allowLegacySbatchImport`
@@ -91,10 +92,10 @@ platform-admin   : platform.manage + everything
 platform-auditor : platform.audit.read, *.read.* (all tenants), audit.read.tenant
 tenant-admin     : tenant.*, project.*, policy.*, workflow.*, execution.*.any, job.*.any, secret.reference.*, accounting.read.tenant, audit.read.tenant
 tenant-operator  : tenant.read, project.read, cluster.read, job.read.tenant, job.cancel.any, execution.read.tenant, execution.cancel.any, accounting.read.tenant
-workflow-author  : workflow.read/create/publish/shell, secret.reference.read/use, + researcher
-researcher       : project.read, cluster.read, workflow.read, workflow.execute, job.submit, job.read.self, job.cancel.self, execution.*.self, accounting.read.self, secret.reference.use
+workflow-author  : workflow.read/create/publish, secret.reference.read/use, + researcher
+researcher       : tenant.read, project.read, cluster.read, workflow.read, workflow.execute, job.submit, job.read.self, job.cancel.self, execution.*.self, accounting.read.self, secret.reference.use
 viewer           : *.read.self, tenant.read, project.read, cluster.read, workflow.read
-auditor          : audit.read.tenant, accounting.read.tenant, *.read.tenant
+auditor          : tenant.read, project.read, cluster.read, workflow.read, audit.read.tenant, accounting.read.tenant, *.read.tenant
 project-admin    : project.manage, project.members.manage (on that project) + project-member
 project-member   : workflow.execute, job.submit (scoped to the project's bindings)
 ```

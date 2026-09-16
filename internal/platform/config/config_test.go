@@ -164,6 +164,7 @@ func TestValidateFailClosed(t *testing.T) {
 		{"issuer https required", map[string]string{"CUSTOS_AUTH__OIDC__ISSUER": "http://idp", "CUSTOS_DEV_MODE": "false", "CUSTOS_SERVER__TLS__MODE": "upstream", "CUSTOS_METRICS__TLS__MODE": "upstream", "CUSTOS_DATABASE__SSL_MODE": "require"}, nil, "auth.oidc.issuer"},
 		{"issuer query", map[string]string{"CUSTOS_AUTH__OIDC__ISSUER": "https://idp?x=1"}, nil, "auth.oidc.issuer"},
 		{"audiences required", map[string]string{"CUSTOS_DEV_MODE": "false", "CUSTOS_SERVER__TLS__MODE": "upstream", "CUSTOS_METRICS__TLS__MODE": "upstream", "CUSTOS_DATABASE__SSL_MODE": "require"}, []string{"CUSTOS_AUTH__OIDC__AUDIENCES"}, "auth.oidc.audiences"},
+		{"audiences required in dev when issuer set", nil, []string{"CUSTOS_AUTH__OIDC__AUDIENCES"}, "auth.oidc.audiences"},
 		{"bad algorithm", map[string]string{"CUSTOS_AUTH__OIDC__ALLOWED_ALGORITHMS": "HS256"}, nil, "auth.oidc.allowed_algorithms[0]"},
 		{"bad log level", map[string]string{"CUSTOS_LOG__LEVEL": "shout"}, nil, "log.level"},
 		{"otlp needs endpoint", map[string]string{"CUSTOS_TELEMETRY__EXPORTER": "otlp"}, nil, "telemetry.endpoint"},

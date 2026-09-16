@@ -26,13 +26,36 @@ linters:
       rules:
         domain-purity:
           list-mode: lax
+          # authn is excluded: the bearer middleware and JWKS client
+          # legitimately use net/http. */postgres/ adapters are excluded
+          # here (they exist to hold the pgx boundary) and get their own
+          # rule below.
           files:
-            - "**/internal/{authn,authz,tenants,users,projects,clusters,policy,workflows,executions,jobs,scripts,validation,admission,submission,accounting}/**"
+            - "**/internal/{authz,tenants,users,projects,clusters,policy,workflows,executions,jobs,scripts,validation,admission,submission,accounting}/**"
+            - "!**/internal/*/postgres/**"
+          deny:
+            - pkg: "github.com/jackc/pgx"
+              desc: "DB access belongs in postgres adapters"
+            - pkg: "github.com/SlinkyProject"
+              desc: "Slurm access belongs in internal/slurm/slinky"
+            - pkg: "github.com/openbao"
+              desc: "secrets access belongs in internal/secrets/openbao"
+        domain-http:
+          list-mode: lax
+          # tenants is excluded: tenants.Require is an HTTP middleware.
+          files:
+            - "**/internal/{authz,users,projects,clusters,policy,workflows,executions,jobs,scripts,validation,admission,submission,accounting}/**"
+            - "!**/internal/*/postgres/**"
           deny:
             - pkg: "net/http"
               desc: "HTTP belongs in internal/api or internal/platform/httpx"
-            - pkg: "github.com/jackc/pgx"
-              desc: "DB access belongs in postgres adapters"
+        adapter-purity:
+          list-mode: lax
+          files:
+            - "**/internal/*/postgres/**"
+          deny:
+            - pkg: "net/http"
+              desc: "adapters must not touch HTTP"
             - pkg: "github.com/SlinkyProject"
               desc: "Slurm access belongs in internal/slurm/slinky"
             - pkg: "github.com/openbao"

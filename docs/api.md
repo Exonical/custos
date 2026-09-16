@@ -41,8 +41,9 @@ responses:
 ```
 
 `total` is provided only when cheap (never for jobs/usage). Cursor is an
-opaque base64url of the keyset (`created_at`, `id`), HMAC-signed to prevent
-tampering.
+opaque base64url of the keyset (`created_at`, `id`). Cursors are strictly
+validated but not signed — they carry no authority; every page is
+re-authorized and re-scoped.
 
 Errors:
 

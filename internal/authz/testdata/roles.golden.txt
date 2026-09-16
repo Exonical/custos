@@ -1,0 +1,13 @@
+auditor: accounting.read.tenant audit.read.tenant cluster.read execution.read.tenant job.read.tenant project.read tenant.read workflow.read
+cluster-operator:
+cluster-user:
+platform-admin: accounting.read.project accounting.read.self accounting.read.tenant audit.read.tenant cluster.assign cluster.manage cluster.read execution.cancel.any execution.cancel.self execution.read.self execution.read.tenant job.cancel.any job.cancel.self job.read.self job.read.tenant job.submit platform.audit.read platform.manage policy.manage policy.read project.create project.manage project.members.manage project.read secret.reference.create secret.reference.read secret.reference.use tenant.manage tenant.members.manage tenant.read workflow.approve workflow.create workflow.execute workflow.publish workflow.read
+platform-auditor: accounting.read.project accounting.read.self accounting.read.tenant audit.read.tenant cluster.read execution.read.self execution.read.tenant job.read.self job.read.tenant platform.audit.read policy.read project.read secret.reference.read tenant.read workflow.read
+project-admin:
+project-member:
+project-viewer:
+researcher: accounting.read.self cluster.read execution.cancel.self execution.read.self job.cancel.self job.read.self job.submit project.read secret.reference.use tenant.read workflow.execute workflow.read
+tenant-admin: accounting.read.project accounting.read.self accounting.read.tenant audit.read.tenant cluster.read execution.cancel.any execution.cancel.self execution.read.self execution.read.tenant job.cancel.any job.cancel.self job.read.self job.read.tenant job.submit policy.manage policy.read project.create project.manage project.members.manage project.read secret.reference.create secret.reference.read secret.reference.use tenant.manage tenant.members.manage tenant.read workflow.approve workflow.create workflow.execute workflow.publish workflow.read
+tenant-operator: accounting.read.tenant cluster.read execution.cancel.any execution.read.tenant job.cancel.any job.read.tenant project.read tenant.read
+viewer: accounting.read.self cluster.read execution.read.self job.read.self project.read tenant.read workflow.read
+workflow-author: accounting.read.self cluster.read execution.cancel.self execution.read.self job.cancel.self job.read.self job.submit project.read secret.reference.read secret.reference.use tenant.read workflow.create workflow.execute workflow.publish workflow.read

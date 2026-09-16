@@ -96,14 +96,29 @@ type Auth struct {
 // OIDC holds relying-party settings. Validated here even though authn
 // ships in a later milestone, so misconfiguration fails at startup.
 type OIDC struct {
-	Issuer              string        `yaml:"issuer" doc:"OIDC issuer URL (https, no query/fragment)"`
-	ClientID            string        `yaml:"client_id" doc:"OIDC client identifier"`
-	ClientSecret        Secret        `yaml:"client_secret" doc:"OIDC client secret"`
-	Audiences           []string      `yaml:"audiences" doc:"Accepted token audiences"`
-	AllowedAlgorithms   []string      `yaml:"allowed_algorithms" doc:"Permitted JWS algorithms"`
-	JWKSRefreshInterval time.Duration `yaml:"jwks_refresh_interval" doc:"JWKS refresh cadence"`
-	ClockSkew           time.Duration `yaml:"clock_skew" doc:"Allowed issuer clock skew"`
-	RedirectURL         string        `yaml:"redirect_url" doc:"OIDC redirect URL for the frontend"`
+	Issuer                 string        `yaml:"issuer" doc:"OIDC issuer URL (https, no query/fragment)"`
+	ClientID               string        `yaml:"client_id" doc:"OIDC client identifier"`
+	ClientSecret           Secret        `yaml:"client_secret" doc:"OIDC client secret"`
+	Audiences              []string      `yaml:"audiences" doc:"Accepted token audiences"`
+	AllowedAlgorithms      []string      `yaml:"allowed_algorithms" doc:"Permitted JWS algorithms"`
+	Discovery              bool          `yaml:"discovery" doc:"Fetch issuer .well-known/openid-configuration for jwks_uri"`
+	JWKSURI                string        `yaml:"jwks_uri" doc:"JWKS endpoint override; required when discovery=false"`
+	JWKSCacheTTL           time.Duration `yaml:"jwks_cache_ttl" doc:"Background JWKS refresh cadence"`
+	JWKSRefreshMinInterval time.Duration `yaml:"jwks_refresh_min_interval" doc:"Min interval between on-demand JWKS refreshes (unknown kid)"`
+	ClockSkew              time.Duration `yaml:"clock_skew" doc:"Allowed issuer clock skew"`
+	RequiredScopes         []string      `yaml:"required_scopes" doc:"Scopes every access token must carry (many IdPs omit openid; default empty)"`
+	AcceptedTokenTypes     []string      `yaml:"accepted_token_types" doc:"Permitted JOSE typ header values (empty string = typ absent)"`
+	MaxTokenLifetime       time.Duration `yaml:"max_token_lifetime" doc:"Max exp-iat; requires iat when > 0"`
+	Claims                 OIDCClaims    `yaml:"claims" doc:"Claim names mapped onto Principal fields"`
+	RedirectURL            string        `yaml:"redirect_url" doc:"OIDC redirect URL for the frontend"`
+}
+
+// OIDCClaims names the JWT claims mapped onto Principal fields.
+type OIDCClaims struct {
+	Subject string `yaml:"subject" doc:"Claim carrying the subject (default sub)"`
+	Email   string `yaml:"email" doc:"Claim carrying the email address"`
+	Name    string `yaml:"name" doc:"Claim carrying the display name"`
+	Groups  string `yaml:"groups" doc:"Claim carrying group memberships (string array)"`
 }
 
 // Telemetry configures OpenTelemetry export.
@@ -157,7 +172,14 @@ func Default() Config {
 	c.Database.SSLMode = "verify-full"
 	c.Database.RequireSCRAM = true
 	c.Auth.OIDC.AllowedAlgorithms = []string{"RS256", "ES256"}
-	c.Auth.OIDC.JWKSRefreshInterval = time.Hour
+	c.Auth.OIDC.Discovery = true
+	c.Auth.OIDC.JWKSCacheTTL = time.Hour
+	c.Auth.OIDC.JWKSRefreshMinInterval = 30 * time.Second
+	c.Auth.OIDC.AcceptedTokenTypes = []string{"at+jwt", "JWT", ""}
+	c.Auth.OIDC.MaxTokenLifetime = 24 * time.Hour
+	c.Auth.OIDC.Claims = OIDCClaims{
+		Subject: "sub", Email: "email", Name: "name", Groups: "groups",
+	}
 	c.Auth.OIDC.ClockSkew = 30 * time.Second
 	c.Telemetry.Exporter = "none"
 	c.Telemetry.SampleRatio = 0.1

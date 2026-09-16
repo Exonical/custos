@@ -44,6 +44,7 @@ var statusByKind = map[apperr.Kind]int{
 	apperr.Conflict:        http.StatusConflict,
 	apperr.RateLimited:     http.StatusTooManyRequests,
 	apperr.Unavailable:     http.StatusServiceUnavailable,
+	apperr.Validation:      http.StatusUnprocessableEntity,
 }
 
 // WriteJSON encodes v with the given status.

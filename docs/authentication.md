@@ -25,10 +25,14 @@ auth:
     client_id: custos-api          # used by BFF; API validates audience below
     audiences: ["custos-api"]      # at least one required; token aud must intersect
     allowed_algorithms: [RS256, ES256]   # allow-list; never none/HS*
-    required_scopes: ["openid"]
+    required_scopes: []            # default empty — many IdPs mint access
+                                   # tokens with no `openid` scope; require
+                                   # only scopes your IdP actually issues
     clock_skew: 30s
     jwks_cache_ttl: 1h
     jwks_refresh_min_interval: 30s # rate-limit for unknown-kid refresh
+    max_token_lifetime: 24h        # exp-iat cap; requires iat when > 0 —
+                                   # tokens without iat are rejected
     claims:
       subject: sub
       email: email
@@ -39,7 +43,13 @@ auth:
 
 Startup validation **fails closed**: missing issuer, empty audiences,
 `alg=none`, any `HS*` algorithm, non-HTTPS issuer (outside explicit dev mode),
-or unreachable discovery (when `discovery: true`) all abort startup.
+or unreachable discovery (when `discovery: true`) all abort startup. With
+`dev_mode: true` and no `issuer`, serve runs with a `DenyAll` verifier —
+every bearer route answers 401 and a loud warning is logged.
+
+Principal `kind` uses a heuristic for now: a token with no email claim
+whose `client_id` (or `azp`) equals `sub` is classed `service`, otherwise
+`user`. This is overridable when richer IdP signals are needed.
 
 ## Token verification (per request)
 
@@ -102,6 +112,26 @@ provisioned as `User` rows with `kind = service` and receive memberships like
 any user. Custos does not mint its own API keys in early milestones; if it
 does later, they will be opaque, hashed at rest, tenant-scoped, and exchanged
 for an internal `Principal` — never JWTs signed by Custos.
+
+## Bootstrapping the first platform-admin
+
+No principal can create the first tenant — `tenant.create` requires
+`platform.manage`, which no one holds until a `platform-admin` binding
+exists. The bootstrap path is the CLI, which talks to the database
+directly (same config/env as `migrate`):
+
+```sh
+custos admin platform-role grant \
+  --issuer https://idp.example.com --subject <sub> --role platform-admin
+custos admin platform-role list --issuer https://idp.example.com --subject <sub>
+custos admin platform-role revoke \
+  --issuer https://idp.example.com --subject <sub> --role platform-admin
+```
+
+`grant` creates the `users` row if needed (kind `user`, no email) and
+records `platform_role.granted` (actor `custos-cli`); `revoke` records
+`platform_role.revoked`. From then on the granted subject can sign in and
+create tenants via the API.
 
 ## What authentication does *not* do
 

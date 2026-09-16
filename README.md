@@ -74,6 +74,16 @@ one-shot `migrate` job as the `custos_migrate` role, `serve`, and a
 `ssl_mode: verify-full`; config lives in `deploy/compose/custos.yaml`
 (dev_mode relaxes only the HTTP listener, never the database path).
 
+With `auth.oidc` configured, bootstrap the first platform admin (nothing
+can create a tenant until one exists):
+
+```sh
+custos admin platform-role grant \
+  --issuer https://idp.example.com --subject <sub> --role platform-admin
+```
+
+See [docs/authentication.md](docs/authentication.md#bootstrapping-the-first-platform-admin).
+
 For Kubernetes, see the Helm skeleton in `deploy/helm/custos`.
 
 ## Development on Windows

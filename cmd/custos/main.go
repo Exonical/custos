@@ -38,8 +38,10 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, lookupEnv
 		return cmdWorker(ctx, *configPath, lookupEnv, stderr)
 	case "migrate":
 		return cmdMigrate(ctx, *configPath, fs.Args()[1:], lookupEnv, stdout, stderr)
+	case "admin":
+		return cmdAdmin(ctx, *configPath, fs.Args()[1:], lookupEnv, stdout, stderr)
 	case "":
-		_, _ = fmt.Fprintln(stderr, "usage: custos [--config path] <serve|worker|migrate|version>")
+		_, _ = fmt.Fprintln(stderr, "usage: custos [--config path] <serve|worker|migrate|admin|version>")
 		return 2
 	default:
 		_, _ = fmt.Fprintf(stderr, "unknown subcommand %q\n", fs.Arg(0))

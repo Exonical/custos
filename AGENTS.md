@@ -35,6 +35,9 @@ design-level behaviour** — the docs are the contract.
 
 - `Makefile` targets exist for CI/Linux; run the underlying commands
   directly on Windows.
+- DB tests each start an embedded PostgreSQL per package binary; on
+  constrained machines bound parallelism with `go test -p 2 ./...`
+  rather than serializing tests.
 - `go test -race` needs cgo/gcc and cannot run on this machine; CI runs it.
 - golangci-lint must be built with go1.27: `go install
   github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2` (the

@@ -88,7 +88,8 @@ func (c Config) Validate() error {
 		{"server.request_timeout", c.Server.RequestTimeout},
 		{"database.statement_timeout", c.Database.StatementTimeout},
 		{"database.connect_timeout", c.Database.ConnectTimeout},
-		{"auth.oidc.jwks_refresh_interval", c.Auth.OIDC.JWKSRefreshInterval},
+		{"auth.oidc.jwks_cache_ttl", c.Auth.OIDC.JWKSCacheTTL},
+		{"auth.oidc.jwks_refresh_min_interval", c.Auth.OIDC.JWKSRefreshMinInterval},
 		{"auth.oidc.clock_skew", c.Auth.OIDC.ClockSkew},
 		{"worker.poll_interval", c.Worker.PollInterval},
 		{"worker.lease_duration", c.Worker.LeaseDuration},
@@ -162,9 +163,9 @@ func (c Config) Validate() error {
 		if o.ClientID == "" {
 			v.fail("auth.oidc.client_id", "required outside dev_mode")
 		}
-		if len(o.Audiences) == 0 {
-			v.fail("auth.oidc.audiences", "at least one required outside dev_mode")
-		}
+	}
+	if o.Issuer != "" && len(o.Audiences) == 0 {
+		v.fail("auth.oidc.audiences", "required when auth.oidc.issuer is set")
 	}
 	if o.Issuer != "" {
 		u, err := url.Parse(o.Issuer)
@@ -184,6 +185,24 @@ func (c Config) Validate() error {
 		if !allowedAlgorithms[a] {
 			v.fail(fmt.Sprintf("auth.oidc.allowed_algorithms[%d]", i), "unsupported algorithm")
 		}
+	}
+	if !o.Discovery && o.JWKSURI == "" {
+		v.fail("auth.oidc.jwks_uri", "required when discovery=false")
+	}
+	if o.JWKSURI != "" {
+		u, err := url.Parse(o.JWKSURI)
+		switch {
+		case err != nil || u.Host == "":
+			v.fail("auth.oidc.jwks_uri", "invalid URL")
+		case u.Scheme != "https" && !c.DevMode:
+			v.fail("auth.oidc.jwks_uri", "must be https outside dev_mode")
+		}
+	}
+	if o.MaxTokenLifetime < 0 {
+		v.fail("auth.oidc.max_token_lifetime", "must be >= 0")
+	}
+	if o.Claims.Subject == "" {
+		v.fail("auth.oidc.claims.subject", "required")
 	}
 
 	v.oneOf("telemetry.exporter", c.Telemetry.Exporter, "none", "otlp")

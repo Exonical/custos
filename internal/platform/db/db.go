@@ -209,11 +209,16 @@ func GrantAppRole(ctx context.Context, pool *pgxpool.Pool, role string) error {
 	q := pgx.Identifier{role}.Sanitize()
 	stmts := []string{
 		"GRANT USAGE ON SCHEMA public TO " + q,
-		"GRANT SELECT, INSERT, UPDATE, DELETE ON work_items TO " + q,
-		"GRANT SELECT, INSERT, UPDATE, DELETE ON idempotency_keys TO " + q,
-		// Grants on a partitioned parent propagate to its partitions.
-		"GRANT SELECT, INSERT ON audit_events TO " + q,
-		"GRANT SELECT, INSERT, UPDATE ON audit_streams TO " + q,
+		// ALL TABLES covers every table present now; grants on the
+		// partitioned parent propagate to partitions. The default
+		// privileges below cover tables the granting role creates later.
+		"GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO " + q,
+		"ALTER DEFAULT PRIVILEGES IN SCHEMA public " +
+			"GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO " + q,
+		// Append-only audit: no mutation, ever (trigger also enforces).
+		"REVOKE UPDATE, DELETE, TRUNCATE ON audit_events FROM " + q,
+		// Migration bookkeeping is read-only for the app role.
+		"REVOKE ALL ON goose_db_version FROM " + q,
 		"GRANT SELECT ON goose_db_version TO " + q,
 		"REVOKE ALL ON audit_events FROM PUBLIC",
 	}
@@ -248,6 +253,12 @@ func WithTx(ctx context.Context, pool *pgxpool.Pool, fn func(pgx.Tx) error) erro
 // SET LOCAL.
 func SetTenant(ctx context.Context, tx pgx.Tx, tenantID uuid.UUID) error {
 	_, err := tx.Exec(ctx, "SELECT set_config('app.tenant_id', $1, true)", tenantID.String())
+	return MapError(err)
+}
+
+// SetPlatformScope sets the platform-wide RLS scope ('*') on tx.
+func SetPlatformScope(ctx context.Context, tx pgx.Tx) error {
+	_, err := tx.Exec(ctx, "SELECT set_config('app.tenant_id', '*', true)")
 	return MapError(err)
 }
 
