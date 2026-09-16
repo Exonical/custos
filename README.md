@@ -86,12 +86,6 @@ See [docs/authentication.md](docs/authentication.md#bootstrapping-the-first-plat
 
 For Kubernetes, see the Helm skeleton in `deploy/helm/custos`.
 
-## Development on Windows
-
-This repo is developed on Windows without Docker/make/local PostgreSQL —
-see `AGENTS.md` for the working commands (embedded-postgres test
-fallback, golangci-lint version requirement, `-race` limitation).
-
 ## Non-goals
 
 - Replacing or wrapping every slurmrestd endpoint.
