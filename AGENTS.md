@@ -46,5 +46,9 @@ design-level behaviour** — the docs are the contract.
 
 ## Commits
 
+- Use Conventional Commits: `feat:`, `fix:`, `chore:`, `docs:`, `refactor:`,
+  `test:`, `ci:`, `build:`, `perf:`, `security:` — with an optional scope,
+  e.g. `feat(authn): ...`, `fix(workqueue): ...`. Subject in the
+  imperative, ≤ 72 chars; body explains why.
 - Never add `Co-Authored-By` or other trailers to commits.
 - Never commit secrets; gitleaks runs in CI.
