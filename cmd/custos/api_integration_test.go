@@ -20,6 +20,7 @@ import (
 	"github.com/Exonical/custos/internal/platform/config"
 	"github.com/Exonical/custos/internal/platform/db/dbtest"
 	"github.com/Exonical/custos/internal/platform/health"
+	"github.com/Exonical/custos/internal/platform/workqueue"
 	tenantpg "github.com/Exonical/custos/internal/tenants/postgres"
 	tenantsvc "github.com/Exonical/custos/internal/tenants/service"
 	"github.com/Exonical/custos/internal/users"
@@ -93,10 +94,11 @@ func TestAPIIntegration(t *testing.T) {
 		ReadyBudget: time.Second,
 		Logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
 		Verifier:    verifier,
-		Provisioner: users.NewService(urepo, rec),
-		Audit:       rec,
-		Tenants:     tenantsvc.NewService(trepo, urepo, authz.RBAC{}, rec),
-		TenantRepo:  trepo,
+		Provisioner: users.NewService(urepo, rec,
+			users.WithGroupsClaim("groups")),
+		Audit:      rec,
+		Tenants:    tenantsvc.NewService(trepo, trepo, trepo, urepo, authz.RBAC{}, rec),
+		TenantRepo: trepo,
 	})
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
@@ -225,5 +227,82 @@ func TestAPIIntegration(t *testing.T) {
 	}
 	if n < 3 {
 		t.Fatalf("audit events = %d", n)
+	}
+
+	// --- Claim reconciliation -----------------------------------------
+	// Rule in A: IdP group "hpc-a" -> viewer.
+	code, resp = call(adminTok, "POST", "/api/v1/tenants/"+slugA+"/claim-rules",
+		map[string]any{"claim": "groups", "match_value": "hpc-a",
+			"roles": []string{"viewer"}})
+	if code != 201 {
+		t.Fatalf("create claim rule: %d %v", code, resp)
+	}
+
+	// Token carrying the group grants membership on first request.
+	c := idp.Claims()
+	c["sub"] = "user-c"
+	c["groups"] = []string{"hpc-a"}
+	code, meC := call(idp.Token(t, c), "GET", "/api/v1/me", nil)
+	if code != 200 {
+		t.Fatalf("me c: %d %v", code, meC)
+	}
+	ms, _ = meC["memberships"].([]any)
+	if len(ms) != 1 {
+		t.Fatalf("c memberships: %v", meC["memberships"])
+	}
+	m0, _ := ms[0].(map[string]any)
+	roles, _ := m0["roles"].([]any)
+	if m0["slug"] != slugA || len(roles) != 1 || roles[0] != "viewer" {
+		t.Fatalf("c membership: %v", m0)
+	}
+	var tenantAID string
+	tenantAID, _ = m0["tenant_id"].(string)
+
+	// Same user without the group: claim absent -> idp membership
+	// revoked on next sync (hash differs -> resync runs).
+	delete(c, "groups")
+	code, meC = call(idp.Token(t, c), "GET", "/api/v1/me", nil)
+	if code != 200 {
+		t.Fatalf("me c (no group): %d", code)
+	}
+	if ms, _ := meC["memberships"].([]any); len(ms) != 0 {
+		t.Fatalf("c memberships after claim removal: %v", ms)
+	}
+	_ = tenantAID
+
+	// --- Tenant deletion ----------------------------------------------
+	// Capture B's id before deletion for the worker item key.
+	code, tB := call(tokAud, "GET", "/api/v1/tenants/"+slugB, nil)
+	if code != 200 {
+		t.Fatalf("get B: %d", code)
+	}
+	bid, _ := tB["id"].(string)
+
+	tokB := token("user-b")
+	if code, _ := call(adminTok, "DELETE", "/api/v1/tenants/"+slugB, nil); code != 202 {
+		t.Fatalf("delete B: %d", code)
+	}
+	// Deleting is invisible to members, visible to platform roles.
+	if code, _ := call(tokB, "GET", "/api/v1/tenants/"+slugB, nil); code != 404 {
+		t.Fatalf("b GET deleting B: %d", code)
+	}
+	code, tB = call(adminTok, "GET", "/api/v1/tenants/"+slugB, nil)
+	if code != 200 || tB["state"] != "deleting" {
+		t.Fatalf("admin GET deleting B: %d %v", code, tB)
+	}
+
+	// Run the worker handler directly on the enqueued key.
+	if err := tenantDeleteHandler(pool, rec)(context.Background(),
+		workqueue.Item{Key: "tenant:" + bid}); err != nil {
+		t.Fatal(err)
+	}
+	code, tB = call(adminTok, "GET", "/api/v1/tenants/"+slugB, nil)
+	if code != 200 || tB["state"] != "deleted" {
+		t.Fatalf("admin GET deleted B: %d %v", code, tB)
+	}
+	if err := pool.QueryRow(context.Background(),
+		`SELECT count(*) FROM tenant_memberships WHERE tenant_id=$1`,
+		bid).Scan(&n); err != nil || n != 0 {
+		t.Fatalf("B memberships after purge: n=%d err=%v", n, err)
 	}
 }

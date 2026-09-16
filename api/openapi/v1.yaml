@@ -174,6 +174,32 @@ paths:
         "409":
           description: Version or state conflict.
           content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+    delete:
+      summary: Request tenant deletion
+      description: |
+        Marks the tenant `deleting` and enqueues asynchronous deletion
+        (platform.manage). The tenant row is retained as a tombstone;
+        slugs are never reused.
+      operationId: deleteTenant
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+      responses:
+        "202":
+          description: Deletion accepted.
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "403":
+          description: Not a platform admin.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "404":
+          description: Tenant not found.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "409":
+          description: Already deleting or deleted.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
 
   /tenants/{tenant}/members:
     get:
@@ -281,6 +307,424 @@ paths:
           content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
         "409":
           description: Last tenant-admin protection or state conflict.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+
+  /tenants/{tenant}/users:lookup:
+    get:
+      summary: Look up users by exact email (tenant.members.manage)
+      operationId: lookupUsers
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+        - name: email
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Users matching the email exactly (case-insensitive).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserLookupList"
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "404":
+          description: Tenant not found.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+
+  /tenants/{tenant}/groups:
+    get:
+      summary: List tenant groups
+      operationId: listGroups
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Group page.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroupList"
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "404":
+          description: Tenant not found.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+    post:
+      summary: Create a group
+      operationId: createGroup
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GroupCreate"
+      responses:
+        "201":
+          description: Created group.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Group"
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "404":
+          description: Tenant not found.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "409":
+          description: Name conflict or tenant state.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+
+  /tenants/{tenant}/groups/{group}:
+    get:
+      summary: Get a group
+      operationId: getGroup
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+        - $ref: "#/components/parameters/GroupRef"
+      responses:
+        "200":
+          description: The group.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Group"
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "404":
+          description: Tenant or group not found.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+    patch:
+      summary: Update a group
+      operationId: updateGroup
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+        - $ref: "#/components/parameters/GroupRef"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GroupUpdate"
+      responses:
+        "200":
+          description: Updated group.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Group"
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "404":
+          description: Tenant or group not found.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "409":
+          description: Version conflict or tenant state.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+    delete:
+      summary: Delete a group
+      operationId: deleteGroup
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+        - $ref: "#/components/parameters/GroupRef"
+      responses:
+        "204":
+          description: Group deleted.
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "404":
+          description: Tenant or group not found.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "409":
+          description: Tenant state conflict.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+
+  /tenants/{tenant}/groups/{group}/members:
+    get:
+      summary: List group members
+      operationId: listGroupMembers
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+        - $ref: "#/components/parameters/GroupRef"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Group membership page.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroupMemberList"
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "404":
+          description: Tenant or group not found.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+    post:
+      summary: Add a user to a group
+      operationId: addGroupMember
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+        - $ref: "#/components/parameters/GroupRef"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GroupMemberAdd"
+      responses:
+        "201":
+          description: Member added.
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "404":
+          description: Tenant or group not found.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "422":
+          description: User is not a tenant member.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+
+  /tenants/{tenant}/groups/{group}/members/{user}:
+    delete:
+      summary: Remove a user from a group
+      operationId: removeGroupMember
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+        - $ref: "#/components/parameters/GroupRef"
+        - $ref: "#/components/parameters/UserRef"
+      responses:
+        "204":
+          description: Member removed.
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "404":
+          description: Tenant, group, or membership not found.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+
+  /tenants/{tenant}/claim-rules:
+    get:
+      summary: List claim-mapping rules
+      operationId: listClaimRules
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Claim rule page.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClaimRuleList"
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "404":
+          description: Tenant not found.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+    post:
+      summary: Create a claim-mapping rule
+      operationId: createClaimRule
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClaimRuleCreate"
+      responses:
+        "201":
+          description: Created rule.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClaimRule"
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "404":
+          description: Tenant not found.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "422":
+          description: Invalid roles or unknown group.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+
+  /tenants/{tenant}/claim-rules/{rule}:
+    get:
+      summary: Get a claim-mapping rule
+      operationId: getClaimRule
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+        - $ref: "#/components/parameters/RuleRef"
+      responses:
+        "200":
+          description: The rule.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClaimRule"
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "404":
+          description: Tenant or rule not found.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+    patch:
+      summary: Update a claim-mapping rule
+      operationId: updateClaimRule
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+        - $ref: "#/components/parameters/RuleRef"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClaimRuleUpdate"
+      responses:
+        "200":
+          description: Updated rule.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClaimRule"
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "404":
+          description: Tenant or rule not found.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "409":
+          description: Version conflict or tenant state.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "422":
+          description: Invalid roles or unknown group.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+    delete:
+      summary: Delete a claim-mapping rule
+      operationId: deleteClaimRule
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+        - $ref: "#/components/parameters/RuleRef"
+      responses:
+        "204":
+          description: Rule deleted.
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "404":
+          description: Tenant or rule not found.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+
+  /platform/role-bindings:
+    get:
+      summary: List platform role bindings
+      operationId: listRoleBindings
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Platform role bindings.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoleBindingList"
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "403":
+          description: Requires platform.manage or platform.audit.read.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+
+  /platform/role-bindings/{user}/{role}:
+    put:
+      summary: Grant a platform role
+      operationId: grantRoleBinding
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/UserRef"
+        - $ref: "#/components/parameters/RoleRef"
+      responses:
+        "204":
+          description: Role granted (idempotent).
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "403":
+          description: Requires platform.manage.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "404":
+          description: User not found.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "422":
+          description: Invalid role.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+    delete:
+      summary: Revoke a platform role
+      operationId: revokeRoleBinding
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/UserRef"
+        - $ref: "#/components/parameters/RoleRef"
+      responses:
+        "204":
+          description: Role revoked.
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "403":
+          description: Requires platform.manage.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "404":
+          description: Binding not found.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "409":
+          description: Last platform-admin protection.
           content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
 
 components:
@@ -549,6 +993,242 @@ components:
           items:
             $ref: "#/components/schemas/CheckResult"
 
+    Group:
+      type: object
+      required: [id, tenant_id, name, description, source, version, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        source:
+          type: string
+          enum: [manual, idp]
+        version:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    GroupCreate:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          pattern: "^[A-Za-z0-9][A-Za-z0-9 ._-]{0,62}$"
+        description:
+          type: string
+
+    GroupUpdate:
+      type: object
+      required: [version]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        version:
+          type: integer
+
+    GroupList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Group"
+        next_cursor:
+          type: string
+          nullable: true
+
+    GroupMembership:
+      type: object
+      required: [group_id, user_id, source, created_at]
+      properties:
+        group_id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        source:
+          type: string
+          enum: [manual, idp]
+        created_at:
+          type: string
+          format: date-time
+
+    GroupMemberAdd:
+      type: object
+      required: [user_id]
+      properties:
+        user_id:
+          type: string
+          format: uuid
+
+    GroupMemberList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/GroupMembership"
+        next_cursor:
+          type: string
+          nullable: true
+
+    ClaimRule:
+      type: object
+      required: [id, tenant_id, claim, match_value, roles, enabled, version, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        claim:
+          type: string
+        match_value:
+          type: string
+        roles:
+          type: array
+          items:
+            type: string
+        group_id:
+          type: string
+          format: uuid
+          nullable: true
+        enabled:
+          type: boolean
+        version:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ClaimRuleCreate:
+      type: object
+      required: [claim, match_value, roles]
+      properties:
+        claim:
+          type: string
+          pattern: "^[a-zA-Z_][a-zA-Z0-9_.:/-]{0,127}$"
+        match_value:
+          type: string
+          minLength: 1
+          maxLength: 512
+        roles:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            enum: [tenant-admin, tenant-operator, workflow-author, researcher, viewer, auditor]
+        group_id:
+          type: string
+          format: uuid
+        enabled:
+          type: boolean
+
+    ClaimRuleUpdate:
+      type: object
+      required: [version]
+      properties:
+        roles:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            enum: [tenant-admin, tenant-operator, workflow-author, researcher, viewer, auditor]
+        group_id:
+          type: string
+          format: uuid
+          nullable: true
+        enabled:
+          type: boolean
+        version:
+          type: integer
+
+    ClaimRuleList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ClaimRule"
+        next_cursor:
+          type: string
+          nullable: true
+
+    PlatformRoleBinding:
+      type: object
+      required: [user_id, issuer, subject, role, created_at]
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        issuer:
+          type: string
+        subject:
+          type: string
+        email:
+          type: string
+        role:
+          type: string
+          enum: [platform-admin, platform-auditor]
+        created_at:
+          type: string
+          format: date-time
+
+    RoleBindingList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlatformRoleBinding"
+
+    UserLookupResult:
+      type: object
+      required: [id, email, kind]
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+        name:
+          type: string
+        kind:
+          type: string
+          enum: [user, service]
+
+    UserLookupList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/UserLookupResult"
+
   parameters:
     Cursor:
       name: cursor
@@ -578,6 +1258,27 @@ components:
       schema:
         type: string
         format: uuid
+    GroupRef:
+      name: group
+      in: path
+      required: true
+      description: Group uuid or name.
+      schema:
+        type: string
+    RuleRef:
+      name: rule
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    RoleRef:
+      name: role
+      in: path
+      required: true
+      schema:
+        type: string
+        enum: [platform-admin, platform-auditor]
     Idempotency-Key:
       name: Idempotency-Key
       in: header

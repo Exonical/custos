@@ -43,7 +43,7 @@ func newFixture(t *testing.T) *fixture {
 	rec := &fakeRec{}
 	return &fixture{
 		repo: repo, users: urepo, rec: rec,
-		svc: tenantsvc.NewService(repo, urepo, authz.RBAC{}, rec),
+		svc: tenantsvc.NewService(repo, repo, repo, urepo, authz.RBAC{}, rec),
 		ctx: context.Background(),
 	}
 }
@@ -133,6 +133,56 @@ func TestAuthorizationMatrix(t *testing.T) {
 		{"Update", func(ctx context.Context, p authn.Principal, tc tenants.TenantContext) error {
 			name := "n"
 			_, err := f.svc.Update(ctx, p, tc, tenantsvc.UpdateTenant{Name: &name, Version: tc.Tenant.Version})
+			return err
+		}, [7]bool{true, false, true, false, false, false, false}},
+		{"CreateGroup", func(ctx context.Context, p authn.Principal, tc tenants.TenantContext) error {
+			_, err := f.svc.CreateGroup(ctx, p, tc, tenantsvc.CreateGroup{Name: "g" + uuid.NewString()[:8]})
+			return err
+		}, [7]bool{true, false, true, false, false, false, false}},
+		{"ListGroups", func(ctx context.Context, p authn.Principal, tc tenants.TenantContext) error {
+			_, _, err := f.svc.ListGroups(ctx, p, tc, tenants.Page{})
+			return err
+		}, [7]bool{true, true, true, true, true, true, false}},
+		{"UpdateGroup", func(ctx context.Context, p authn.Principal, tc tenants.TenantContext) error {
+			_, err := f.svc.UpdateGroup(ctx, p, tc, "nogroup", tenantsvc.UpdateGroup{Version: 1})
+			return err
+		}, [7]bool{true, false, true, false, false, false, false}},
+		{"DeleteGroup", func(ctx context.Context, p authn.Principal, tc tenants.TenantContext) error {
+			return f.svc.DeleteGroup(ctx, p, tc, "nogroup")
+		}, [7]bool{true, false, true, false, false, false, false}},
+		{"ListGroupMembers", func(ctx context.Context, p authn.Principal, tc tenants.TenantContext) error {
+			_, _, err := f.svc.ListGroupMembers(ctx, p, tc, "nogroup", tenants.Page{})
+			return err
+		}, [7]bool{true, true, true, true, true, true, false}},
+		{"AddGroupMember", func(ctx context.Context, p authn.Principal, tc tenants.TenantContext) error {
+			return f.svc.AddGroupMember(ctx, p, tc, "nogroup", uuid.Must(uuid.NewV7()))
+		}, [7]bool{true, false, true, false, false, false, false}},
+		{"RemoveGroupMember", func(ctx context.Context, p authn.Principal, tc tenants.TenantContext) error {
+			return f.svc.RemoveGroupMember(ctx, p, tc, "nogroup", uuid.Must(uuid.NewV7()))
+		}, [7]bool{true, false, true, false, false, false, false}},
+		{"CreateClaimRule", func(ctx context.Context, p authn.Principal, tc tenants.TenantContext) error {
+			_, err := f.svc.CreateClaimRule(ctx, p, tc, tenantsvc.CreateClaimRule{
+				Claim: "groups", MatchValue: "m", Roles: []string{"viewer"},
+			})
+			return err
+		}, [7]bool{true, false, true, false, false, false, false}},
+		{"ListClaimRules", func(ctx context.Context, p authn.Principal, tc tenants.TenantContext) error {
+			_, _, err := f.svc.ListClaimRules(ctx, p, tc, tenants.Page{})
+			return err
+		}, [7]bool{true, true, true, true, true, true, false}},
+		{"UpdateClaimRule", func(ctx context.Context, p authn.Principal, tc tenants.TenantContext) error {
+			_, err := f.svc.UpdateClaimRule(ctx, p, tc, uuid.Must(uuid.NewV7()),
+				tenantsvc.UpdateClaimRule{Version: 1})
+			return err
+		}, [7]bool{true, false, true, false, false, false, false}},
+		{"DeleteClaimRule", func(ctx context.Context, p authn.Principal, tc tenants.TenantContext) error {
+			return f.svc.DeleteClaimRule(ctx, p, tc, uuid.Must(uuid.NewV7()))
+		}, [7]bool{true, false, true, false, false, false, false}},
+		{"DeleteTenant", func(ctx context.Context, p authn.Principal, tc tenants.TenantContext) error {
+			return f.svc.Delete(ctx, p, tc)
+		}, [7]bool{true, false, false, false, false, false, false}},
+		{"LookupUsers", func(ctx context.Context, p authn.Principal, tc tenants.TenantContext) error {
+			_, err := f.svc.LookupUsers(ctx, p, tc, "x@y.z")
 			return err
 		}, [7]bool{true, false, true, false, false, false, false}},
 	}

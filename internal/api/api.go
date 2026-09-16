@@ -23,6 +23,7 @@ import (
 	"github.com/Exonical/custos/internal/platform/httpx"
 	"github.com/Exonical/custos/internal/tenants"
 	tenantsvc "github.com/Exonical/custos/internal/tenants/service"
+	"github.com/Exonical/custos/internal/users"
 )
 
 // specJSON is computed once at init from the spec embedded in the
@@ -54,6 +55,7 @@ type Deps struct {
 	Audit       audit.Recorder     // may be nil (skips audit records)
 	Tenants     *tenantsvc.Service // nil disables tenant routes
 	TenantRepo  tenants.Repository // required when Tenants is set
+	Users       *users.Service     // enables platform role-binding routes
 }
 
 // Mount registers the v1 routes on mux. The generated types in
@@ -83,6 +85,28 @@ func Mount(mux *http.ServeMux, deps Deps) {
 			mux.Handle("POST /api/v1/tenants/{tenant}/members", tr(http.HandlerFunc(h.addMember)))
 			mux.Handle("PATCH /api/v1/tenants/{tenant}/members/{user}", tr(http.HandlerFunc(h.updateMember)))
 			mux.Handle("DELETE /api/v1/tenants/{tenant}/members/{user}", tr(http.HandlerFunc(h.removeMember)))
+			mux.Handle("DELETE /api/v1/tenants/{tenant}", tr(http.HandlerFunc(h.deleteTenant)))
+			mux.Handle("GET /api/v1/tenants/{tenant}/users:lookup", tr(http.HandlerFunc(h.lookupUsers)))
+			mux.Handle("GET /api/v1/tenants/{tenant}/groups", tr(http.HandlerFunc(h.listGroups)))
+			mux.Handle("POST /api/v1/tenants/{tenant}/groups", tr(http.HandlerFunc(h.createGroup)))
+			mux.Handle("GET /api/v1/tenants/{tenant}/groups/{group}", tr(http.HandlerFunc(h.getGroup)))
+			mux.Handle("PATCH /api/v1/tenants/{tenant}/groups/{group}", tr(http.HandlerFunc(h.updateGroup)))
+			mux.Handle("DELETE /api/v1/tenants/{tenant}/groups/{group}", tr(http.HandlerFunc(h.deleteGroup)))
+			mux.Handle("GET /api/v1/tenants/{tenant}/groups/{group}/members", tr(http.HandlerFunc(h.listGroupMembers)))
+			mux.Handle("POST /api/v1/tenants/{tenant}/groups/{group}/members", tr(http.HandlerFunc(h.addGroupMember)))
+			mux.Handle("DELETE /api/v1/tenants/{tenant}/groups/{group}/members/{user}", tr(http.HandlerFunc(h.removeGroupMember)))
+			mux.Handle("GET /api/v1/tenants/{tenant}/claim-rules", tr(http.HandlerFunc(h.listClaimRules)))
+			mux.Handle("POST /api/v1/tenants/{tenant}/claim-rules", tr(http.HandlerFunc(h.createClaimRule)))
+			mux.Handle("GET /api/v1/tenants/{tenant}/claim-rules/{rule}", tr(http.HandlerFunc(h.getClaimRule)))
+			mux.Handle("PATCH /api/v1/tenants/{tenant}/claim-rules/{rule}", tr(http.HandlerFunc(h.updateClaimRule)))
+			mux.Handle("DELETE /api/v1/tenants/{tenant}/claim-rules/{rule}", tr(http.HandlerFunc(h.deleteClaimRule)))
+		}
+
+		if deps.Users != nil {
+			ph := &platformHandlers{svc: deps.Users}
+			mux.Handle("GET /api/v1/platform/role-bindings", bearer(http.HandlerFunc(ph.listBindings)))
+			mux.Handle("PUT /api/v1/platform/role-bindings/{user}/{role}", bearer(http.HandlerFunc(ph.putBinding)))
+			mux.Handle("DELETE /api/v1/platform/role-bindings/{user}/{role}", bearer(http.HandlerFunc(ph.deleteBinding)))
 		}
 	}
 
@@ -333,6 +357,335 @@ func (h *tenantHandlers) removeMember(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.svc.RemoveMember(ctx, p, tc, uid); err != nil {
+		httpx.WriteError(ctx, w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// --- tenant deletion + user lookup ---
+
+func (h *tenantHandlers) deleteTenant(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	p := authn.MustPrincipal(ctx)
+	tc := tenants.MustTenantContext(ctx)
+	if err := h.svc.Delete(ctx, p, tc); err != nil {
+		httpx.WriteError(ctx, w, err)
+		return
+	}
+	w.WriteHeader(http.StatusAccepted)
+}
+
+func (h *tenantHandlers) lookupUsers(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	p := authn.MustPrincipal(ctx)
+	tc := tenants.MustTenantContext(ctx)
+	us, err := h.svc.LookupUsers(ctx, p, tc, r.URL.Query().Get("email"))
+	if err != nil {
+		httpx.WriteError(ctx, w, err)
+		return
+	}
+	items := make([]any, 0, len(us))
+	for _, u := range us {
+		items = append(items, map[string]any{
+			"id": u.ID, "email": u.Email, "name": u.DisplayName, "kind": u.Kind,
+		})
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+// --- groups ---
+
+func groupDTO(g tenants.Group) map[string]any {
+	return map[string]any{
+		"id": g.ID, "tenant_id": g.TenantID, "name": g.Name,
+		"description": g.Description, "source": g.Source,
+		"version":    g.Version,
+		"created_at": g.CreatedAt.UTC().Format(time.RFC3339Nano),
+		"updated_at": g.UpdatedAt.UTC().Format(time.RFC3339Nano),
+	}
+}
+
+func groupMemberDTO(m tenants.GroupMembership) map[string]any {
+	return map[string]any{
+		"group_id": m.GroupID, "user_id": m.UserID, "source": m.Source,
+		"created_at": m.CreatedAt.UTC().Format(time.RFC3339Nano),
+	}
+}
+
+func (h *tenantHandlers) listGroups(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	p := authn.MustPrincipal(ctx)
+	tc := tenants.MustTenantContext(ctx)
+	gs, next, err := h.svc.ListGroups(ctx, p, tc, pageOf(r))
+	if err != nil {
+		httpx.WriteError(ctx, w, err)
+		return
+	}
+	items := make([]any, 0, len(gs))
+	for _, g := range gs {
+		items = append(items, groupDTO(g))
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"items": items, "next_cursor": next})
+}
+
+func (h *tenantHandlers) createGroup(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	p := authn.MustPrincipal(ctx)
+	tc := tenants.MustTenantContext(ctx)
+	var in tenantsvc.CreateGroup
+	if !decodeDTO(w, r, &in) {
+		return
+	}
+	g, err := h.svc.CreateGroup(ctx, p, tc, in)
+	if err != nil {
+		httpx.WriteError(ctx, w, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusCreated, groupDTO(g))
+}
+
+func (h *tenantHandlers) getGroup(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	p := authn.MustPrincipal(ctx)
+	tc := tenants.MustTenantContext(ctx)
+	g, err := h.svc.GetGroup(ctx, p, tc, r.PathValue("group"))
+	if err != nil {
+		httpx.WriteError(ctx, w, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, groupDTO(g))
+}
+
+func (h *tenantHandlers) updateGroup(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	p := authn.MustPrincipal(ctx)
+	tc := tenants.MustTenantContext(ctx)
+	var in tenantsvc.UpdateGroup
+	if !decodeDTO(w, r, &in) {
+		return
+	}
+	g, err := h.svc.UpdateGroup(ctx, p, tc, r.PathValue("group"), in)
+	if err != nil {
+		httpx.WriteError(ctx, w, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, groupDTO(g))
+}
+
+func (h *tenantHandlers) deleteGroup(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	p := authn.MustPrincipal(ctx)
+	tc := tenants.MustTenantContext(ctx)
+	if err := h.svc.DeleteGroup(ctx, p, tc, r.PathValue("group")); err != nil {
+		httpx.WriteError(ctx, w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *tenantHandlers) listGroupMembers(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	p := authn.MustPrincipal(ctx)
+	tc := tenants.MustTenantContext(ctx)
+	ms, next, err := h.svc.ListGroupMembers(ctx, p, tc, r.PathValue("group"), pageOf(r))
+	if err != nil {
+		httpx.WriteError(ctx, w, err)
+		return
+	}
+	items := make([]any, 0, len(ms))
+	for _, m := range ms {
+		items = append(items, groupMemberDTO(m))
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"items": items, "next_cursor": next})
+}
+
+type addGroupMemberDTO struct {
+	UserID uuid.UUID `json:"user_id"`
+}
+
+func (h *tenantHandlers) addGroupMember(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	p := authn.MustPrincipal(ctx)
+	tc := tenants.MustTenantContext(ctx)
+	var in addGroupMemberDTO
+	if !decodeDTO(w, r, &in) {
+		return
+	}
+	if err := h.svc.AddGroupMember(ctx, p, tc, r.PathValue("group"), in.UserID); err != nil {
+		httpx.WriteError(ctx, w, err)
+		return
+	}
+	w.WriteHeader(http.StatusCreated)
+}
+
+func (h *tenantHandlers) removeGroupMember(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	p := authn.MustPrincipal(ctx)
+	tc := tenants.MustTenantContext(ctx)
+	uid, err := uuid.Parse(r.PathValue("user"))
+	if err != nil {
+		httpx.WriteError(ctx, w, apperr.New(apperr.Invalid, "MALFORMED", "invalid user id"))
+		return
+	}
+	if err := h.svc.RemoveGroupMember(ctx, p, tc, r.PathValue("group"), uid); err != nil {
+		httpx.WriteError(ctx, w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// --- claim rules ---
+
+func claimRuleDTO(c tenants.ClaimRule) map[string]any {
+	return map[string]any{
+		"id": c.ID, "tenant_id": c.TenantID, "claim": c.Claim,
+		"match_value": c.MatchValue, "roles": c.Roles, "group_id": c.GroupID,
+		"enabled": c.Enabled, "version": c.Version,
+		"created_at": c.CreatedAt.UTC().Format(time.RFC3339Nano),
+		"updated_at": c.UpdatedAt.UTC().Format(time.RFC3339Nano),
+	}
+}
+
+func (h *tenantHandlers) listClaimRules(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	p := authn.MustPrincipal(ctx)
+	tc := tenants.MustTenantContext(ctx)
+	rs, next, err := h.svc.ListClaimRules(ctx, p, tc, pageOf(r))
+	if err != nil {
+		httpx.WriteError(ctx, w, err)
+		return
+	}
+	items := make([]any, 0, len(rs))
+	for _, c := range rs {
+		items = append(items, claimRuleDTO(c))
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"items": items, "next_cursor": next})
+}
+
+func (h *tenantHandlers) createClaimRule(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	p := authn.MustPrincipal(ctx)
+	tc := tenants.MustTenantContext(ctx)
+	var in tenantsvc.CreateClaimRule
+	if !decodeDTO(w, r, &in) {
+		return
+	}
+	c, err := h.svc.CreateClaimRule(ctx, p, tc, in)
+	if err != nil {
+		httpx.WriteError(ctx, w, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusCreated, claimRuleDTO(c))
+}
+
+func (h *tenantHandlers) getClaimRule(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	p := authn.MustPrincipal(ctx)
+	tc := tenants.MustTenantContext(ctx)
+	rid, err := uuid.Parse(r.PathValue("rule"))
+	if err != nil {
+		httpx.WriteError(ctx, w, apperr.New(apperr.Invalid, "MALFORMED", "invalid rule id"))
+		return
+	}
+	c, err := h.svc.GetClaimRule(ctx, p, tc, rid)
+	if err != nil {
+		httpx.WriteError(ctx, w, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, claimRuleDTO(c))
+}
+
+func (h *tenantHandlers) updateClaimRule(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	p := authn.MustPrincipal(ctx)
+	tc := tenants.MustTenantContext(ctx)
+	rid, err := uuid.Parse(r.PathValue("rule"))
+	if err != nil {
+		httpx.WriteError(ctx, w, apperr.New(apperr.Invalid, "MALFORMED", "invalid rule id"))
+		return
+	}
+	var in tenantsvc.UpdateClaimRule
+	if !decodeDTO(w, r, &in) {
+		return
+	}
+	c, err := h.svc.UpdateClaimRule(ctx, p, tc, rid, in)
+	if err != nil {
+		httpx.WriteError(ctx, w, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, claimRuleDTO(c))
+}
+
+func (h *tenantHandlers) deleteClaimRule(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	p := authn.MustPrincipal(ctx)
+	tc := tenants.MustTenantContext(ctx)
+	rid, err := uuid.Parse(r.PathValue("rule"))
+	if err != nil {
+		httpx.WriteError(ctx, w, apperr.New(apperr.Invalid, "MALFORMED", "invalid rule id"))
+		return
+	}
+	if err := h.svc.DeleteClaimRule(ctx, p, tc, rid); err != nil {
+		httpx.WriteError(ctx, w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// --- platform role bindings ---
+
+type platformHandlers struct {
+	svc *users.Service
+}
+
+func bindingDTO(b users.PlatformRoleBinding) map[string]any {
+	return map[string]any{
+		"user_id": b.UserID, "issuer": b.Issuer, "subject": b.Subject,
+		"email": b.Email, "role": b.Role,
+		"created_at": b.CreatedAt.UTC().Format(time.RFC3339Nano),
+	}
+}
+
+func (h *platformHandlers) listBindings(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	p := authn.MustPrincipal(ctx)
+	bs, err := h.svc.ListRoleBindings(ctx, p)
+	if err != nil {
+		httpx.WriteError(ctx, w, err)
+		return
+	}
+	items := make([]any, 0, len(bs))
+	for _, b := range bs {
+		items = append(items, bindingDTO(b))
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+func (h *platformHandlers) putBinding(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	p := authn.MustPrincipal(ctx)
+	uid, err := uuid.Parse(r.PathValue("user"))
+	if err != nil {
+		httpx.WriteError(ctx, w, apperr.New(apperr.Invalid, "MALFORMED", "invalid user id"))
+		return
+	}
+	if err := h.svc.GrantRole(ctx, p, uid, r.PathValue("role")); err != nil {
+		httpx.WriteError(ctx, w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *platformHandlers) deleteBinding(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	p := authn.MustPrincipal(ctx)
+	uid, err := uuid.Parse(r.PathValue("user"))
+	if err != nil {
+		httpx.WriteError(ctx, w, apperr.New(apperr.Invalid, "MALFORMED", "invalid user id"))
+		return
+	}
+	if err := h.svc.RevokeRole(ctx, p, uid, r.PathValue("role")); err != nil {
 		httpx.WriteError(ctx, w, err)
 		return
 	}

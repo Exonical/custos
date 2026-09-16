@@ -70,6 +70,7 @@ func cmdAdmin(ctx context.Context, configPath string, args []string, lookupEnv c
 
 	repo := userpg.New(pool)
 	rec := audit.Multi{pgaudit.New(pool), audit.SlogRecorder{Logger: logger}}
+	svc := users.NewService(repo, rec)
 
 	switch op {
 	case "list":
@@ -93,12 +94,10 @@ func cmdAdmin(ctx context.Context, configPath string, args []string, lookupEnv c
 			logger.ErrorContext(ctx, "ensure user", "error", err)
 			return 1
 		}
-		if err := repo.GrantPlatformRole(ctx, u.ID, *role, nil); err != nil {
+		if err := svc.GrantRoleSystem(ctx, cliActor, u.ID, *role); err != nil {
 			logger.ErrorContext(ctx, "grant role", "error", err)
 			return 1
 		}
-		recordAdmin(ctx, rec, "platform_role.granted", u.ID.String(),
-			map[string]any{"role": *role}, logger)
 		_, _ = fmt.Fprintf(stdout, "granted %s to user %s\n", *role, u.ID)
 		return 0
 	case "revoke":
@@ -109,31 +108,14 @@ func cmdAdmin(ctx context.Context, configPath string, args []string, lookupEnv c
 			logger.ErrorContext(ctx, "ensure user", "error", err)
 			return 1
 		}
-		if err := repo.RevokePlatformRole(ctx, u.ID, *role); err != nil {
+		if err := svc.RevokeRoleSystem(ctx, cliActor, u.ID, *role); err != nil {
 			logger.ErrorContext(ctx, "revoke role", "error", err)
 			return 1
 		}
-		recordAdmin(ctx, rec, "platform_role.revoked", u.ID.String(),
-			map[string]any{"role": *role}, logger)
 		_, _ = fmt.Fprintf(stdout, "revoked %s from user %s\n", *role, u.ID)
 		return 0
 	}
 	return 2
-}
-
-func recordAdmin(ctx context.Context, r audit.Recorder, action, userID string,
-	details map[string]any, logger interface {
-		ErrorContext(context.Context, string, ...any)
-	}) {
-	if err := r.Record(ctx, audit.Event{
-		Actor:   cliActor,
-		Action:  action,
-		Target:  audit.Target{Type: "user", ID: userID},
-		Result:  audit.ResultAllow,
-		Details: details,
-	}); err != nil {
-		logger.ErrorContext(ctx, "audit record failed", "error", err)
-	}
 }
 
 func exitErr(err error) int {

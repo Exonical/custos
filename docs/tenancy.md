@@ -69,13 +69,35 @@ Rather than a nullable tenant on clusters, a cluster has `visibility` in
 special-case NULL; access remains a join on the assignment table. Projects
 still need an explicit `ProjectClusterBinding` to *submit*.
 
+## Groups
+
+A `Group` is a named set of tenant members (`tenant_id + name` unique, name
+`^[A-Za-z0-9][A-Za-z0-9 ._-]{0,62}$`). Group memberships carry a `source`
+(`manual` | `idp`) like tenant memberships; a database trigger enforces that
+every group member is a tenant member. Groups give bulk membership
+management and are the target of claim mapping rules: a rule may grant
+roles *and* add the user to a group in the same reconcile.
+
+## Claim mapping rules
+
+`claim_mapping_rules` map an IdP claim value to tenant roles and an optional
+group: `(tenant_id, claim, match_value)` unique, `roles text[]` non-empty,
+`group_id` optional (`ON DELETE SET NULL`), `enabled` flag. Match is an
+exact string compare — no wildcards. Rules are evaluated during JIT claim
+reconciliation (see `docs/authentication.md`).
+
 ## Tenant lifecycle
 
 `provisioning → active → suspended → deleting → deleted`. Suspension blocks
 new submissions and executions (existing jobs are left to Slurm; a
-tenant-admin may still cancel). Deletion is asynchronous (work item): cancel
-executions, revoke OpenBao namespace, retain audit and usage records under a
-tombstoned tenant for the retention period.
+tenant-admin may still cancel). Deletion is asynchronous: `DELETE
+/api/v1/tenants/{tenant}` (`platform.manage`) sets state `deleting` and
+enqueues a `tenant.delete` work item in the same transaction, then a worker
+purges memberships, groups, and claim rules and sets state `deleted`. The
+`tenants` row is retained as a tombstone — slugs are never reused. Tenants
+in `deleting`/`deleted` are invisible to non-platform principals (same 404
+as a nonexistent tenant) but remain readable by platform roles for audit
+review.
 
 ## Isolation test matrix (mandatory from Milestone 2 on)
 

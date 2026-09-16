@@ -23,11 +23,21 @@ type User struct {
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 	LastSeenAt  *time.Time
+	// ClaimsHash/ClaimsSyncedAt drive IdP claim reconciliation
+	// (docs/authentication.md JIT): sync runs when the hash differs or
+	// the last sync is older than 5 minutes.
+	ClaimsHash     []byte
+	ClaimsSyncedAt *time.Time
 }
 
 // PlatformRoleBinding grants a platform-scope role to a user.
+// Issuer/Subject/Email are populated by ListPlatformRoleBindings for the
+// platform role-bindings API.
 type PlatformRoleBinding struct {
 	UserID    uuid.UUID
+	Issuer    string
+	Subject   string
+	Email     string
 	Role      string
 	CreatedAt time.Time
 	CreatedBy *uuid.UUID
@@ -46,4 +56,32 @@ type Repository interface {
 	GrantPlatformRole(ctx context.Context, userID uuid.UUID, role string, by *uuid.UUID) error
 	RevokePlatformRole(ctx context.Context, userID uuid.UUID, role string) error
 	ListPlatformRoleBindings(ctx context.Context) ([]PlatformRoleBinding, error)
+	// CountPlatformRoleHolders counts users holding a platform role
+	// (last-admin protection).
+	CountPlatformRoleHolders(ctx context.Context, role string) (int, error)
+
+	// SyncIDPClaims reconciles idp-sourced tenant/group memberships
+	// with the claim-mapping rules matching claims, in one transaction
+	// under platform scope. The users row is locked FOR UPDATE first
+	// and the freshness check re-run inside, so a concurrent Provision
+	// waits and then skips. Skipped reports the no-op fast path.
+	SyncIDPClaims(ctx context.Context, userID uuid.UUID,
+		claims map[string][]string, hash []byte, now time.Time) (SyncOutcome, error)
+}
+
+// SyncEvent is one audited membership change produced by SyncIDPClaims.
+type SyncEvent struct {
+	Action   string // membership.granted/updated/revoked/revoke_blocked, group.member.added/removed
+	TenantID uuid.UUID
+	UserID   uuid.UUID
+	Roles    []string
+	RuleIDs  []string
+	Reason   string
+	GroupID  uuid.UUID
+}
+
+// SyncOutcome reports what SyncIDPClaims did.
+type SyncOutcome struct {
+	Skipped bool
+	Events  []SyncEvent
 }

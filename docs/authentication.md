@@ -105,6 +105,30 @@ granted by:
 Claim-derived memberships are marked `source = idp` and are revoked when the
 claim disappears; API-granted ones are `source = manual`.
 
+Reconciliation is throttled: the service stores `claims_hash` and
+`claims_synced_at` on the user row (returned by the provision upsert at no
+extra cost) and resyncs only when the hash differs or the last sync is older
+than five minutes. The resync runs in a single transaction under platform
+scope and takes `SELECT ... FOR UPDATE` on the user row, so concurrent
+requests for the same user serialize and the loser sees the fresh timestamp
+and skips. Rules of the reconcile:
+
+- A tenant matched by a rule gets an `idp` membership with the union of
+  matching roles (and optional `idp` group memberships, inserted after the
+  tenant membership so the group-member invariant holds).
+- An existing `idp` membership whose roles changed is updated; a `manual`
+  membership is never touched — manual grants always win.
+- An `idp` membership no longer matched is revoked, except when that would
+  remove the tenant's last `tenant-admin`: then it is kept and
+  `membership.revoke_blocked` is audited — a stale IdP claim must not lock
+  a tenant out.
+- Tenants in `deleting`/`deleted` state are skipped.
+
+A reconciliation failure is logged and counted
+(`custos_claims_sync_total{result="error"}`) but does not fail the request —
+the user proceeds with whatever memberships exist (availability over
+freshness).
+
 ## Machine clients
 
 Automation uses client-credentials tokens from the same IdP. They are
@@ -143,4 +167,6 @@ call `/api/v1/me` and nothing else.
 
 Emitted events: `auth.login` (BFF), `auth.token_rejected` (reason category
 only, never the token), `user.provisioned`, `membership.granted`,
-`membership.revoked`.
+`membership.updated`, `membership.revoked`, `membership.revoke_blocked`,
+`group.member.added`, `group.member.removed`, `platform_role.granted`,
+`platform_role.revoked`.

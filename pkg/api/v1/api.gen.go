@@ -42,6 +42,102 @@ func (e CheckResultStatus) Valid() bool {
 	}
 }
 
+// Defines values for ClaimRuleCreateRoles.
+const (
+	ClaimRuleCreateRolesAuditor        ClaimRuleCreateRoles = "auditor"
+	ClaimRuleCreateRolesResearcher     ClaimRuleCreateRoles = "researcher"
+	ClaimRuleCreateRolesTenantAdmin    ClaimRuleCreateRoles = "tenant-admin"
+	ClaimRuleCreateRolesTenantOperator ClaimRuleCreateRoles = "tenant-operator"
+	ClaimRuleCreateRolesViewer         ClaimRuleCreateRoles = "viewer"
+	ClaimRuleCreateRolesWorkflowAuthor ClaimRuleCreateRoles = "workflow-author"
+)
+
+// Valid indicates whether the value is a known member of the ClaimRuleCreateRoles enum.
+func (e ClaimRuleCreateRoles) Valid() bool {
+	switch e {
+	case ClaimRuleCreateRolesAuditor:
+		return true
+	case ClaimRuleCreateRolesResearcher:
+		return true
+	case ClaimRuleCreateRolesTenantAdmin:
+		return true
+	case ClaimRuleCreateRolesTenantOperator:
+		return true
+	case ClaimRuleCreateRolesViewer:
+		return true
+	case ClaimRuleCreateRolesWorkflowAuthor:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ClaimRuleUpdateRoles.
+const (
+	ClaimRuleUpdateRolesAuditor        ClaimRuleUpdateRoles = "auditor"
+	ClaimRuleUpdateRolesResearcher     ClaimRuleUpdateRoles = "researcher"
+	ClaimRuleUpdateRolesTenantAdmin    ClaimRuleUpdateRoles = "tenant-admin"
+	ClaimRuleUpdateRolesTenantOperator ClaimRuleUpdateRoles = "tenant-operator"
+	ClaimRuleUpdateRolesViewer         ClaimRuleUpdateRoles = "viewer"
+	ClaimRuleUpdateRolesWorkflowAuthor ClaimRuleUpdateRoles = "workflow-author"
+)
+
+// Valid indicates whether the value is a known member of the ClaimRuleUpdateRoles enum.
+func (e ClaimRuleUpdateRoles) Valid() bool {
+	switch e {
+	case ClaimRuleUpdateRolesAuditor:
+		return true
+	case ClaimRuleUpdateRolesResearcher:
+		return true
+	case ClaimRuleUpdateRolesTenantAdmin:
+		return true
+	case ClaimRuleUpdateRolesTenantOperator:
+		return true
+	case ClaimRuleUpdateRolesViewer:
+		return true
+	case ClaimRuleUpdateRolesWorkflowAuthor:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GroupSource.
+const (
+	GroupSourceIdp    GroupSource = "idp"
+	GroupSourceManual GroupSource = "manual"
+)
+
+// Valid indicates whether the value is a known member of the GroupSource enum.
+func (e GroupSource) Valid() bool {
+	switch e {
+	case GroupSourceIdp:
+		return true
+	case GroupSourceManual:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GroupMembershipSource.
+const (
+	GroupMembershipSourceIdp    GroupMembershipSource = "idp"
+	GroupMembershipSourceManual GroupMembershipSource = "manual"
+)
+
+// Valid indicates whether the value is a known member of the GroupMembershipSource enum.
+func (e GroupMembershipSource) Valid() bool {
+	switch e {
+	case GroupMembershipSourceIdp:
+		return true
+	case GroupMembershipSourceManual:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for HealthStatusStatus.
 const (
 	HealthStatusStatusOk HealthStatusStatus = "ok"
@@ -119,16 +215,34 @@ func (e MemberUpdateRoles) Valid() bool {
 
 // Defines values for MembershipSource.
 const (
-	Idp    MembershipSource = "idp"
-	Manual MembershipSource = "manual"
+	MembershipSourceIdp    MembershipSource = "idp"
+	MembershipSourceManual MembershipSource = "manual"
 )
 
 // Valid indicates whether the value is a known member of the MembershipSource enum.
 func (e MembershipSource) Valid() bool {
 	switch e {
-	case Idp:
+	case MembershipSourceIdp:
 		return true
-	case Manual:
+	case MembershipSourceManual:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PlatformRoleBindingRole.
+const (
+	PlatformRoleBindingRolePlatformAdmin   PlatformRoleBindingRole = "platform-admin"
+	PlatformRoleBindingRolePlatformAuditor PlatformRoleBindingRole = "platform-auditor"
+)
+
+// Valid indicates whether the value is a known member of the PlatformRoleBindingRole enum.
+func (e PlatformRoleBindingRole) Valid() bool {
+	switch e {
+	case PlatformRoleBindingRolePlatformAdmin:
+		return true
+	case PlatformRoleBindingRolePlatformAuditor:
 		return true
 	default:
 		return false
@@ -137,16 +251,16 @@ func (e MembershipSource) Valid() bool {
 
 // Defines values for PrincipalKind.
 const (
-	Service PrincipalKind = "service"
-	User    PrincipalKind = "user"
+	PrincipalKindService PrincipalKind = "service"
+	PrincipalKindUser    PrincipalKind = "user"
 )
 
 // Valid indicates whether the value is a known member of the PrincipalKind enum.
 func (e PrincipalKind) Valid() bool {
 	switch e {
-	case Service:
+	case PrincipalKindService:
 		return true
-	case User:
+	case PrincipalKindUser:
 		return true
 	default:
 		return false
@@ -219,6 +333,78 @@ func (e TenantUpdateState) Valid() bool {
 	}
 }
 
+// Defines values for UserLookupResultKind.
+const (
+	UserLookupResultKindService UserLookupResultKind = "service"
+	UserLookupResultKindUser    UserLookupResultKind = "user"
+)
+
+// Valid indicates whether the value is a known member of the UserLookupResultKind enum.
+func (e UserLookupResultKind) Valid() bool {
+	switch e {
+	case UserLookupResultKindService:
+		return true
+	case UserLookupResultKindUser:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RoleRef.
+const (
+	RoleRefPlatformAdmin   RoleRef = "platform-admin"
+	RoleRefPlatformAuditor RoleRef = "platform-auditor"
+)
+
+// Valid indicates whether the value is a known member of the RoleRef enum.
+func (e RoleRef) Valid() bool {
+	switch e {
+	case RoleRefPlatformAdmin:
+		return true
+	case RoleRefPlatformAuditor:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RevokeRoleBindingParamsRole.
+const (
+	RevokeRoleBindingParamsRolePlatformAdmin   RevokeRoleBindingParamsRole = "platform-admin"
+	RevokeRoleBindingParamsRolePlatformAuditor RevokeRoleBindingParamsRole = "platform-auditor"
+)
+
+// Valid indicates whether the value is a known member of the RevokeRoleBindingParamsRole enum.
+func (e RevokeRoleBindingParamsRole) Valid() bool {
+	switch e {
+	case RevokeRoleBindingParamsRolePlatformAdmin:
+		return true
+	case RevokeRoleBindingParamsRolePlatformAuditor:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GrantRoleBindingParamsRole.
+const (
+	GrantRoleBindingParamsRolePlatformAdmin   GrantRoleBindingParamsRole = "platform-admin"
+	GrantRoleBindingParamsRolePlatformAuditor GrantRoleBindingParamsRole = "platform-auditor"
+)
+
+// Valid indicates whether the value is a known member of the GrantRoleBindingParamsRole enum.
+func (e GrantRoleBindingParamsRole) Valid() bool {
+	switch e {
+	case GrantRoleBindingParamsRolePlatformAdmin:
+		return true
+	case GrantRoleBindingParamsRolePlatformAuditor:
+		return true
+	default:
+		return false
+	}
+}
+
 // CheckResult defines model for CheckResult.
 type CheckResult struct {
 	LatencyMs int               `json:"latency_ms"`
@@ -228,6 +414,49 @@ type CheckResult struct {
 
 // CheckResultStatus defines model for CheckResult.Status.
 type CheckResultStatus string
+
+// ClaimRule defines model for ClaimRule.
+type ClaimRule struct {
+	Claim      string              `json:"claim"`
+	CreatedAt  time.Time           `json:"created_at"`
+	Enabled    bool                `json:"enabled"`
+	GroupId    *openapi_types.UUID `json:"group_id,omitempty"`
+	Id         openapi_types.UUID  `json:"id"`
+	MatchValue string              `json:"match_value"`
+	Roles      []string            `json:"roles"`
+	TenantId   openapi_types.UUID  `json:"tenant_id"`
+	UpdatedAt  time.Time           `json:"updated_at"`
+	Version    int                 `json:"version"`
+}
+
+// ClaimRuleCreate defines model for ClaimRuleCreate.
+type ClaimRuleCreate struct {
+	Claim      string                 `json:"claim"`
+	Enabled    *bool                  `json:"enabled,omitempty"`
+	GroupId    *openapi_types.UUID    `json:"group_id,omitempty"`
+	MatchValue string                 `json:"match_value"`
+	Roles      []ClaimRuleCreateRoles `json:"roles"`
+}
+
+// ClaimRuleCreateRoles defines model for ClaimRuleCreate.Roles.
+type ClaimRuleCreateRoles string
+
+// ClaimRuleList defines model for ClaimRuleList.
+type ClaimRuleList struct {
+	Items      []ClaimRule `json:"items"`
+	NextCursor *string     `json:"next_cursor,omitempty"`
+}
+
+// ClaimRuleUpdate defines model for ClaimRuleUpdate.
+type ClaimRuleUpdate struct {
+	Enabled *bool                   `json:"enabled,omitempty"`
+	GroupId *openapi_types.UUID     `json:"group_id,omitempty"`
+	Roles   *[]ClaimRuleUpdateRoles `json:"roles,omitempty"`
+	Version int                     `json:"version"`
+}
+
+// ClaimRuleUpdateRoles defines model for ClaimRuleUpdate.Roles.
+type ClaimRuleUpdateRoles string
 
 // Error defines model for Error.
 type Error struct {
@@ -241,6 +470,62 @@ type Error struct {
 		Message   string  `json:"message"`
 		RequestId *string `json:"request_id,omitempty"`
 	} `json:"error"`
+}
+
+// Group defines model for Group.
+type Group struct {
+	CreatedAt   time.Time          `json:"created_at"`
+	Description string             `json:"description"`
+	Id          openapi_types.UUID `json:"id"`
+	Name        string             `json:"name"`
+	Source      GroupSource        `json:"source"`
+	TenantId    openapi_types.UUID `json:"tenant_id"`
+	UpdatedAt   time.Time          `json:"updated_at"`
+	Version     int                `json:"version"`
+}
+
+// GroupSource defines model for Group.Source.
+type GroupSource string
+
+// GroupCreate defines model for GroupCreate.
+type GroupCreate struct {
+	Description *string `json:"description,omitempty"`
+	Name        string  `json:"name"`
+}
+
+// GroupList defines model for GroupList.
+type GroupList struct {
+	Items      []Group `json:"items"`
+	NextCursor *string `json:"next_cursor,omitempty"`
+}
+
+// GroupMemberAdd defines model for GroupMemberAdd.
+type GroupMemberAdd struct {
+	UserId openapi_types.UUID `json:"user_id"`
+}
+
+// GroupMemberList defines model for GroupMemberList.
+type GroupMemberList struct {
+	Items      []GroupMembership `json:"items"`
+	NextCursor *string           `json:"next_cursor,omitempty"`
+}
+
+// GroupMembership defines model for GroupMembership.
+type GroupMembership struct {
+	CreatedAt time.Time             `json:"created_at"`
+	GroupId   openapi_types.UUID    `json:"group_id"`
+	Source    GroupMembershipSource `json:"source"`
+	UserId    openapi_types.UUID    `json:"user_id"`
+}
+
+// GroupMembershipSource defines model for GroupMembership.Source.
+type GroupMembershipSource string
+
+// GroupUpdate defines model for GroupUpdate.
+type GroupUpdate struct {
+	Description *string `json:"description,omitempty"`
+	Name        *string `json:"name,omitempty"`
+	Version     int     `json:"version"`
 }
 
 // HealthStatus defines model for HealthStatus.
@@ -303,6 +588,19 @@ type MembershipRef struct {
 	TenantId openapi_types.UUID `json:"tenant_id"`
 }
 
+// PlatformRoleBinding defines model for PlatformRoleBinding.
+type PlatformRoleBinding struct {
+	CreatedAt time.Time               `json:"created_at"`
+	Email     *string                 `json:"email,omitempty"`
+	Issuer    string                  `json:"issuer"`
+	Role      PlatformRoleBindingRole `json:"role"`
+	Subject   string                  `json:"subject"`
+	UserId    openapi_types.UUID      `json:"user_id"`
+}
+
+// PlatformRoleBindingRole defines model for PlatformRoleBinding.Role.
+type PlatformRoleBindingRole string
+
 // Principal defines model for Principal.
 type Principal struct {
 	Email   *string       `json:"email,omitempty"`
@@ -325,6 +623,11 @@ type ReadyStatus struct {
 
 // ReadyStatusStatus defines model for ReadyStatus.Status.
 type ReadyStatusStatus string
+
+// RoleBindingList defines model for RoleBindingList.
+type RoleBindingList struct {
+	Items []PlatformRoleBinding `json:"items"`
+}
 
 // Tenant defines model for Tenant.
 type Tenant struct {
@@ -366,11 +669,36 @@ type TenantUpdate struct {
 // TenantUpdateState defines model for TenantUpdate.State.
 type TenantUpdateState string
 
+// UserLookupList defines model for UserLookupList.
+type UserLookupList struct {
+	Items []UserLookupResult `json:"items"`
+}
+
+// UserLookupResult defines model for UserLookupResult.
+type UserLookupResult struct {
+	Email string               `json:"email"`
+	Id    openapi_types.UUID   `json:"id"`
+	Kind  UserLookupResultKind `json:"kind"`
+	Name  *string              `json:"name,omitempty"`
+}
+
+// UserLookupResultKind defines model for UserLookupResult.Kind.
+type UserLookupResultKind string
+
 // Cursor defines model for Cursor.
 type Cursor = string
 
+// GroupRef defines model for GroupRef.
+type GroupRef = string
+
 // Limit defines model for Limit.
 type Limit = int
+
+// RoleRef defines model for RoleRef.
+type RoleRef string
+
+// RuleRef defines model for RuleRef.
+type RuleRef = openapi_types.UUID
 
 // TenantSlug defines model for TenantSlug.
 type TenantSlug = string
@@ -378,8 +706,35 @@ type TenantSlug = string
 // UserRef defines model for UserRef.
 type UserRef = openapi_types.UUID
 
+// RevokeRoleBindingParamsRole defines parameters for RevokeRoleBinding.
+type RevokeRoleBindingParamsRole string
+
+// GrantRoleBindingParamsRole defines parameters for GrantRoleBinding.
+type GrantRoleBindingParamsRole string
+
 // ListTenantsParams defines parameters for ListTenants.
 type ListTenantsParams struct {
+	// Cursor Opaque keyset cursor from a previous list response.
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ListClaimRulesParams defines parameters for ListClaimRules.
+type ListClaimRulesParams struct {
+	// Cursor Opaque keyset cursor from a previous list response.
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ListGroupsParams defines parameters for ListGroups.
+type ListGroupsParams struct {
+	// Cursor Opaque keyset cursor from a previous list response.
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ListGroupMembersParams defines parameters for ListGroupMembers.
+type ListGroupMembersParams struct {
 	// Cursor Opaque keyset cursor from a previous list response.
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
@@ -392,11 +747,31 @@ type ListMembersParams struct {
 	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// LookupUsersParams defines parameters for LookupUsers.
+type LookupUsersParams struct {
+	Email string `form:"email" json:"email"`
+}
+
 // CreateTenantJSONRequestBody defines body for CreateTenant for application/json ContentType.
 type CreateTenantJSONRequestBody = TenantCreate
 
 // UpdateTenantJSONRequestBody defines body for UpdateTenant for application/json ContentType.
 type UpdateTenantJSONRequestBody = TenantUpdate
+
+// CreateClaimRuleJSONRequestBody defines body for CreateClaimRule for application/json ContentType.
+type CreateClaimRuleJSONRequestBody = ClaimRuleCreate
+
+// UpdateClaimRuleJSONRequestBody defines body for UpdateClaimRule for application/json ContentType.
+type UpdateClaimRuleJSONRequestBody = ClaimRuleUpdate
+
+// CreateGroupJSONRequestBody defines body for CreateGroup for application/json ContentType.
+type CreateGroupJSONRequestBody = GroupCreate
+
+// UpdateGroupJSONRequestBody defines body for UpdateGroup for application/json ContentType.
+type UpdateGroupJSONRequestBody = GroupUpdate
+
+// AddGroupMemberJSONRequestBody defines body for AddGroupMember for application/json ContentType.
+type AddGroupMemberJSONRequestBody = GroupMemberAdd
 
 // AddMemberJSONRequestBody defines body for AddMember for application/json ContentType.
 type AddMemberJSONRequestBody = MemberAdd
@@ -418,18 +793,69 @@ type ServerInterface interface {
 	// OpenapiSpec This OpenAPI document, as JSON
 	// (GET /openapi.json)
 	OpenapiSpec(w http.ResponseWriter, r *http.Request)
+	// ListRoleBindings List platform role bindings
+	// (GET /platform/role-bindings)
+	ListRoleBindings(w http.ResponseWriter, r *http.Request)
+	// RevokeRoleBinding Revoke a platform role
+	// (DELETE /platform/role-bindings/{user}/{role})
+	RevokeRoleBinding(w http.ResponseWriter, r *http.Request, user UserRef, role RevokeRoleBindingParamsRole)
+	// GrantRoleBinding Grant a platform role
+	// (PUT /platform/role-bindings/{user}/{role})
+	GrantRoleBinding(w http.ResponseWriter, r *http.Request, user UserRef, role GrantRoleBindingParamsRole)
 	// ListTenants List tenants (platform)
 	// (GET /tenants)
 	ListTenants(w http.ResponseWriter, r *http.Request, params ListTenantsParams)
 	// CreateTenant Create a tenant (platform)
 	// (POST /tenants)
 	CreateTenant(w http.ResponseWriter, r *http.Request)
+	// DeleteTenant Request tenant deletion
+	// (DELETE /tenants/{tenant})
+	DeleteTenant(w http.ResponseWriter, r *http.Request, tenant TenantSlug)
 	// GetTenant Get a tenant
 	// (GET /tenants/{tenant})
 	GetTenant(w http.ResponseWriter, r *http.Request, tenant TenantSlug)
 	// UpdateTenant Update a tenant
 	// (PATCH /tenants/{tenant})
 	UpdateTenant(w http.ResponseWriter, r *http.Request, tenant TenantSlug)
+	// ListClaimRules List claim-mapping rules
+	// (GET /tenants/{tenant}/claim-rules)
+	ListClaimRules(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params ListClaimRulesParams)
+	// CreateClaimRule Create a claim-mapping rule
+	// (POST /tenants/{tenant}/claim-rules)
+	CreateClaimRule(w http.ResponseWriter, r *http.Request, tenant TenantSlug)
+	// DeleteClaimRule Delete a claim-mapping rule
+	// (DELETE /tenants/{tenant}/claim-rules/{rule})
+	DeleteClaimRule(w http.ResponseWriter, r *http.Request, tenant TenantSlug, rule RuleRef)
+	// GetClaimRule Get a claim-mapping rule
+	// (GET /tenants/{tenant}/claim-rules/{rule})
+	GetClaimRule(w http.ResponseWriter, r *http.Request, tenant TenantSlug, rule RuleRef)
+	// UpdateClaimRule Update a claim-mapping rule
+	// (PATCH /tenants/{tenant}/claim-rules/{rule})
+	UpdateClaimRule(w http.ResponseWriter, r *http.Request, tenant TenantSlug, rule RuleRef)
+	// ListGroups List tenant groups
+	// (GET /tenants/{tenant}/groups)
+	ListGroups(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params ListGroupsParams)
+	// CreateGroup Create a group
+	// (POST /tenants/{tenant}/groups)
+	CreateGroup(w http.ResponseWriter, r *http.Request, tenant TenantSlug)
+	// DeleteGroup Delete a group
+	// (DELETE /tenants/{tenant}/groups/{group})
+	DeleteGroup(w http.ResponseWriter, r *http.Request, tenant TenantSlug, group GroupRef)
+	// GetGroup Get a group
+	// (GET /tenants/{tenant}/groups/{group})
+	GetGroup(w http.ResponseWriter, r *http.Request, tenant TenantSlug, group GroupRef)
+	// UpdateGroup Update a group
+	// (PATCH /tenants/{tenant}/groups/{group})
+	UpdateGroup(w http.ResponseWriter, r *http.Request, tenant TenantSlug, group GroupRef)
+	// ListGroupMembers List group members
+	// (GET /tenants/{tenant}/groups/{group}/members)
+	ListGroupMembers(w http.ResponseWriter, r *http.Request, tenant TenantSlug, group GroupRef, params ListGroupMembersParams)
+	// AddGroupMember Add a user to a group
+	// (POST /tenants/{tenant}/groups/{group}/members)
+	AddGroupMember(w http.ResponseWriter, r *http.Request, tenant TenantSlug, group GroupRef)
+	// RemoveGroupMember Remove a user from a group
+	// (DELETE /tenants/{tenant}/groups/{group}/members/{user})
+	RemoveGroupMember(w http.ResponseWriter, r *http.Request, tenant TenantSlug, group GroupRef, user UserRef)
 	// ListMembers List tenant members
 	// (GET /tenants/{tenant}/members)
 	ListMembers(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params ListMembersParams)
@@ -442,6 +868,9 @@ type ServerInterface interface {
 	// UpdateMember Replace a member's roles
 	// (PATCH /tenants/{tenant}/members/{user})
 	UpdateMember(w http.ResponseWriter, r *http.Request, tenant TenantSlug, user UserRef)
+	// LookupUsers Look up users by exact email (tenant.members.manage)
+	// (GET /tenants/{tenant}/users:lookup)
+	LookupUsers(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params LookupUsersParams)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -500,6 +929,90 @@ func (siw *ServerInterfaceWrapper) OpenapiSpec(w http.ResponseWriter, r *http.Re
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.OpenapiSpec(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListRoleBindings operation middleware
+func (siw *ServerInterfaceWrapper) ListRoleBindings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListRoleBindings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RevokeRoleBinding operation middleware
+func (siw *ServerInterfaceWrapper) RevokeRoleBinding(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "user" -------------
+	var user UserRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "user", r.PathValue("user"), &user, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "user", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "role" -------------
+	var role RevokeRoleBindingParamsRole
+
+	err = runtime.BindStyledParameterWithOptions("simple", "role", r.PathValue("role"), &role, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "role", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RevokeRoleBinding(w, r, user, role)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GrantRoleBinding operation middleware
+func (siw *ServerInterfaceWrapper) GrantRoleBinding(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "user" -------------
+	var user UserRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "user", r.PathValue("user"), &user, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "user", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "role" -------------
+	var role GrantRoleBindingParamsRole
+
+	err = runtime.BindStyledParameterWithOptions("simple", "role", r.PathValue("role"), &role, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "role", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GrantRoleBinding(w, r, user, role)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -569,6 +1082,32 @@ func (siw *ServerInterfaceWrapper) CreateTenant(w http.ResponseWriter, r *http.R
 	handler.ServeHTTP(w, r)
 }
 
+// DeleteTenant operation middleware
+func (siw *ServerInterfaceWrapper) DeleteTenant(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteTenant(w, r, tenant)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetTenant operation middleware
 func (siw *ServerInterfaceWrapper) GetTenant(w http.ResponseWriter, r *http.Request) {
 
@@ -612,6 +1151,521 @@ func (siw *ServerInterfaceWrapper) UpdateTenant(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateTenant(w, r, tenant)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListClaimRules operation middleware
+func (siw *ServerInterfaceWrapper) ListClaimRules(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListClaimRulesParams
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListClaimRules(w, r, tenant, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateClaimRule operation middleware
+func (siw *ServerInterfaceWrapper) CreateClaimRule(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateClaimRule(w, r, tenant)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteClaimRule operation middleware
+func (siw *ServerInterfaceWrapper) DeleteClaimRule(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "rule" -------------
+	var rule RuleRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "rule", r.PathValue("rule"), &rule, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "rule", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteClaimRule(w, r, tenant, rule)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetClaimRule operation middleware
+func (siw *ServerInterfaceWrapper) GetClaimRule(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "rule" -------------
+	var rule RuleRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "rule", r.PathValue("rule"), &rule, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "rule", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetClaimRule(w, r, tenant, rule)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateClaimRule operation middleware
+func (siw *ServerInterfaceWrapper) UpdateClaimRule(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "rule" -------------
+	var rule RuleRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "rule", r.PathValue("rule"), &rule, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "rule", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateClaimRule(w, r, tenant, rule)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListGroups operation middleware
+func (siw *ServerInterfaceWrapper) ListGroups(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListGroupsParams
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListGroups(w, r, tenant, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateGroup operation middleware
+func (siw *ServerInterfaceWrapper) CreateGroup(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateGroup(w, r, tenant)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteGroup operation middleware
+func (siw *ServerInterfaceWrapper) DeleteGroup(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "group" -------------
+	var group GroupRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "group", r.PathValue("group"), &group, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "group", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteGroup(w, r, tenant, group)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetGroup operation middleware
+func (siw *ServerInterfaceWrapper) GetGroup(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "group" -------------
+	var group GroupRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "group", r.PathValue("group"), &group, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "group", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetGroup(w, r, tenant, group)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateGroup operation middleware
+func (siw *ServerInterfaceWrapper) UpdateGroup(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "group" -------------
+	var group GroupRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "group", r.PathValue("group"), &group, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "group", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateGroup(w, r, tenant, group)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListGroupMembers operation middleware
+func (siw *ServerInterfaceWrapper) ListGroupMembers(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "group" -------------
+	var group GroupRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "group", r.PathValue("group"), &group, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "group", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListGroupMembersParams
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListGroupMembers(w, r, tenant, group, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AddGroupMember operation middleware
+func (siw *ServerInterfaceWrapper) AddGroupMember(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "group" -------------
+	var group GroupRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "group", r.PathValue("group"), &group, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "group", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AddGroupMember(w, r, tenant, group)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RemoveGroupMember operation middleware
+func (siw *ServerInterfaceWrapper) RemoveGroupMember(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "group" -------------
+	var group GroupRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "group", r.PathValue("group"), &group, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "group", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "user" -------------
+	var user UserRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "user", r.PathValue("user"), &user, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "user", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RemoveGroupMember(w, r, tenant, group, user)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -772,6 +1826,48 @@ func (siw *ServerInterfaceWrapper) UpdateMember(w http.ResponseWriter, r *http.R
 	handler.ServeHTTP(w, r)
 }
 
+// LookupUsers operation middleware
+func (siw *ServerInterfaceWrapper) LookupUsers(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params LookupUsersParams
+
+	// ------------- Required query parameter "email" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "email", r.URL.Query(), &params.Email, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "email"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "email", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.LookupUsers(w, r, tenant, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 type UnescapedCookieParamError struct {
 	ParamName string
 	Err       error
@@ -898,12 +1994,30 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/me", wrapper.GetMe)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/tenants", wrapper.ListTenants)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/tenants", wrapper.CreateTenant)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/tenants/{tenant}", wrapper.DeleteTenant)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/tenants/{tenant}", wrapper.GetTenant)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/tenants/{tenant}", wrapper.UpdateTenant)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/tenants/{tenant}/members", wrapper.ListMembers)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/tenants/{tenant}/members", wrapper.AddMember)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/tenants/{tenant}/members/{user}", wrapper.RemoveMember)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/tenants/{tenant}/members/{user}", wrapper.UpdateMember)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/tenants/{tenant}/users:lookup", wrapper.LookupUsers)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/tenants/{tenant}/groups", wrapper.ListGroups)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/tenants/{tenant}/groups", wrapper.CreateGroup)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/tenants/{tenant}/groups/{group}", wrapper.DeleteGroup)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/tenants/{tenant}/groups/{group}", wrapper.GetGroup)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/tenants/{tenant}/groups/{group}", wrapper.UpdateGroup)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/tenants/{tenant}/groups/{group}/members", wrapper.ListGroupMembers)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/tenants/{tenant}/groups/{group}/members", wrapper.AddGroupMember)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/tenants/{tenant}/groups/{group}/members/{user}", wrapper.RemoveGroupMember)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/tenants/{tenant}/claim-rules", wrapper.ListClaimRules)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/tenants/{tenant}/claim-rules", wrapper.CreateClaimRule)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/tenants/{tenant}/claim-rules/{rule}", wrapper.DeleteClaimRule)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/tenants/{tenant}/claim-rules/{rule}", wrapper.GetClaimRule)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/tenants/{tenant}/claim-rules/{rule}", wrapper.UpdateClaimRule)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/platform/role-bindings", wrapper.ListRoleBindings)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/platform/role-bindings/{user}/{role}", wrapper.RevokeRoleBinding)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/platform/role-bindings/{user}/{role}", wrapper.GrantRoleBinding)
 
 	return m
 }
@@ -1020,6 +2134,201 @@ func (response OpenapiSpec200JSONResponse) VisitOpenapiSpecResponse(w http.Respo
 	return err
 }
 
+type ListRoleBindingsRequestObject struct {
+}
+
+type ListRoleBindingsResponseObject interface {
+	VisitListRoleBindingsResponse(w http.ResponseWriter) error
+}
+
+type ListRoleBindings200JSONResponse RoleBindingList
+
+func (response ListRoleBindings200JSONResponse) VisitListRoleBindingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRoleBindings401JSONResponse Error
+
+func (response ListRoleBindings401JSONResponse) VisitListRoleBindingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRoleBindings403JSONResponse Error
+
+func (response ListRoleBindings403JSONResponse) VisitListRoleBindingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeRoleBindingRequestObject struct {
+	User UserRef                     `json:"user"`
+	Role RevokeRoleBindingParamsRole `json:"role"`
+}
+
+type RevokeRoleBindingResponseObject interface {
+	VisitRevokeRoleBindingResponse(w http.ResponseWriter) error
+}
+
+type RevokeRoleBinding204Response struct {
+}
+
+func (response RevokeRoleBinding204Response) VisitRevokeRoleBindingResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type RevokeRoleBinding401JSONResponse Error
+
+func (response RevokeRoleBinding401JSONResponse) VisitRevokeRoleBindingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeRoleBinding403JSONResponse Error
+
+func (response RevokeRoleBinding403JSONResponse) VisitRevokeRoleBindingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeRoleBinding404JSONResponse Error
+
+func (response RevokeRoleBinding404JSONResponse) VisitRevokeRoleBindingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeRoleBinding409JSONResponse Error
+
+func (response RevokeRoleBinding409JSONResponse) VisitRevokeRoleBindingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GrantRoleBindingRequestObject struct {
+	User UserRef                    `json:"user"`
+	Role GrantRoleBindingParamsRole `json:"role"`
+}
+
+type GrantRoleBindingResponseObject interface {
+	VisitGrantRoleBindingResponse(w http.ResponseWriter) error
+}
+
+type GrantRoleBinding204Response struct {
+}
+
+func (response GrantRoleBinding204Response) VisitGrantRoleBindingResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type GrantRoleBinding401JSONResponse Error
+
+func (response GrantRoleBinding401JSONResponse) VisitGrantRoleBindingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GrantRoleBinding403JSONResponse Error
+
+func (response GrantRoleBinding403JSONResponse) VisitGrantRoleBindingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GrantRoleBinding404JSONResponse Error
+
+func (response GrantRoleBinding404JSONResponse) VisitGrantRoleBindingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GrantRoleBinding422JSONResponse Error
+
+func (response GrantRoleBinding422JSONResponse) VisitGrantRoleBindingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListTenantsRequestObject struct {
 	Params ListTenantsParams
 }
@@ -1123,6 +2432,78 @@ func (response CreateTenant403JSONResponse) VisitCreateTenantResponse(w http.Res
 type CreateTenant409JSONResponse Error
 
 func (response CreateTenant409JSONResponse) VisitCreateTenantResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteTenantRequestObject struct {
+	Tenant TenantSlug `json:"tenant"`
+}
+
+type DeleteTenantResponseObject interface {
+	VisitDeleteTenantResponse(w http.ResponseWriter) error
+}
+
+type DeleteTenant202Response struct {
+}
+
+func (response DeleteTenant202Response) VisitDeleteTenantResponse(w http.ResponseWriter) error {
+	w.WriteHeader(202)
+	return nil
+}
+
+type DeleteTenant401JSONResponse Error
+
+func (response DeleteTenant401JSONResponse) VisitDeleteTenantResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteTenant403JSONResponse Error
+
+func (response DeleteTenant403JSONResponse) VisitDeleteTenantResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteTenant404JSONResponse Error
+
+func (response DeleteTenant404JSONResponse) VisitDeleteTenantResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteTenant409JSONResponse Error
+
+func (response DeleteTenant409JSONResponse) VisitDeleteTenantResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -1245,6 +2626,748 @@ func (response UpdateTenant409JSONResponse) VisitUpdateTenantResponse(w http.Res
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListClaimRulesRequestObject struct {
+	Tenant TenantSlug `json:"tenant"`
+	Params ListClaimRulesParams
+}
+
+type ListClaimRulesResponseObject interface {
+	VisitListClaimRulesResponse(w http.ResponseWriter) error
+}
+
+type ListClaimRules200JSONResponse ClaimRuleList
+
+func (response ListClaimRules200JSONResponse) VisitListClaimRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListClaimRules401JSONResponse Error
+
+func (response ListClaimRules401JSONResponse) VisitListClaimRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListClaimRules404JSONResponse Error
+
+func (response ListClaimRules404JSONResponse) VisitListClaimRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateClaimRuleRequestObject struct {
+	Tenant TenantSlug `json:"tenant"`
+	Body   *CreateClaimRuleJSONRequestBody
+}
+
+type CreateClaimRuleResponseObject interface {
+	VisitCreateClaimRuleResponse(w http.ResponseWriter) error
+}
+
+type CreateClaimRule201JSONResponse ClaimRule
+
+func (response CreateClaimRule201JSONResponse) VisitCreateClaimRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateClaimRule401JSONResponse Error
+
+func (response CreateClaimRule401JSONResponse) VisitCreateClaimRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateClaimRule404JSONResponse Error
+
+func (response CreateClaimRule404JSONResponse) VisitCreateClaimRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateClaimRule422JSONResponse Error
+
+func (response CreateClaimRule422JSONResponse) VisitCreateClaimRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteClaimRuleRequestObject struct {
+	Tenant TenantSlug `json:"tenant"`
+	Rule   RuleRef    `json:"rule"`
+}
+
+type DeleteClaimRuleResponseObject interface {
+	VisitDeleteClaimRuleResponse(w http.ResponseWriter) error
+}
+
+type DeleteClaimRule204Response struct {
+}
+
+func (response DeleteClaimRule204Response) VisitDeleteClaimRuleResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteClaimRule401JSONResponse Error
+
+func (response DeleteClaimRule401JSONResponse) VisitDeleteClaimRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteClaimRule404JSONResponse Error
+
+func (response DeleteClaimRule404JSONResponse) VisitDeleteClaimRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetClaimRuleRequestObject struct {
+	Tenant TenantSlug `json:"tenant"`
+	Rule   RuleRef    `json:"rule"`
+}
+
+type GetClaimRuleResponseObject interface {
+	VisitGetClaimRuleResponse(w http.ResponseWriter) error
+}
+
+type GetClaimRule200JSONResponse ClaimRule
+
+func (response GetClaimRule200JSONResponse) VisitGetClaimRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetClaimRule401JSONResponse Error
+
+func (response GetClaimRule401JSONResponse) VisitGetClaimRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetClaimRule404JSONResponse Error
+
+func (response GetClaimRule404JSONResponse) VisitGetClaimRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateClaimRuleRequestObject struct {
+	Tenant TenantSlug `json:"tenant"`
+	Rule   RuleRef    `json:"rule"`
+	Body   *UpdateClaimRuleJSONRequestBody
+}
+
+type UpdateClaimRuleResponseObject interface {
+	VisitUpdateClaimRuleResponse(w http.ResponseWriter) error
+}
+
+type UpdateClaimRule200JSONResponse ClaimRule
+
+func (response UpdateClaimRule200JSONResponse) VisitUpdateClaimRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateClaimRule401JSONResponse Error
+
+func (response UpdateClaimRule401JSONResponse) VisitUpdateClaimRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateClaimRule404JSONResponse Error
+
+func (response UpdateClaimRule404JSONResponse) VisitUpdateClaimRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateClaimRule409JSONResponse Error
+
+func (response UpdateClaimRule409JSONResponse) VisitUpdateClaimRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateClaimRule422JSONResponse Error
+
+func (response UpdateClaimRule422JSONResponse) VisitUpdateClaimRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListGroupsRequestObject struct {
+	Tenant TenantSlug `json:"tenant"`
+	Params ListGroupsParams
+}
+
+type ListGroupsResponseObject interface {
+	VisitListGroupsResponse(w http.ResponseWriter) error
+}
+
+type ListGroups200JSONResponse GroupList
+
+func (response ListGroups200JSONResponse) VisitListGroupsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListGroups401JSONResponse Error
+
+func (response ListGroups401JSONResponse) VisitListGroupsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListGroups404JSONResponse Error
+
+func (response ListGroups404JSONResponse) VisitListGroupsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateGroupRequestObject struct {
+	Tenant TenantSlug `json:"tenant"`
+	Body   *CreateGroupJSONRequestBody
+}
+
+type CreateGroupResponseObject interface {
+	VisitCreateGroupResponse(w http.ResponseWriter) error
+}
+
+type CreateGroup201JSONResponse Group
+
+func (response CreateGroup201JSONResponse) VisitCreateGroupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateGroup401JSONResponse Error
+
+func (response CreateGroup401JSONResponse) VisitCreateGroupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateGroup404JSONResponse Error
+
+func (response CreateGroup404JSONResponse) VisitCreateGroupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateGroup409JSONResponse Error
+
+func (response CreateGroup409JSONResponse) VisitCreateGroupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteGroupRequestObject struct {
+	Tenant TenantSlug `json:"tenant"`
+	Group  GroupRef   `json:"group"`
+}
+
+type DeleteGroupResponseObject interface {
+	VisitDeleteGroupResponse(w http.ResponseWriter) error
+}
+
+type DeleteGroup204Response struct {
+}
+
+func (response DeleteGroup204Response) VisitDeleteGroupResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteGroup401JSONResponse Error
+
+func (response DeleteGroup401JSONResponse) VisitDeleteGroupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteGroup404JSONResponse Error
+
+func (response DeleteGroup404JSONResponse) VisitDeleteGroupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteGroup409JSONResponse Error
+
+func (response DeleteGroup409JSONResponse) VisitDeleteGroupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetGroupRequestObject struct {
+	Tenant TenantSlug `json:"tenant"`
+	Group  GroupRef   `json:"group"`
+}
+
+type GetGroupResponseObject interface {
+	VisitGetGroupResponse(w http.ResponseWriter) error
+}
+
+type GetGroup200JSONResponse Group
+
+func (response GetGroup200JSONResponse) VisitGetGroupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetGroup401JSONResponse Error
+
+func (response GetGroup401JSONResponse) VisitGetGroupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetGroup404JSONResponse Error
+
+func (response GetGroup404JSONResponse) VisitGetGroupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateGroupRequestObject struct {
+	Tenant TenantSlug `json:"tenant"`
+	Group  GroupRef   `json:"group"`
+	Body   *UpdateGroupJSONRequestBody
+}
+
+type UpdateGroupResponseObject interface {
+	VisitUpdateGroupResponse(w http.ResponseWriter) error
+}
+
+type UpdateGroup200JSONResponse Group
+
+func (response UpdateGroup200JSONResponse) VisitUpdateGroupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateGroup401JSONResponse Error
+
+func (response UpdateGroup401JSONResponse) VisitUpdateGroupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateGroup404JSONResponse Error
+
+func (response UpdateGroup404JSONResponse) VisitUpdateGroupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateGroup409JSONResponse Error
+
+func (response UpdateGroup409JSONResponse) VisitUpdateGroupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListGroupMembersRequestObject struct {
+	Tenant TenantSlug `json:"tenant"`
+	Group  GroupRef   `json:"group"`
+	Params ListGroupMembersParams
+}
+
+type ListGroupMembersResponseObject interface {
+	VisitListGroupMembersResponse(w http.ResponseWriter) error
+}
+
+type ListGroupMembers200JSONResponse GroupMemberList
+
+func (response ListGroupMembers200JSONResponse) VisitListGroupMembersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListGroupMembers401JSONResponse Error
+
+func (response ListGroupMembers401JSONResponse) VisitListGroupMembersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListGroupMembers404JSONResponse Error
+
+func (response ListGroupMembers404JSONResponse) VisitListGroupMembersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AddGroupMemberRequestObject struct {
+	Tenant TenantSlug `json:"tenant"`
+	Group  GroupRef   `json:"group"`
+	Body   *AddGroupMemberJSONRequestBody
+}
+
+type AddGroupMemberResponseObject interface {
+	VisitAddGroupMemberResponse(w http.ResponseWriter) error
+}
+
+type AddGroupMember201Response struct {
+}
+
+func (response AddGroupMember201Response) VisitAddGroupMemberResponse(w http.ResponseWriter) error {
+	w.WriteHeader(201)
+	return nil
+}
+
+type AddGroupMember401JSONResponse Error
+
+func (response AddGroupMember401JSONResponse) VisitAddGroupMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AddGroupMember404JSONResponse Error
+
+func (response AddGroupMember404JSONResponse) VisitAddGroupMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AddGroupMember422JSONResponse Error
+
+func (response AddGroupMember422JSONResponse) VisitAddGroupMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveGroupMemberRequestObject struct {
+	Tenant TenantSlug `json:"tenant"`
+	Group  GroupRef   `json:"group"`
+	User   UserRef    `json:"user"`
+}
+
+type RemoveGroupMemberResponseObject interface {
+	VisitRemoveGroupMemberResponse(w http.ResponseWriter) error
+}
+
+type RemoveGroupMember204Response struct {
+}
+
+func (response RemoveGroupMember204Response) VisitRemoveGroupMemberResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type RemoveGroupMember401JSONResponse Error
+
+func (response RemoveGroupMember401JSONResponse) VisitRemoveGroupMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveGroupMember404JSONResponse Error
+
+func (response RemoveGroupMember404JSONResponse) VisitRemoveGroupMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -1504,6 +3627,57 @@ func (response UpdateMember422JSONResponse) VisitUpdateMemberResponse(w http.Res
 	return err
 }
 
+type LookupUsersRequestObject struct {
+	Tenant TenantSlug `json:"tenant"`
+	Params LookupUsersParams
+}
+
+type LookupUsersResponseObject interface {
+	VisitLookupUsersResponse(w http.ResponseWriter) error
+}
+
+type LookupUsers200JSONResponse UserLookupList
+
+func (response LookupUsers200JSONResponse) VisitLookupUsersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LookupUsers401JSONResponse Error
+
+func (response LookupUsers401JSONResponse) VisitLookupUsersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LookupUsers404JSONResponse Error
+
+func (response LookupUsers404JSONResponse) VisitLookupUsersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// HealthLive Liveness probe
@@ -1518,18 +3692,69 @@ type StrictServerInterface interface {
 	// OpenapiSpec This OpenAPI document, as JSON
 	// (GET /openapi.json)
 	OpenapiSpec(ctx context.Context, request OpenapiSpecRequestObject) (OpenapiSpecResponseObject, error)
+	// ListRoleBindings List platform role bindings
+	// (GET /platform/role-bindings)
+	ListRoleBindings(ctx context.Context, request ListRoleBindingsRequestObject) (ListRoleBindingsResponseObject, error)
+	// RevokeRoleBinding Revoke a platform role
+	// (DELETE /platform/role-bindings/{user}/{role})
+	RevokeRoleBinding(ctx context.Context, request RevokeRoleBindingRequestObject) (RevokeRoleBindingResponseObject, error)
+	// GrantRoleBinding Grant a platform role
+	// (PUT /platform/role-bindings/{user}/{role})
+	GrantRoleBinding(ctx context.Context, request GrantRoleBindingRequestObject) (GrantRoleBindingResponseObject, error)
 	// ListTenants List tenants (platform)
 	// (GET /tenants)
 	ListTenants(ctx context.Context, request ListTenantsRequestObject) (ListTenantsResponseObject, error)
 	// CreateTenant Create a tenant (platform)
 	// (POST /tenants)
 	CreateTenant(ctx context.Context, request CreateTenantRequestObject) (CreateTenantResponseObject, error)
+	// DeleteTenant Request tenant deletion
+	// (DELETE /tenants/{tenant})
+	DeleteTenant(ctx context.Context, request DeleteTenantRequestObject) (DeleteTenantResponseObject, error)
 	// GetTenant Get a tenant
 	// (GET /tenants/{tenant})
 	GetTenant(ctx context.Context, request GetTenantRequestObject) (GetTenantResponseObject, error)
 	// UpdateTenant Update a tenant
 	// (PATCH /tenants/{tenant})
 	UpdateTenant(ctx context.Context, request UpdateTenantRequestObject) (UpdateTenantResponseObject, error)
+	// ListClaimRules List claim-mapping rules
+	// (GET /tenants/{tenant}/claim-rules)
+	ListClaimRules(ctx context.Context, request ListClaimRulesRequestObject) (ListClaimRulesResponseObject, error)
+	// CreateClaimRule Create a claim-mapping rule
+	// (POST /tenants/{tenant}/claim-rules)
+	CreateClaimRule(ctx context.Context, request CreateClaimRuleRequestObject) (CreateClaimRuleResponseObject, error)
+	// DeleteClaimRule Delete a claim-mapping rule
+	// (DELETE /tenants/{tenant}/claim-rules/{rule})
+	DeleteClaimRule(ctx context.Context, request DeleteClaimRuleRequestObject) (DeleteClaimRuleResponseObject, error)
+	// GetClaimRule Get a claim-mapping rule
+	// (GET /tenants/{tenant}/claim-rules/{rule})
+	GetClaimRule(ctx context.Context, request GetClaimRuleRequestObject) (GetClaimRuleResponseObject, error)
+	// UpdateClaimRule Update a claim-mapping rule
+	// (PATCH /tenants/{tenant}/claim-rules/{rule})
+	UpdateClaimRule(ctx context.Context, request UpdateClaimRuleRequestObject) (UpdateClaimRuleResponseObject, error)
+	// ListGroups List tenant groups
+	// (GET /tenants/{tenant}/groups)
+	ListGroups(ctx context.Context, request ListGroupsRequestObject) (ListGroupsResponseObject, error)
+	// CreateGroup Create a group
+	// (POST /tenants/{tenant}/groups)
+	CreateGroup(ctx context.Context, request CreateGroupRequestObject) (CreateGroupResponseObject, error)
+	// DeleteGroup Delete a group
+	// (DELETE /tenants/{tenant}/groups/{group})
+	DeleteGroup(ctx context.Context, request DeleteGroupRequestObject) (DeleteGroupResponseObject, error)
+	// GetGroup Get a group
+	// (GET /tenants/{tenant}/groups/{group})
+	GetGroup(ctx context.Context, request GetGroupRequestObject) (GetGroupResponseObject, error)
+	// UpdateGroup Update a group
+	// (PATCH /tenants/{tenant}/groups/{group})
+	UpdateGroup(ctx context.Context, request UpdateGroupRequestObject) (UpdateGroupResponseObject, error)
+	// ListGroupMembers List group members
+	// (GET /tenants/{tenant}/groups/{group}/members)
+	ListGroupMembers(ctx context.Context, request ListGroupMembersRequestObject) (ListGroupMembersResponseObject, error)
+	// AddGroupMember Add a user to a group
+	// (POST /tenants/{tenant}/groups/{group}/members)
+	AddGroupMember(ctx context.Context, request AddGroupMemberRequestObject) (AddGroupMemberResponseObject, error)
+	// RemoveGroupMember Remove a user from a group
+	// (DELETE /tenants/{tenant}/groups/{group}/members/{user})
+	RemoveGroupMember(ctx context.Context, request RemoveGroupMemberRequestObject) (RemoveGroupMemberResponseObject, error)
 	// ListMembers List tenant members
 	// (GET /tenants/{tenant}/members)
 	ListMembers(ctx context.Context, request ListMembersRequestObject) (ListMembersResponseObject, error)
@@ -1542,6 +3767,9 @@ type StrictServerInterface interface {
 	// UpdateMember Replace a member's roles
 	// (PATCH /tenants/{tenant}/members/{user})
 	UpdateMember(ctx context.Context, request UpdateMemberRequestObject) (UpdateMemberResponseObject, error)
+	// LookupUsers Look up users by exact email (tenant.members.manage)
+	// (GET /tenants/{tenant}/users:lookup)
+	LookupUsers(ctx context.Context, request LookupUsersRequestObject) (LookupUsersResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -1679,6 +3907,84 @@ func (sh *strictHandler) OpenapiSpec(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// ListRoleBindings operation middleware
+func (sh *strictHandler) ListRoleBindings(w http.ResponseWriter, r *http.Request) {
+	var request ListRoleBindingsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListRoleBindings(ctx, request.(ListRoleBindingsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListRoleBindings")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListRoleBindingsResponseObject); ok {
+		if err := validResponse.VisitListRoleBindingsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RevokeRoleBinding operation middleware
+func (sh *strictHandler) RevokeRoleBinding(w http.ResponseWriter, r *http.Request, user UserRef, role RevokeRoleBindingParamsRole) {
+	var request RevokeRoleBindingRequestObject
+
+	request.User = user
+	request.Role = role
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RevokeRoleBinding(ctx, request.(RevokeRoleBindingRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RevokeRoleBinding")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RevokeRoleBindingResponseObject); ok {
+		if err := validResponse.VisitRevokeRoleBindingResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GrantRoleBinding operation middleware
+func (sh *strictHandler) GrantRoleBinding(w http.ResponseWriter, r *http.Request, user UserRef, role GrantRoleBindingParamsRole) {
+	var request GrantRoleBindingRequestObject
+
+	request.User = user
+	request.Role = role
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GrantRoleBinding(ctx, request.(GrantRoleBindingRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GrantRoleBinding")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GrantRoleBindingResponseObject); ok {
+		if err := validResponse.VisitGrantRoleBindingResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListTenants operation middleware
 func (sh *strictHandler) ListTenants(w http.ResponseWriter, r *http.Request, params ListTenantsParams) {
 	var request ListTenantsRequestObject
@@ -1729,6 +4035,32 @@ func (sh *strictHandler) CreateTenant(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(CreateTenantResponseObject); ok {
 		if err := validResponse.VisitCreateTenantResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteTenant operation middleware
+func (sh *strictHandler) DeleteTenant(w http.ResponseWriter, r *http.Request, tenant TenantSlug) {
+	var request DeleteTenantRequestObject
+
+	request.Tenant = tenant
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteTenant(ctx, request.(DeleteTenantRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteTenant")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteTenantResponseObject); ok {
+		if err := validResponse.VisitDeleteTenantResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -1788,6 +4120,392 @@ func (sh *strictHandler) UpdateTenant(w http.ResponseWriter, r *http.Request, te
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(UpdateTenantResponseObject); ok {
 		if err := validResponse.VisitUpdateTenantResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListClaimRules operation middleware
+func (sh *strictHandler) ListClaimRules(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params ListClaimRulesParams) {
+	var request ListClaimRulesRequestObject
+
+	request.Tenant = tenant
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListClaimRules(ctx, request.(ListClaimRulesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListClaimRules")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListClaimRulesResponseObject); ok {
+		if err := validResponse.VisitListClaimRulesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateClaimRule operation middleware
+func (sh *strictHandler) CreateClaimRule(w http.ResponseWriter, r *http.Request, tenant TenantSlug) {
+	var request CreateClaimRuleRequestObject
+
+	request.Tenant = tenant
+
+	var body CreateClaimRuleJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateClaimRule(ctx, request.(CreateClaimRuleRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateClaimRule")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateClaimRuleResponseObject); ok {
+		if err := validResponse.VisitCreateClaimRuleResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteClaimRule operation middleware
+func (sh *strictHandler) DeleteClaimRule(w http.ResponseWriter, r *http.Request, tenant TenantSlug, rule RuleRef) {
+	var request DeleteClaimRuleRequestObject
+
+	request.Tenant = tenant
+	request.Rule = rule
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteClaimRule(ctx, request.(DeleteClaimRuleRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteClaimRule")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteClaimRuleResponseObject); ok {
+		if err := validResponse.VisitDeleteClaimRuleResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetClaimRule operation middleware
+func (sh *strictHandler) GetClaimRule(w http.ResponseWriter, r *http.Request, tenant TenantSlug, rule RuleRef) {
+	var request GetClaimRuleRequestObject
+
+	request.Tenant = tenant
+	request.Rule = rule
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetClaimRule(ctx, request.(GetClaimRuleRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetClaimRule")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetClaimRuleResponseObject); ok {
+		if err := validResponse.VisitGetClaimRuleResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateClaimRule operation middleware
+func (sh *strictHandler) UpdateClaimRule(w http.ResponseWriter, r *http.Request, tenant TenantSlug, rule RuleRef) {
+	var request UpdateClaimRuleRequestObject
+
+	request.Tenant = tenant
+	request.Rule = rule
+
+	var body UpdateClaimRuleJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateClaimRule(ctx, request.(UpdateClaimRuleRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateClaimRule")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateClaimRuleResponseObject); ok {
+		if err := validResponse.VisitUpdateClaimRuleResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListGroups operation middleware
+func (sh *strictHandler) ListGroups(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params ListGroupsParams) {
+	var request ListGroupsRequestObject
+
+	request.Tenant = tenant
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListGroups(ctx, request.(ListGroupsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListGroups")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListGroupsResponseObject); ok {
+		if err := validResponse.VisitListGroupsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateGroup operation middleware
+func (sh *strictHandler) CreateGroup(w http.ResponseWriter, r *http.Request, tenant TenantSlug) {
+	var request CreateGroupRequestObject
+
+	request.Tenant = tenant
+
+	var body CreateGroupJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateGroup(ctx, request.(CreateGroupRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateGroup")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateGroupResponseObject); ok {
+		if err := validResponse.VisitCreateGroupResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteGroup operation middleware
+func (sh *strictHandler) DeleteGroup(w http.ResponseWriter, r *http.Request, tenant TenantSlug, group GroupRef) {
+	var request DeleteGroupRequestObject
+
+	request.Tenant = tenant
+	request.Group = group
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteGroup(ctx, request.(DeleteGroupRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteGroup")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteGroupResponseObject); ok {
+		if err := validResponse.VisitDeleteGroupResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetGroup operation middleware
+func (sh *strictHandler) GetGroup(w http.ResponseWriter, r *http.Request, tenant TenantSlug, group GroupRef) {
+	var request GetGroupRequestObject
+
+	request.Tenant = tenant
+	request.Group = group
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetGroup(ctx, request.(GetGroupRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetGroup")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetGroupResponseObject); ok {
+		if err := validResponse.VisitGetGroupResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateGroup operation middleware
+func (sh *strictHandler) UpdateGroup(w http.ResponseWriter, r *http.Request, tenant TenantSlug, group GroupRef) {
+	var request UpdateGroupRequestObject
+
+	request.Tenant = tenant
+	request.Group = group
+
+	var body UpdateGroupJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateGroup(ctx, request.(UpdateGroupRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateGroup")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateGroupResponseObject); ok {
+		if err := validResponse.VisitUpdateGroupResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListGroupMembers operation middleware
+func (sh *strictHandler) ListGroupMembers(w http.ResponseWriter, r *http.Request, tenant TenantSlug, group GroupRef, params ListGroupMembersParams) {
+	var request ListGroupMembersRequestObject
+
+	request.Tenant = tenant
+	request.Group = group
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListGroupMembers(ctx, request.(ListGroupMembersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListGroupMembers")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListGroupMembersResponseObject); ok {
+		if err := validResponse.VisitListGroupMembersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// AddGroupMember operation middleware
+func (sh *strictHandler) AddGroupMember(w http.ResponseWriter, r *http.Request, tenant TenantSlug, group GroupRef) {
+	var request AddGroupMemberRequestObject
+
+	request.Tenant = tenant
+	request.Group = group
+
+	var body AddGroupMemberJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.AddGroupMember(ctx, request.(AddGroupMemberRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "AddGroupMember")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(AddGroupMemberResponseObject); ok {
+		if err := validResponse.VisitAddGroupMemberResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RemoveGroupMember operation middleware
+func (sh *strictHandler) RemoveGroupMember(w http.ResponseWriter, r *http.Request, tenant TenantSlug, group GroupRef, user UserRef) {
+	var request RemoveGroupMemberRequestObject
+
+	request.Tenant = tenant
+	request.Group = group
+	request.User = user
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RemoveGroupMember(ctx, request.(RemoveGroupMemberRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RemoveGroupMember")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RemoveGroupMemberResponseObject); ok {
+		if err := validResponse.VisitRemoveGroupMemberResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -1916,46 +4634,95 @@ func (sh *strictHandler) UpdateMember(w http.ResponseWriter, r *http.Request, te
 	}
 }
 
+// LookupUsers operation middleware
+func (sh *strictHandler) LookupUsers(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params LookupUsersParams) {
+	var request LookupUsersRequestObject
+
+	request.Tenant = tenant
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.LookupUsers(ctx, request.(LookupUsersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "LookupUsers")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(LookupUsersResponseObject); ok {
+		if err := validResponse.VisitLookupUsersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // Base64 encoded, compressed with deflate, json marshaled OpenAPI spec.
 // Stored as a slice of fixed-width chunks rather than one concatenated
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
+	"7F1pc9s2+v8qGPw783dmqMNOu51oX7nuJk03aTw+dmfqeF2YfCyhJgEGAOWoGn33HQA8JZC6JWflV5ZE",
+	"EHiO33OCoMfY51HMGTAlcW+MYyJIBAqE+XaWCMmF/hSA9AWNFeUM9/CnmHxJAD3CSIJCvhmFHgSPEEGx",
+	"gCHliUQhlQoJkDFnEtrYw1Tf+iUBMcIeZiQC3MP2Xuxh6Q8gInopNYr1FakEZX08mXj4neBJfAEPs4SY",
+	"KyhJaIC4QHrOfKGYqEGxTl8PxB4W8CWhAgLcUyKB5mU/0IgqfclFeGgulicI4IEkocK9H7oejshXGiUR",
+	"7p109TfK7LdjL1uHMgV9EGahCx5Cyp6DdMFDaKQcmJ76BschUQ9cRC0SRJRhr/RDElDFBb71HGxeJI2r",
+	"J3NW1wsQhXtYawG7FrgCRpi6DJP+rALtNSTDpK81qOeo0aAyI5dU4bUEUc9bIkGsxdskG2ytZQD+4wVI",
+	"A4IxjgWPQSgK5mJIFDB/dBfJEqU5CDKSZnjwsFREJbKsZ/6IPfxAaOjWZ8HOjZ01n8MrU1Hcy+//BF/p",
+	"tc5CQiONh1n6fX3JSaAvgCgI7oiqiCwgClqKmvVn7gFG7kMISvPdcx4CYfqisdU7Grg0wJIw1LdmupqZ",
+	"2X3bzLCIKH9wNyRh4pa6NjrDN1UQSeeQ9AciBBmZ7wagdwsSkMTB0lIbgpDGbMYuL1LWu10zJ8hL1Vfl",
+	"O+OyUEexREWtFWobcXNmbmpAT0yUAsFwD//nhrT+Om39fnebfui23ty1e53W7bjrHZ/8OPluo8CZh4CI",
+	"fP0ArK8GuPfD8Ylx2dn3Y28RfGTWaaWe++D0qxYGUSbSPXHx+BDypxZJ1IBbBySBCH9gvNGQwpP5UO+0",
+	"DXXv7cLH00CcQkKT4htV+YFKhxvL2c0/fCe0f8X/1ykSiU7qFDv5ZC57YfBV3fl5hjHHsqcBbpZvZODa",
+	"YHaWhe35nucLimV8RzbSJdx/CMGFQ6Tun30ewGzIv1RaiCgi/oAyaAkggfnBTIL0PW2XvQagCA2r4q0u",
+	"90AhDNzeHIjkzHFpinU7Qz7eJYFpuUYgJenXBBH4koDMQkLz0kZWxXSzS0+NtyJ3UWhyYocyVgjTFcWN",
+	"Vw629bkNT4QPZUOJCEtIiPXUsRPkzzrKpulWWWw5k6vGVqPOurg6T0GZ5Mth97T1O2n91W29uS0+ovad",
+	"ibt/O3GFXVdSWUvqJuKGmWiHMcOs9xGiexCnQTBLvS4UFoPc1JLZjXMW3ZjM7HRyQPckPbPyRlzPUrnc",
+	"Cn5kZZXmhBVzlGy8xGqtqOoSk0WNeQ2P1RTbfwESqsFlXm5WiXOWoXPrz/Qu13IfHRKIchAtjvsCeLrQ",
+	"d6A+64LcrVDTxYIyn8YknEfFeT5wHWwVy5XBNcWAVxGTW7S1nuw5p6hre9mmusbKpM70vplybh6Dm3PA",
+	"K1jLs0znVkZVObGbRpjb48/N5QodbSLi7yXYV93tDAe1MWoVOKUd47VA06BUM3+etNdb1nnqf3Wb/ifK",
+	"Aj3vRkwMIt3EdRZWUiYgagW5btffwzKx7LlW2IAfTukv1vGybYw5CdJ5OeBWJVwvLZOSLQmuBgk/UhaU",
+	"JZxuE0gQQ+qDU5z1Fa7P46VxX6ubaSudlbKh3SXYCyDBqC658/XOxRJtvdJGh4t+945FAH1BAtNlThgZ",
+	"Emr90aI5pJdR6eSuMM1NeFaXxU/mROZ6l2n3uDbjMtbtuPAY2D3hd3qAjInvHiVBKcr6ZbgW7NS6Za2o",
+	"qmsSfEgl5UwP8DDxFR2CgauMgVkoBBCCstfNRwjc5dr2GznVcGCZKYli1f6N1X5dAydT1JzthoUUMrW3",
+	"Yjo89m/rdny8WG+nLIR6bjZhY3amHWYudsG6CqDegzeKfhryDozfetuq2PXu9gfOHzfTdCtmq3PtC4t6",
+	"ZqolgvmCHm5zQdrlCyx5teHUwMJPBFWjSy09y9M9EAHiNFGD4tvbjI9f/32VPS1itpzM1YKxgVKxfaCA",
+	"sgc+u2nyMQkVbdnsFV2GiYhQnyh4IiPUQb+cnyGfMyV4iOKQMGijM86GwPTNEsUgPrOA+7JDYtqOgh76",
+	"9fLTbx6SjDzCnU8kILPxIT108fYMvX79+g26vjpD2q9KRaJYep9Z+qxPTPqUET0vGlKCuH0QyBqr9ND1",
+	"9fufhz8iGui1HygI2f5symaqtAHjs0QqLtHp+fuSP+3hbvu43c3CE4kp7uHX5ifPPLFhpNsZmP5UJ9T2",
+	"1RvjPhhY2UqccvY+wL20h/XBmmD27JG5/aTbxWZLiimwwZjEcUh9c2/nz3R7qHj0o8lSKp0yo7Sqss4F",
+	"90FKRCUimty2RUwSRUSMcA9r+pgeEAt+b0IX0f7lBlsW8a0envGr98dGcxg2yd02OS5njw6GT8MQZTaE",
+	"AjCOj/kUJPr0T3SUJX6IPiDOwhHi5j4SIpvRIf0sy6u21v8P3dc7o9lB8QhRSw1l/Wml6enofK1F9eB8",
+	"B+rjVnH5EVyMXg0A5ZkYBChvMqInqgZIO05EAw9ldSMylbCHCAtQqdNo9PN993hj1Nq9ZAfBH6mUlJnn",
+	"wSgbkpAGyLpLpPgjsHbF/+LeTdXz3txObst60+zr1pz2SD5RZQGYiTqpz2ln1Dt198kOuozBX1eD07HE",
+	"qTC93un5exRwP4mAqWk0Xg2onBnkISKNb7eMZQrtaIW27m0dI2tZ1DlEqeCRW/UnU/Way4mW4Ygy6neH",
+	"wmtWQU268OvtL3xh3ZLMDbIdEUb6oO0h/8n0dto6NixpDlrcKHbKtgk1nbH2E5POWP86sfmJrtZmYXQB",
+	"Q/4IJQVjr/JU8Y1bLMWQTvbQ5sSbOzR7cnZyOwPW72eTKD0aCUNfcMBASin4fvsUpAhAjCv0wBOWMf9m",
+	"+0t/ICWc296ojoIKfD1gSaOxmEYkn9AYjuYlTlyBXhCmnq8F9DV5EKAjGkAUc62EVy/msANz0GqdtoWT",
+	"k+2v+z7NojRol0S+gfIs8HWgsMVocz5xlY5Z1gDSgycL4N8e0pjcbjFZKfW8XNmauaoLYzgAI3rLxT0N",
+	"gqWzcJN2pIhBRxmaXhkXyqUDPbZhelU+9AFS/cSD0caYrHRmJ9U+kBIJTGYwdbzhtV0StvQEqbAODFI7",
+	"Sg70WSTdMXsIqa+WRLLVDyKpgipgLrnFzth+mMqVpypdIh4lUgPIJvsj2w75w5TfwL4kkIBERI6YPxCc",
+	"6YN1dgxnn9nRVCh71UZXxWSCP+l+hgBFqC78idRU8+heKs7g75+ZbvZLRAQgBkMQSEAiIbAdu6o1/mwY",
+	"yK1xOWdeOv/l8NMns2L5OWUQEd+HWB1Esv4br4RZk7DuLjNJg9ge8vTT0DQ4UQZ8XeWmG4FLJ+kmRGTo",
+	"z6zEPCBQ047bCqC7OwgShZXv2zT2AE50xG0arVua+uSI4saH+iQMQbxaNsMFlTtzk47og1KzaLH7hpsC",
+	"zLaSGUvlYsnMLnBq6QkOF6u7c6T/srtp2n+aXelV8xurspJJuJKajjlW2NKHw5sLwPw0nlzLaLxvq2Ks",
+	"HqJ0Jfl6ANLiexaF434MY+n60YIuInGsEwULvjkFZK6J5+izp49N77gGLWTTUIZqKR+s3951c06ad2Cw",
+	"R8afGDJPta5anM6aynxH3hnrP42bO7YO3IxRLdDbTpbqbWtvWpQOB4JYLmwYWdWxWo3WIKa+cnoGEOju",
+	"xhHqUuuwnOC6kLIVlRtPjdXVfkC1xbi+n3KsEc5ZRfYC6R3XZVk5pmlJW1SmTvtGM428TFw40yhO6dRW",
+	"i+/skAOqFItXJjgUZi6+FIjLbjCiFGlzSsN36SsBn11ZWH7jx45LQiuThnIwcxUvfbytbQSRCJqCxUrl",
+	"YD/Va71f7ozN3wWqv/XtZr7nzd/4uVjpZx3lIdZ+Rmn7gOlVCZWrtprz2rOfve+nrtzcN+a62/ewus48",
+	"MO/qxO/ylWaOnsbicg8Q2lJqsJ+qsha4WUX5At7nVFOuVMstniZ00pNB88u59IUhO7O8b7EALL0FrrYM",
+	"LI5iHVhFuHaUMKVhvyzE+tLwNAhKGvmfCBfF28AWLyanHlM0MyASBC/Z9W5adeakAJVm6fxJUwveJcF/",
+	"GgSI2EOeiq/k4tOjX81nviI+hH0Yjrf4WZqFKskU6sIwdDhg9ywuPA36UqBZ1eNaPGS4S/8xSBPyFskm",
+	"dpNIPKvkYOp9ca6z0oeaFWyiT7xINrABf7al4L5KXN8wKt3Zqj1dWLiRl8eHtsqy3cMznrb0xgSzybdS",
+	"rlAxjmZ/vXBqsJOsYJVIbzznMzkSvtPUtibK7/J0dvnVuqWz2Ws/wZxnH1NIntMg3ANGtxUU9tMhbI4L",
+	"WZvwEOPCt2dv+3gkZWkzj0Piazu3sv1/aaepCVk6UsleaN5KV19nmMvXcgN1huufBmavlVv8X9hts7qY",
+	"en1gTRtCIvOvo/TDPfqQlWEBwVfiq3CEjnwioUWZBCapfvPhq5cKZG4Fwvkj0v+10gj3fmSFmQr2KD0p",
+	"lbqL7FyvJUO/3DADYyJC3MP6jX6d4TGe3E7+OwA=",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

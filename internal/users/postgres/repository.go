@@ -32,7 +32,8 @@ func scanUser(row pgx.Row) (users.User, error) {
 	var email, name *string
 	var kind string
 	err := row.Scan(&u.ID, &u.Issuer, &u.Subject, &kind, &email, &name,
-		&u.CreatedAt, &u.UpdatedAt, &u.LastSeenAt)
+		&u.CreatedAt, &u.UpdatedAt, &u.LastSeenAt,
+		&u.ClaimsHash, &u.ClaimsSyncedAt)
 	if err != nil {
 		return users.User{}, err
 	}
@@ -47,7 +48,7 @@ func scanUser(row pgx.Row) (users.User, error) {
 }
 
 const userCols = `id, issuer, subject, kind, email, display_name,
-	created_at, updated_at, last_seen_at`
+	created_at, updated_at, last_seen_at, claims_hash, claims_synced_at`
 
 // UpsertByIdentity implements users.Repository. Identity is (issuer,
 // subject); email/display_name refresh only when changed; last_seen_at
@@ -81,13 +82,15 @@ func (r *Repository) UpsertByIdentity(ctx context.Context, u users.User) (users.
 			id, u.Issuer, u.Subject, string(u.Kind),
 			nilStr(u.Email), nilStr(u.DisplayName)).
 			Scan(&out.ID, &out.Issuer, &out.Subject, &kind, &email, &name,
-				&out.CreatedAt, &out.UpdatedAt, &out.LastSeenAt, &created)
+				&out.CreatedAt, &out.UpdatedAt, &out.LastSeenAt,
+				&out.ClaimsHash, &out.ClaimsSyncedAt, &created)
 		if errors.Is(err, pgx.ErrNoRows) {
 			err = tx.QueryRow(ctx,
 				`SELECT `+userCols+` FROM users WHERE issuer=$1 AND subject=$2`,
 				u.Issuer, u.Subject).
 				Scan(&out.ID, &out.Issuer, &out.Subject, &kind, &email, &name,
-					&out.CreatedAt, &out.UpdatedAt, &out.LastSeenAt)
+					&out.CreatedAt, &out.UpdatedAt, &out.LastSeenAt,
+					&out.ClaimsHash, &out.ClaimsSyncedAt)
 		}
 		if err != nil {
 			return err
@@ -231,16 +234,23 @@ func (r *Repository) ListPlatformRoleBindings(ctx context.Context) ([]users.Plat
 			return err
 		}
 		rows, err := tx.Query(ctx, `
-			SELECT user_id, role, created_at, created_by
-			FROM platform_role_bindings ORDER BY user_id, role`)
+			SELECT b.user_id, u.issuer, u.subject, u.email,
+			       b.role, b.created_at, b.created_by
+			FROM platform_role_bindings b JOIN users u ON u.id = b.user_id
+			ORDER BY b.user_id, b.role`)
 		if err != nil {
 			return err
 		}
 		defer rows.Close()
 		for rows.Next() {
 			var b users.PlatformRoleBinding
-			if err := rows.Scan(&b.UserID, &b.Role, &b.CreatedAt, &b.CreatedBy); err != nil {
+			var email *string
+			if err := rows.Scan(&b.UserID, &b.Issuer, &b.Subject, &email,
+				&b.Role, &b.CreatedAt, &b.CreatedBy); err != nil {
 				return err
+			}
+			if email != nil {
+				b.Email = *email
 			}
 			out = append(out, b)
 		}

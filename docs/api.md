@@ -99,10 +99,29 @@ GET    /api/v1/tenants                              platform
 POST   /api/v1/tenants                              platform
 GET    /api/v1/tenants/{tenant}
 PATCH  /api/v1/tenants/{tenant}
+DELETE /api/v1/tenants/{tenant}                     platform; async purge, 202
 GET    /api/v1/tenants/{tenant}/members
 POST   /api/v1/tenants/{tenant}/members
+PATCH  /api/v1/tenants/{tenant}/members/{user}
 DELETE /api/v1/tenants/{tenant}/members/{user}
-...    /api/v1/tenants/{tenant}/groups
+GET    /api/v1/tenants/{tenant}/users:lookup        exact email match
+GET    /api/v1/tenants/{tenant}/groups
+POST   /api/v1/tenants/{tenant}/groups
+GET    /api/v1/tenants/{tenant}/groups/{group}
+PATCH  /api/v1/tenants/{tenant}/groups/{group}
+DELETE /api/v1/tenants/{tenant}/groups/{group}
+GET    /api/v1/tenants/{tenant}/groups/{group}/members
+POST   /api/v1/tenants/{tenant}/groups/{group}/members
+DELETE /api/v1/tenants/{tenant}/groups/{group}/members/{user}
+GET    /api/v1/tenants/{tenant}/claim-rules
+POST   /api/v1/tenants/{tenant}/claim-rules
+GET    /api/v1/tenants/{tenant}/claim-rules/{rule}
+PATCH  /api/v1/tenants/{tenant}/claim-rules/{rule}
+DELETE /api/v1/tenants/{tenant}/claim-rules/{rule}
+GET    /api/v1/platform/role-bindings               platform
+PUT    /api/v1/platform/role-bindings/{user}/{role} platform
+DELETE /api/v1/platform/role-bindings/{user}/{role} platform
+...    /api/v1/tenants/{tenant}/projects
 ...    /api/v1/tenants/{tenant}/projects
 ...    /api/v1/tenants/{tenant}/projects/{project}/members
 ...    /api/v1/tenants/{tenant}/projects/{project}/cluster-bindings

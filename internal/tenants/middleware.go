@@ -54,7 +54,12 @@ func Require(repo Repository, logger *slog.Logger, _ audit.Recorder) httpx.Middl
 					}
 				}
 			}
-			if !ok || t.State == StateDeleted {
+			// Deleting/deleted tenants are tombstones: invisible to
+			// ordinary members, resolvable by platform roles for
+			// audit review. Suspended tenants still resolve
+			// (services decide what is blocked).
+			if !ok || ((t.State == StateDeleting || t.State == StateDeleted) &&
+				len(p.PlatformRoles) == 0) {
 				logger.InfoContext(ctx, "tenant not found or not visible",
 					"request_id", log.RequestIDFrom(ctx))
 				httpx.WriteError(ctx, w, tenantNotFound())

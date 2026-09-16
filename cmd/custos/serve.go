@@ -106,8 +106,13 @@ func cmdServe(parent context.Context, configPath string, lookupEnv config.Lookup
 
 	userRepo := userpg.New(pool)
 	tenantRepo := tenantpg.New(pool)
-	provisioner := users.NewService(userRepo, recorder)
-	tenantSvc := tenantsvc.NewService(tenantRepo, userRepo, authz.RBAC{}, recorder)
+	provisioner := users.NewService(userRepo, recorder,
+		users.WithAuthorizer(authz.RBAC{}),
+		users.WithGroupsClaim(cfg.Auth.OIDC.Claims.Groups),
+		users.WithMeterProvider(prov.Meter),
+		users.WithLogger(logger))
+	tenantSvc := tenantsvc.NewService(tenantRepo, tenantRepo, tenantRepo,
+		userRepo, authz.RBAC{}, recorder)
 
 	mux := http.NewServeMux()
 	api.Mount(mux, api.Deps{
@@ -119,6 +124,7 @@ func cmdServe(parent context.Context, configPath string, lookupEnv config.Lookup
 		Audit:       recorder,
 		Tenants:     tenantSvc,
 		TenantRepo:  tenantRepo,
+		Users:       provisioner,
 	})
 
 	handler := otel.Instrument(httpx.Chain(

@@ -8,6 +8,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/Exonical/custos/internal/audit"
 	"github.com/Exonical/custos/internal/audit/pgaudit"
 	"github.com/Exonical/custos/internal/platform/config"
@@ -15,6 +17,7 @@ import (
 	"github.com/Exonical/custos/internal/platform/log"
 	"github.com/Exonical/custos/internal/platform/otel"
 	"github.com/Exonical/custos/internal/platform/workqueue"
+	tenantpg "github.com/Exonical/custos/internal/tenants/postgres"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/sync/errgroup"
 )
@@ -107,6 +110,7 @@ func registerBuiltins(q *workqueue.Queue, pool *pgxpool.Pool, recorder audit.Rec
 	q.Register("maintenance.noop", func(_ context.Context, _ workqueue.Item) error {
 		return nil
 	})
+	q.Register("tenant.delete", tenantDeleteHandler(pool, recorder))
 	q.Register("maintenance.partitions", func(ctx context.Context, _ workqueue.Item) error {
 		created, err := db.EnsureMonthlyPartitions(ctx, pool, "audit_events", time.Now(), 3)
 		if err != nil {
@@ -129,4 +133,28 @@ func registerBuiltins(q *workqueue.Queue, pool *pgxpool.Pool, recorder audit.Rec
 			},
 		})
 	})
+}
+
+// tenantDeleteHandler purges a tenant's rows and tombstones it. The
+// tenants row (and slug) is retained — slugs are never reused
+// (docs/tenancy.md lifecycle). Idempotent: re-running on a deleted
+// tenant is a no-op. Item key: "tenant:<uuid>".
+func tenantDeleteHandler(pool *pgxpool.Pool, recorder audit.Recorder) workqueue.Handler {
+	repo := tenantpg.New(pool)
+	return func(ctx context.Context, it workqueue.Item) error {
+		id, err := uuid.Parse(it.Key[len("tenant:"):])
+		if err != nil {
+			return fmt.Errorf("tenant.delete key %q: %w", it.Key, err)
+		}
+		if err := repo.PurgeTenantData(ctx, id); err != nil {
+			return err
+		}
+		return recorder.Record(ctx, audit.Event{
+			Actor:   audit.Actor{Type: audit.ActorSystem, ID: "custos"},
+			Action:  "tenant.deleted",
+			Result:  audit.ResultAllow,
+			Target:  audit.Target{Type: "tenant", ID: id.String()},
+			Details: map[string]any{"key": it.Key},
+		})
+	}
 }

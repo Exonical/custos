@@ -19,15 +19,20 @@ import (
 // Service is the tenant application service: every method authorizes
 // through authz, applies state gating, and records audit events.
 type Service struct {
-	repo  tenants.Repository
-	users users.Repository
-	az    authz.Authorizer
-	rec   audit.Recorder
+	repo   tenants.Repository
+	groups tenants.GroupRepository
+	rules  tenants.ClaimRuleRepository
+	users  users.Repository
+	az     authz.Authorizer
+	rec    audit.Recorder
 }
 
-// NewService wires the tenant service.
-func NewService(repo tenants.Repository, u users.Repository, az authz.Authorizer, rec audit.Recorder) *Service {
-	return &Service{repo: repo, users: u, az: az, rec: rec}
+// NewService wires the tenant service. groups/rules are separate ports;
+// the postgres Repository satisfies all three.
+func NewService(repo tenants.Repository, groups tenants.GroupRepository,
+	rules tenants.ClaimRuleRepository, u users.Repository,
+	az authz.Authorizer, rec audit.Recorder) *Service {
+	return &Service{repo: repo, groups: groups, rules: rules, users: u, az: az, rec: rec}
 }
 
 // CreateTenant is the POST /tenants body.

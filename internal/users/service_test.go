@@ -3,6 +3,7 @@ package users_test
 import (
 	"context"
 	"os"
+	"sync"
 	"testing"
 
 	"github.com/google/uuid"
@@ -16,9 +17,14 @@ import (
 
 func TestMain(m *testing.M) { os.Exit(dbtest.Main(m)) }
 
-type fakeRec struct{ events []audit.Event }
+type fakeRec struct {
+	mu     sync.Mutex
+	events []audit.Event
+}
 
 func (f *fakeRec) Record(_ context.Context, e audit.Event) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.events = append(f.events, e)
 	return nil
 }
