@@ -123,14 +123,28 @@ DELETE /api/v1/tenants/{tenant}/claim-rules/{rule}
 GET    /api/v1/platform/role-bindings               platform
 PUT    /api/v1/platform/role-bindings/{user}/{role} platform
 DELETE /api/v1/platform/role-bindings/{user}/{role} platform
-...    /api/v1/tenants/{tenant}/projects
-...    /api/v1/tenants/{tenant}/projects
-...    /api/v1/tenants/{tenant}/projects/{project}/members
-...    /api/v1/tenants/{tenant}/projects/{project}/cluster-bindings
+GET    /api/v1/tenants/{tenant}/projects                       all for project.read; member projects otherwise
+POST   /api/v1/tenants/{tenant}/projects                       project.create; creator becomes project-admin
+GET    /api/v1/tenants/{tenant}/projects/{project}
+PATCH  /api/v1/tenants/{tenant}/projects/{project}             project.manage (optimistic version)
+POST   /api/v1/tenants/{tenant}/projects/{project}/archive     project.manage
+POST   /api/v1/tenants/{tenant}/projects/{project}/unarchive   project.manage
+GET    /api/v1/tenants/{tenant}/projects/{project}/members
+POST   /api/v1/tenants/{tenant}/projects/{project}/members     project.members.manage
+PATCH  /api/v1/tenants/{tenant}/projects/{project}/members/{user}
+DELETE /api/v1/tenants/{tenant}/projects/{project}/members/{user}
+GET    /api/v1/tenants/{tenant}/projects/{project}/cluster-bindings
+POST   /api/v1/tenants/{tenant}/projects/{project}/cluster-bindings  project.manage
+GET    /api/v1/tenants/{tenant}/projects/{project}/cluster-bindings/{binding}
+PATCH  /api/v1/tenants/{tenant}/projects/{project}/cluster-bindings/{binding}
+DELETE /api/v1/tenants/{tenant}/projects/{project}/cluster-bindings/{binding}
 GET    /api/v1/tenants/{tenant}/clusters            clusters visible to tenant (summaries; no base_url/credentials)
 GET    /api/v1/tenants/{tenant}/clusters/{cluster}  visible cluster summary
 GET    /api/v1/tenants/{tenant}/clusters/{cluster}/partitions
-...    /api/v1/tenants/{tenant}/policies
+GET    /api/v1/tenants/{tenant}/policies/resource              policy.read
+PUT    /api/v1/tenants/{tenant}/policies/resource              policy.manage
+GET    /api/v1/tenants/{tenant}/projects/{project}/policies/resource   policy.read; includes `effective` (tenant ∩ project)
+PUT    /api/v1/tenants/{tenant}/projects/{project}/policies/resource   policy.manage at tenant level
 ...    /api/v1/tenants/{tenant}/secret-references
 ...    /api/v1/tenants/{tenant}/workflows
 ...    /api/v1/tenants/{tenant}/workflows/{workflow}/versions

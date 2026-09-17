@@ -324,6 +324,27 @@ func scanAssignment(row pgx.Row) (clusters.Assignment, error) {
 	return a, nil
 }
 
+// GetAssignment implements clusters.Repository.
+func (r *Repository) GetAssignment(ctx context.Context, scope tenants.Scope,
+	clusterID, tenantID uuid.UUID) (clusters.Assignment, error) {
+	var a clusters.Assignment
+	err := db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
+		if err := applyScope(ctx, tx, scope); err != nil {
+			return err
+		}
+		var err error
+		a, err = scanAssignment(tx.QueryRow(ctx, `
+			SELECT cluster_id, tenant_id, source, defaults, created_at, updated_at
+			FROM cluster_tenant_assignments
+			WHERE cluster_id=$1 AND tenant_id=$2`, clusterID, tenantID))
+		return err
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return clusters.Assignment{}, apperr.New(apperr.NotFound, "NOT_FOUND", "assignment not found")
+	}
+	return a, err
+}
+
 // UpsertAssignment implements clusters.Repository.
 func (r *Repository) UpsertAssignment(ctx context.Context, scope tenants.Scope,
 	a clusters.Assignment) error {

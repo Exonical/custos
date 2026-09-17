@@ -78,6 +78,58 @@ func TestRBACMatrix(t *testing.T) {
 	}
 }
 
+func TestRBACProjectRoles(t *testing.T) {
+	projectID := uuid.Must(uuid.NewV7())
+	otherProject := uuid.Must(uuid.NewV7())
+	res := Resource{Kind: "project", ID: projectID.String(),
+		TenantID: tenantA.String(), ProjectID: projectID.String()}
+	otherRes := Resource{Kind: "project", ID: otherProject.String(),
+		TenantID: tenantA.String(), ProjectID: otherProject.String()}
+
+	// memberCtx: tenant researcher + project roles for projectID.
+	memberCtx := WithProjectRoles(
+		ctxWithRoles(tenantA, []string{RoleResearcher}), projectID.String(),
+		[]string{"project-admin"})
+	// nilMemberCtx: project roles but no tenant membership.
+	nilMemberCtx := WithProjectRoles(
+		tenants.WithTenantContext(context.Background(),
+			tenants.TenantContext{Tenant: tenants.Tenant{ID: tenantA}}),
+		projectID.String(), []string{"project-admin"})
+
+	cases := []struct {
+		name string
+		ctx  context.Context
+		a    Action
+		r    Resource
+		want bool
+	}{
+		{"project-admin manages own project", memberCtx, ProjectManage, res, true},
+		{"project-admin members manage", memberCtx, ProjectMembersManage, res, true},
+		{"project role does not leak to other project", memberCtx, ProjectManage, otherRes, false},
+		{"project role without tenant membership denies", nilMemberCtx, ProjectManage, res, false},
+		{"project roles ignored when resource has no project",
+			memberCtx, TenantManage,
+			Resource{Kind: "tenant", ID: tenantA.String(), TenantID: tenantA.String()}, false},
+		{"project-member reads project", WithProjectRoles(
+			ctxWithRoles(tenantA, []string{RoleResearcher}), projectID.String(),
+			[]string{"project-member"}), ProjectRead, res, true},
+		{"project-member cannot manage members", WithProjectRoles(
+			ctxWithRoles(tenantA, []string{RoleResearcher}), projectID.String(),
+			[]string{"project-member"}), ProjectMembersManage, res, false},
+		{"project-viewer reads only", WithProjectRoles(
+			ctxWithRoles(tenantA, []string{RoleResearcher}), projectID.String(),
+			[]string{"project-viewer"}), WorkflowCreate, res, false},
+		{"tenant-admin manages without project membership",
+			ctxWithRoles(tenantA, []string{RoleTenantAdmin}), ProjectManage, res, true},
+	}
+	p := authn.Principal{UserID: userX}
+	for _, tc := range cases {
+		if got := check(tc.ctx, p, tc.a, tc.r); got != tc.want {
+			t.Errorf("%s: got %v", tc.name, got)
+		}
+	}
+}
+
 func TestSelfOwnership(t *testing.T) {
 	other := uuid.Must(uuid.NewV7())
 	ownRes := Resource{Kind: "job", TenantID: tenantA.String(), OwnerID: userX.String()}

@@ -27,6 +27,10 @@ import (
 	"github.com/Exonical/custos/internal/platform/httpx"
 	"github.com/Exonical/custos/internal/platform/log"
 	"github.com/Exonical/custos/internal/platform/otel"
+	policypg "github.com/Exonical/custos/internal/policies/postgres"
+	policiesvc "github.com/Exonical/custos/internal/policies/service"
+	projectpg "github.com/Exonical/custos/internal/projects/postgres"
+	projectsvc "github.com/Exonical/custos/internal/projects/service"
 	tenantpg "github.com/Exonical/custos/internal/tenants/postgres"
 	tenantsvc "github.com/Exonical/custos/internal/tenants/service"
 	"github.com/Exonical/custos/internal/users"
@@ -131,18 +135,27 @@ func cmdServe(parent context.Context, configPath string, lookupEnv config.Lookup
 	})
 	reg.Register(clustersync.UnreachableChecker(clusterRepo), false)
 
+	projectRepo := projectpg.New(pool)
+	projectSvc := projectsvc.NewService(projectRepo, projectRepo, projectRepo,
+		tenantRepo, clusterRepo, authz.RBAC{}, recorder)
+	policySvc := policiesvc.NewService(policypg.New(pool), authz.RBAC{}, recorder)
+
 	mux := http.NewServeMux()
 	api.Mount(mux, api.Deps{
-		Health:      reg,
-		ReadyBudget: 500 * time.Millisecond,
-		Logger:      logger,
-		Verifier:    verifier,
-		Provisioner: provisioner,
-		Audit:       recorder,
-		Tenants:     tenantSvc,
-		TenantRepo:  tenantRepo,
-		Users:       provisioner,
-		Clusters:    clusterSvc,
+		Health:         reg,
+		ReadyBudget:    500 * time.Millisecond,
+		Logger:         logger,
+		Verifier:       verifier,
+		Provisioner:    provisioner,
+		Audit:          recorder,
+		Tenants:        tenantSvc,
+		TenantRepo:     tenantRepo,
+		Users:          provisioner,
+		Clusters:       clusterSvc,
+		Projects:       projectSvc,
+		ProjectRepo:    projectRepo,
+		ProjectMembers: projectRepo,
+		Policies:       policySvc,
 	})
 
 	handler := otel.Instrument(httpx.Chain(

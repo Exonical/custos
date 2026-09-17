@@ -17,17 +17,17 @@ func deny(code, field, msg string) *Denial {
 // ResourcePolicy bounds what a principal may request. Zero numeric
 // limits mean unlimited; nil lists mean any.
 type ResourcePolicy struct {
-	MaxNodes            int
-	MaxTasks            int
-	MaxCPUsPerTask      int
-	MaxMemoryPerNodeMiB int64
-	MaxGPUsPerJob       int
-	MaxWalltime         time.Duration
-	AllowedPartitions   []string
-	AllowedQoS          []string
-	AllowedGPUTypes     []string
-	AllowExclusive      bool
-	MaxArraySize        int
+	MaxNodes            int                   `json:"max_nodes,omitempty"`
+	MaxTasks            int                   `json:"max_tasks,omitempty"`
+	MaxCPUsPerTask      int                   `json:"max_cpus_per_task,omitempty"`
+	MaxMemoryPerNodeMiB int64                 `json:"max_memory_per_node_mib,omitempty"`
+	MaxGPUsPerJob       int                   `json:"max_gpus_per_job,omitempty"`
+	MaxWalltime         workflowspec.Duration `json:"max_walltime,omitempty"`
+	AllowedPartitions   []string              `json:"allowed_partitions,omitempty"`
+	AllowedQoS          []string              `json:"allowed_qos,omitempty"`
+	AllowedGPUTypes     []string              `json:"allowed_gpu_types,omitempty"`
+	AllowExclusive      bool                  `json:"allow_exclusive,omitempty"`
+	MaxArraySize        int                   `json:"max_array_size,omitempty"`
 }
 
 // CheckResourcePolicy enforces numeric limits and allow-lists.
@@ -61,7 +61,7 @@ func CheckResourcePolicy(req workflowspec.Resources, pol ResourcePolicy) *Denial
 				"gpu type "+req.GPU.Type+" is not allowed")
 		}
 	}
-	if pol.MaxWalltime > 0 && time.Duration(req.Walltime) > pol.MaxWalltime {
+	if pol.MaxWalltime > 0 && time.Duration(req.Walltime) > time.Duration(pol.MaxWalltime) {
 		return deny("RESOURCE_LIMIT", "walltime", "walltime exceeds policy limit")
 	}
 	if req.Exclusive && !pol.AllowExclusive {
@@ -80,6 +80,7 @@ type Binding struct {
 	DefaultPartition  string
 	AllowedPartitions []string
 	AllowedQoS        []string
+	DefaultQoS        string
 }
 
 // CheckEntitlement resolves account/partition/qos against the binding.
@@ -95,6 +96,9 @@ func CheckEntitlement(b Binding, partition, qos string) (account, part, q string
 			"partition "+part+" is not in the project binding")
 	}
 	q = qos
+	if q == "" {
+		q = b.DefaultQoS
+	}
 	if len(b.AllowedQoS) > 0 && q != "" && !slices.Contains(b.AllowedQoS, q) {
 		return "", "", "", deny("QOS_DENIED", "qos",
 			"qos "+q+" is not in the project binding")

@@ -1048,6 +1048,512 @@ paths:
           description: Tenant or cluster not found.
           content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
 
+  /tenants/{tenant}/projects:
+    get:
+      summary: List projects (all for project.read principals; member projects otherwise)
+      operationId: listProjects
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Project list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectList"
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "404":
+          description: Tenant not found.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+    post:
+      summary: Create a project (project.create; creator becomes project-admin)
+      operationId: createProject
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectCreate"
+      responses:
+        "201":
+          description: Project created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "403":
+          description: Requires project.create.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "409":
+          description: Slug already in use.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "422":
+          description: Validation failure.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+
+  /tenants/{tenant}/projects/{project}:
+    get:
+      summary: Get a project (project.read or project membership)
+      operationId: getProject
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+        - $ref: "#/components/parameters/ProjectRef"
+      responses:
+        "200":
+          description: Project detail.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "404":
+          description: Project not found.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+    patch:
+      summary: Update a project (project.manage; JSON merge patch fields)
+      operationId: updateProject
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+        - $ref: "#/components/parameters/ProjectRef"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectUpdate"
+      responses:
+        "200":
+          description: Updated project.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "403":
+          description: Requires project.manage.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "404":
+          description: Project not found.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "409":
+          description: Version conflict or archived.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+
+  /tenants/{tenant}/projects/{project}/archive:
+    post:
+      summary: Archive a project (project.manage; blocks mutations and submissions)
+      operationId: archiveProject
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+        - $ref: "#/components/parameters/ProjectRef"
+      responses:
+        "200":
+          description: Project archived.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "404":
+          description: Project not found.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+
+  /tenants/{tenant}/projects/{project}/unarchive:
+    post:
+      summary: Reactivate an archived project (project.manage)
+      operationId: unarchiveProject
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+        - $ref: "#/components/parameters/ProjectRef"
+      responses:
+        "200":
+          description: Project active.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "404":
+          description: Project not found.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+
+  /tenants/{tenant}/projects/{project}/members:
+    get:
+      summary: List project members (project.read or membership)
+      operationId: listProjectMembers
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+        - $ref: "#/components/parameters/ProjectRef"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Membership list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectMembershipList"
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "404":
+          description: Project not found.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+    post:
+      summary: Add a project member (project.members.manage; must be a tenant member)
+      operationId: addProjectMember
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+        - $ref: "#/components/parameters/ProjectRef"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectMemberUpsert"
+      responses:
+        "201":
+          description: Membership granted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectMembership"
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "403":
+          description: Requires project.members.manage.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "404":
+          description: Project not found.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "422":
+          description: NOT_TENANT_MEMBER or ROLE_INVALID.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+
+  /tenants/{tenant}/projects/{project}/members/{user}:
+    patch:
+      summary: Replace a project member's roles (project.members.manage)
+      operationId: updateProjectMember
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+        - $ref: "#/components/parameters/ProjectRef"
+        - $ref: "#/components/parameters/UserRef"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectMemberUpdate"
+      responses:
+        "200":
+          description: Membership updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectMembership"
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "404":
+          description: Membership not found.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "409":
+          description: LAST_ADMIN.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+    delete:
+      summary: Remove a project member (project.members.manage)
+      operationId: removeProjectMember
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+        - $ref: "#/components/parameters/ProjectRef"
+        - $ref: "#/components/parameters/UserRef"
+      responses:
+        "204":
+          description: Membership revoked.
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "404":
+          description: Membership not found.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "409":
+          description: LAST_ADMIN.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+
+  /tenants/{tenant}/projects/{project}/cluster-bindings:
+    get:
+      summary: List project cluster bindings (project.read or membership)
+      operationId: listClusterBindings
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+        - $ref: "#/components/parameters/ProjectRef"
+      responses:
+        "200":
+          description: Binding list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClusterBindingList"
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "404":
+          description: Project not found.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+    post:
+      summary: Create a cluster binding (project.manage; cluster must be tenant-assigned)
+      operationId: createClusterBinding
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+        - $ref: "#/components/parameters/ProjectRef"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClusterBindingUpsert"
+      responses:
+        "201":
+          description: Binding created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClusterBinding"
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "403":
+          description: Requires project.manage.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "404":
+          description: Project not found.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "409":
+          description: A binding for this cluster already exists.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "422":
+          description: CLUSTER_NOT_ASSIGNED, PARTITION_NOT_ALLOWED, or ACCOUNT_PREFIX.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+
+  /tenants/{tenant}/projects/{project}/cluster-bindings/{binding}:
+    get:
+      summary: Get a cluster binding (project.read or membership)
+      operationId: getClusterBinding
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+        - $ref: "#/components/parameters/ProjectRef"
+        - $ref: "#/components/parameters/BindingRef"
+      responses:
+        "200":
+          description: Binding detail.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClusterBinding"
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "404":
+          description: Binding not found.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+    patch:
+      summary: Update a cluster binding (project.manage; revalidates constraints)
+      operationId: updateClusterBinding
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+        - $ref: "#/components/parameters/ProjectRef"
+        - $ref: "#/components/parameters/BindingRef"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClusterBindingUpsert"
+      responses:
+        "200":
+          description: Updated binding.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClusterBinding"
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "404":
+          description: Binding not found.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "409":
+          description: Version conflict.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "422":
+          description: CLUSTER_NOT_ASSIGNED, PARTITION_NOT_ALLOWED, or ACCOUNT_PREFIX.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+    delete:
+      summary: Delete a cluster binding (project.manage)
+      operationId: deleteClusterBinding
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+        - $ref: "#/components/parameters/ProjectRef"
+        - $ref: "#/components/parameters/BindingRef"
+      responses:
+        "204":
+          description: Binding deleted.
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "404":
+          description: Binding not found.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+
+  /tenants/{tenant}/policies/resource:
+    get:
+      summary: Get the tenant resource policy (policy.read)
+      operationId: getTenantResourcePolicy
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+      responses:
+        "200":
+          description: Resource policy (empty object when unset).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResourcePolicyResponse"
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "404":
+          description: Tenant not found.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+    put:
+      summary: Replace the tenant resource policy (policy.manage)
+      operationId: setTenantResourcePolicy
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResourcePolicyRequest"
+      responses:
+        "200":
+          description: Policy stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResourcePolicyResponse"
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "403":
+          description: Requires policy.manage.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+
+  /tenants/{tenant}/projects/{project}/policies/resource:
+    get:
+      summary: Get the project resource policy (policy.read)
+      operationId: getProjectResourcePolicy
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+        - $ref: "#/components/parameters/ProjectRef"
+      responses:
+        "200":
+          description: Resource policy (empty object when unset).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResourcePolicyResponse"
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "404":
+          description: Project not found.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+    put:
+      summary: Replace the project resource policy (policy.manage at tenant level)
+      operationId: setProjectResourcePolicy
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+        - $ref: "#/components/parameters/ProjectRef"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResourcePolicyRequest"
+      responses:
+        "200":
+          description: Policy stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResourcePolicyResponse"
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "403":
+          description: Requires policy.manage.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "404":
+          description: Project not found.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+
 components:
   securitySchemes:
     bearerAuth:
@@ -1174,6 +1680,248 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/MembershipRef"
+        project_memberships:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProjectMembershipRef"
+
+    Project:
+      type: object
+      required: [id, slug, name, description, state, settings, version, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        slug:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        state:
+          type: string
+          enum: [active, archived]
+        settings:
+          type: object
+        version:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ProjectList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Project"
+        next_cursor:
+          type: string
+          nullable: true
+
+    ProjectCreate:
+      type: object
+      required: [slug, name]
+      properties:
+        slug:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        settings:
+          type: object
+
+    ProjectUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        settings:
+          type: object
+        version:
+          type: integer
+
+    ProjectMembership:
+      type: object
+      required: [project_id, user_id, roles, source, created_at, updated_at]
+      properties:
+        project_id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        roles:
+          type: array
+          items:
+            type: string
+            enum: [project-admin, project-member, project-viewer]
+        source:
+          type: string
+          enum: [manual, idp]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ProjectMembershipList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProjectMembership"
+        next_cursor:
+          type: string
+          nullable: true
+
+    ProjectMembershipRef:
+      type: object
+      required: [project_id, slug, tenant_id, roles]
+      properties:
+        project_id:
+          type: string
+          format: uuid
+        slug:
+          type: string
+        tenant_id:
+          type: string
+          format: uuid
+        roles:
+          type: array
+          items:
+            type: string
+
+    ProjectMemberUpsert:
+      type: object
+      required: [user_id, roles]
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        roles:
+          type: array
+          items:
+            type: string
+            enum: [project-admin, project-member, project-viewer]
+
+    ProjectMemberUpdate:
+      type: object
+      required: [roles]
+      properties:
+        roles:
+          type: array
+          items:
+            type: string
+            enum: [project-admin, project-member, project-viewer]
+
+    ClusterBinding:
+      type: object
+      required: [id, project_id, cluster_id, slurm_account, default_partition,
+        allowed_partitions, default_qos, allowed_qos, enabled, version,
+        created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        project_id:
+          type: string
+          format: uuid
+        cluster_id:
+          type: string
+          format: uuid
+        slurm_account:
+          type: string
+        default_partition:
+          type: string
+        allowed_partitions:
+          type: array
+          items:
+            type: string
+        default_qos:
+          type: string
+        allowed_qos:
+          type: array
+          items:
+            type: string
+        enabled:
+          type: boolean
+        version:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ClusterBindingList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ClusterBinding"
+
+    ClusterBindingUpsert:
+      type: object
+      required: [cluster_id, slurm_account]
+      properties:
+        cluster_id:
+          type: string
+          format: uuid
+        slurm_account:
+          type: string
+        default_partition:
+          type: string
+        allowed_partitions:
+          type: array
+          items:
+            type: string
+        default_qos:
+          type: string
+        allowed_qos:
+          type: array
+          items:
+            type: string
+        enabled:
+          type: boolean
+        version:
+          type: integer
+
+    ResourcePolicyRequest:
+      type: object
+      required: [policy]
+      properties:
+        policy:
+          type: object
+          description: admission.ResourcePolicy JSON shape (see docs/script-validation.md).
+        version:
+          type: integer
+
+    ResourcePolicyResponse:
+      type: object
+      required: [policy, version]
+      properties:
+        policy:
+          type: object
+        version:
+          type: integer
+        effective:
+          type: object
+          description: Project-scope GETs also return the tenant ∩ project effective policy.
 
     Tenant:
       type: object
@@ -1873,6 +2621,20 @@ components:
       schema:
         type: string
         enum: [platform-admin, platform-auditor]
+    ProjectRef:
+      name: project
+      in: path
+      required: true
+      description: Project slug or uuid.
+      schema:
+        type: string
+    BindingRef:
+      name: binding
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
     ClusterRef:
       name: cluster
       in: path

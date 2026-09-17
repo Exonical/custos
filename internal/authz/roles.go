@@ -82,13 +82,36 @@ var rolePermissions = map[string][]Action{
 		JobReadTenant, ExecutionReadTenant,
 	},
 
-	// Declared for M3; no permissions yet.
-	"project-admin":    {},
-	"project-member":   {},
-	"project-viewer":   {},
+	// Project roles (granted via project_memberships; evaluated only when
+	// the request carries a matching project context).
+	"project-admin": {
+		ProjectRead, ProjectManage, ProjectMembersManage,
+		WorkflowRead, WorkflowCreate, WorkflowPublish, WorkflowExecute,
+		JobSubmit, JobReadSelf, JobReadProject, JobCancelSelf,
+		ExecutionReadSelf, ExecutionReadProject, ExecutionCancelSelf,
+		AccountingReadSelf, AccountingReadProject,
+	},
+	"project-member": {
+		ProjectRead, WorkflowRead, WorkflowExecute,
+		JobSubmit, JobReadSelf, JobCancelSelf,
+		ExecutionReadSelf, ExecutionCancelSelf,
+		AccountingReadSelf,
+	},
+	"project-viewer": {
+		ProjectRead, WorkflowRead,
+		JobReadSelf, ExecutionReadSelf,
+	},
+
+	// Declared for a later milestone; no permissions yet.
 	"cluster-operator": {},
 	"cluster-user":     {},
 }
+
+// ProjectRoles is the set valid in project_memberships.roles.
+var ProjectRoles = []string{"project-admin", "project-member", "project-viewer"}
+
+// ValidProjectRole reports whether r is a project-scope role name.
+func ValidProjectRole(r string) bool { return slices.Contains(ProjectRoles, r) }
 
 // Permissions returns the sorted permission list for role (nil for
 // unknown roles).

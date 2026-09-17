@@ -22,6 +22,9 @@ import (
 	"github.com/Exonical/custos/internal/platform/apperr"
 	"github.com/Exonical/custos/internal/platform/health"
 	"github.com/Exonical/custos/internal/platform/httpx"
+	policiesvc "github.com/Exonical/custos/internal/policies/service"
+	"github.com/Exonical/custos/internal/projects"
+	projectsvc "github.com/Exonical/custos/internal/projects/service"
 	"github.com/Exonical/custos/internal/tenants"
 	tenantsvc "github.com/Exonical/custos/internal/tenants/service"
 	"github.com/Exonical/custos/internal/users"
@@ -48,16 +51,20 @@ func init() {
 
 // Deps are the dependencies Mount needs.
 type Deps struct {
-	Health      *health.Registry
-	ReadyBudget time.Duration
-	Logger      *slog.Logger
-	Verifier    authn.Verifier      // required for bearer routes
-	Provisioner authn.Provisioner   // optional; enriches principal
-	Audit       audit.Recorder      // may be nil (skips audit records)
-	Tenants     *tenantsvc.Service  // nil disables tenant routes
-	TenantRepo  tenants.Repository  // required when Tenants is set
-	Users       *users.Service      // enables platform role-binding routes
-	Clusters    *clustersvc.Service // enables cluster registry routes
+	Health         *health.Registry
+	ReadyBudget    time.Duration
+	Logger         *slog.Logger
+	Verifier       authn.Verifier                // required for bearer routes
+	Provisioner    authn.Provisioner             // optional; enriches principal
+	Audit          audit.Recorder                // may be nil (skips audit records)
+	Tenants        *tenantsvc.Service            // nil disables tenant routes
+	TenantRepo     tenants.Repository            // required when Tenants is set
+	Users          *users.Service                // enables platform role-binding routes
+	Clusters       *clustersvc.Service           // enables cluster registry routes
+	Projects       *projectsvc.Service           // enables project routes
+	ProjectRepo    projects.Repository           // required when Projects is set
+	ProjectMembers projects.MembershipRepository // required when Projects is set
+	Policies       *policiesvc.Service           // enables resource-policy routes
 }
 
 // Mount registers the v1 routes on mux. The generated types in
@@ -109,6 +116,14 @@ func Mount(mux *http.ServeMux, deps Deps) {
 			tenantMW := tenants.Require(deps.TenantRepo, deps.Logger, deps.Audit)
 			tr := func(h http.Handler) http.Handler { return bearer(tenantMW(h)) }
 			mountClusterRoutes(mux, ch, bearer, tr)
+		}
+
+		if deps.Projects != nil && deps.Policies != nil {
+			ph := &projectHandlers{svc: deps.Projects, policies: deps.Policies}
+			tenantMW := tenants.Require(deps.TenantRepo, deps.Logger, deps.Audit)
+			tr := func(h http.Handler) http.Handler { return bearer(tenantMW(h)) }
+			mountProjectRoutes(mux, ph, deps.ProjectRepo, deps.ProjectMembers,
+				deps.Logger, bearer, tr)
 		}
 
 		if deps.Users != nil {
@@ -200,11 +215,28 @@ func meHandler(deps Deps) http.Handler {
 			"scopes":  p.Scopes,
 			"groups":  p.Groups,
 		}
+		projectMemberships := []map[string]any{}
+		if deps.ProjectMembers != nil && p.UserID != uuid.Nil {
+			ms, err := deps.ProjectMembers.ListAllForUser(ctx, p.UserID)
+			if err != nil {
+				httpx.WriteError(ctx, w, err)
+				return
+			}
+			for _, m := range ms {
+				projectMemberships = append(projectMemberships, map[string]any{
+					"project_id": m.ProjectID,
+					"slug":       m.ProjectSlug,
+					"tenant_id":  m.TenantID,
+					"roles":      m.Roles,
+				})
+			}
+		}
 		body := map[string]any{
-			"principal":      principal,
-			"user_id":        p.UserID,
-			"platform_roles": roles,
-			"memberships":    memberships,
+			"principal":           principal,
+			"user_id":             p.UserID,
+			"platform_roles":      roles,
+			"memberships":         memberships,
+			"project_memberships": projectMemberships,
 		}
 		httpx.WriteJSON(w, http.StatusOK, body)
 	})

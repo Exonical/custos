@@ -140,6 +140,7 @@ type Repository interface {
 	// snapshot + partition rows atomically; returns the new state.
 	RecordSyncResult(ctx context.Context, id uuid.UUID, r SyncResult) (State, error)
 
+	GetAssignment(ctx context.Context, scope tenants.Scope, clusterID, tenantID uuid.UUID) (Assignment, error)
 	UpsertAssignment(ctx context.Context, scope tenants.Scope, a Assignment) error
 	DeleteAssignment(ctx context.Context, scope tenants.Scope, clusterID, tenantID uuid.UUID) error
 	ListAssignments(ctx context.Context, scope tenants.Scope, clusterID uuid.UUID, page Page) ([]Assignment, string, error)

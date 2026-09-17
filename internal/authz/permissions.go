@@ -29,16 +29,18 @@ const (
 	WorkflowExecute Action = "workflow.execute"
 	WorkflowApprove Action = "workflow.approve"
 
-	ExecutionReadSelf   Action = "execution.read.self"
-	ExecutionReadTenant Action = "execution.read.tenant"
-	ExecutionCancelSelf Action = "execution.cancel.self"
-	ExecutionCancelAny  Action = "execution.cancel.any"
+	ExecutionReadSelf    Action = "execution.read.self"
+	ExecutionReadProject Action = "execution.read.project"
+	ExecutionReadTenant  Action = "execution.read.tenant"
+	ExecutionCancelSelf  Action = "execution.cancel.self"
+	ExecutionCancelAny   Action = "execution.cancel.any"
 
-	JobSubmit     Action = "job.submit"
-	JobReadSelf   Action = "job.read.self"
-	JobReadTenant Action = "job.read.tenant"
-	JobCancelSelf Action = "job.cancel.self"
-	JobCancelAny  Action = "job.cancel.any"
+	JobSubmit      Action = "job.submit"
+	JobReadSelf    Action = "job.read.self"
+	JobReadProject Action = "job.read.project"
+	JobReadTenant  Action = "job.read.tenant"
+	JobCancelSelf  Action = "job.cancel.self"
+	JobCancelAny   Action = "job.cancel.any"
 
 	SecretReferenceRead   Action = "secret.reference.read"
 	SecretReferenceCreate Action = "secret.reference.create"
@@ -60,8 +62,8 @@ var AllActions = []Action{
 	ClusterRead, ClusterManage, ClusterAssign,
 	PolicyRead, PolicyManage,
 	WorkflowRead, WorkflowCreate, WorkflowPublish, WorkflowExecute, WorkflowApprove,
-	ExecutionReadSelf, ExecutionReadTenant, ExecutionCancelSelf, ExecutionCancelAny,
-	JobSubmit, JobReadSelf, JobReadTenant, JobCancelSelf, JobCancelAny,
+	ExecutionReadSelf, ExecutionReadProject, ExecutionReadTenant, ExecutionCancelSelf, ExecutionCancelAny,
+	JobSubmit, JobReadSelf, JobReadProject, JobReadTenant, JobCancelSelf, JobCancelAny,
 	SecretReferenceRead, SecretReferenceCreate, SecretReferenceUse,
 	AccountingReadSelf, AccountingReadProject, AccountingReadTenant,
 	AuditReadTenant,

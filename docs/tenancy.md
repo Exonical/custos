@@ -74,6 +74,47 @@ on `all_tenants` clusters. Queries never special-case NULL; access remains
 a join on the assignment table. Projects still need an explicit
 `ProjectClusterBinding` to *submit*.
 
+## Projects
+
+A `Project` (`tenant_id + slug` unique, slug
+`^[a-z0-9][a-z0-9-]{1,62}$`) is the work and accounting unit inside a
+tenant. Project routes resolve `{project}` by slug or UUID within the
+tenant; archived projects still resolve (reads allowed) but the service
+blocks all member/binding mutations and, later, submissions.
+
+`ProjectMembership` grants project roles (`project-admin`,
+`project-member`, `project-viewer`; `source` `manual` | `idp`). A project
+member must already be a tenant member — checked by the service and
+enforced by a database trigger. The last `project-admin` of a project
+cannot be demoted or removed (409 `LAST_ADMIN`). The project middleware
+attaches the caller's project roles to the request context; the RBAC
+authorizer applies them only when the resource names that same project
+and the principal is a tenant member. Tenant roles (e.g. `tenant-admin`,
+`viewer`) can read projects without project membership.
+
+`ProjectClusterBinding` (`project_id + cluster_id` unique) maps a project
+to a tenant-visible cluster and carries the submission constraints:
+`slurm_account`, `default_partition`, `allowed_partitions`,
+`default_qos`, `allowed_qos`, `enabled`. A binding's cluster must be
+assigned to the tenant (service check → 422 `CLUSTER_NOT_ASSIGNED`, plus
+a trigger on `cluster_tenant_assignments`); `allowed_partitions` must be
+a subset of the assignment's `allowed_partitions` when set
+(`PARTITION_NOT_ALLOWED`), `default_partition`/`default_qos` must lie
+within their allowed lists, and `slurm_account` must start with the
+assignment's `default_account_prefix` when set (`ACCOUNT_PREFIX`). A
+disabled binding resolves to NotFound for admission.
+
+## Resource policies
+
+`resource_policies` store one `admission.ResourcePolicy` JSON document
+per scope: at most one tenant-scope row per tenant and one project-scope
+row per project (partial unique indexes). Tenant policies are managed
+with `policy.manage`; project policies also require `policy.manage` at
+the tenant level — project admins cannot loosen policy. The effective
+policy is `tenant ∩ project` (`admission.IntersectPolicies`): numeric
+limits take the min of the set values (0 = unlimited), allow-lists
+intersect when both are set (nil = any), booleans AND.
+
 ## Groups
 
 A `Group` is a named set of tenant members (`tenant_id + name` unique, name

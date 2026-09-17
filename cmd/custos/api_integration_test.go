@@ -21,19 +21,26 @@ import (
 	"github.com/Exonical/custos/internal/authn"
 	"github.com/Exonical/custos/internal/authn/authntest"
 	"github.com/Exonical/custos/internal/authz"
+	"github.com/Exonical/custos/internal/clusters"
 	clusterpg "github.com/Exonical/custos/internal/clusters/postgres"
 	clustersvc "github.com/Exonical/custos/internal/clusters/service"
 	"github.com/Exonical/custos/internal/platform/config"
 	"github.com/Exonical/custos/internal/platform/db/dbtest"
 	"github.com/Exonical/custos/internal/platform/health"
 	"github.com/Exonical/custos/internal/platform/workqueue"
+	policypg "github.com/Exonical/custos/internal/policies/postgres"
+	policiesvc "github.com/Exonical/custos/internal/policies/service"
+	projectpg "github.com/Exonical/custos/internal/projects/postgres"
+	projectsvc "github.com/Exonical/custos/internal/projects/service"
 	"github.com/Exonical/custos/internal/secrets"
 	"github.com/Exonical/custos/internal/slurm/httpclient"
 	"github.com/Exonical/custos/internal/slurm/slinky"
+	"github.com/Exonical/custos/internal/tenants"
 	tenantpg "github.com/Exonical/custos/internal/tenants/postgres"
 	tenantsvc "github.com/Exonical/custos/internal/tenants/service"
 	"github.com/Exonical/custos/internal/users"
 	userpg "github.com/Exonical/custos/internal/users/postgres"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -583,5 +590,271 @@ func TestAPIClusters(t *testing.T) {
 	})
 	if code != 422 {
 		t.Fatalf("http endpoint: %d %v", code, e)
+	}
+}
+
+// TestAPIProjects exercises the project/member/binding/policy API: a
+// tenant-admin creates a project, adds a project member, creates a
+// cluster binding under assignment constraints, and resource policies
+// intersect tenant ∩ project.
+func TestAPIProjects(t *testing.T) {
+	dsn := dbtest.URL(t)
+	pool, err := pgxpool.New(context.Background(), dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	idp := authntest.New(t)
+	grantPlatformRole(t, dsn, idp.Issuer, "admin-sub", "platform-admin")
+
+	verifier, err := authn.NewOIDCVerifier(context.Background(), config.OIDC{
+		Issuer:                 idp.Issuer,
+		Audiences:              []string{"custos"},
+		AllowedAlgorithms:      []string{"RS256", "ES256"},
+		Discovery:              true,
+		JWKSCacheTTL:           time.Hour,
+		JWKSRefreshMinInterval: 30 * time.Second,
+		ClockSkew:              time.Minute,
+		AcceptedTokenTypes:     []string{"at+jwt", "JWT", ""},
+		MaxTokenLifetime:       24 * time.Hour,
+		Claims: config.OIDCClaims{
+			Subject: "sub", Email: "email", Name: "name", Groups: "groups",
+		},
+	}, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(verifier.Close)
+
+	rec := audit.Multi{pgaudit.New(pool)}
+	urepo := userpg.New(pool)
+	trepo := tenantpg.New(pool)
+	clusterRepo := clusterpg.New(pool)
+	projectRepo := projectpg.New(pool)
+
+	mux := http.NewServeMux()
+	api.Mount(mux, api.Deps{
+		Health:      health.NewRegistry(),
+		ReadyBudget: time.Second,
+		Logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Verifier:    verifier,
+		Provisioner: users.NewService(urepo, rec, users.WithGroupsClaim("groups")),
+		Audit:       rec,
+		Tenants:     tenantsvc.NewService(trepo, trepo, trepo, urepo, authz.RBAC{}, rec),
+		TenantRepo:  trepo,
+		Projects: projectsvc.NewService(projectRepo, projectRepo, projectRepo,
+			trepo, clusterRepo, authz.RBAC{}, rec),
+		ProjectRepo:    projectRepo,
+		ProjectMembers: projectRepo,
+		Policies:       policiesvc.NewService(policypg.New(pool), authz.RBAC{}, rec),
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	token := func(sub string) string {
+		c := idp.Claims()
+		c["sub"] = sub
+		return idp.Token(t, c)
+	}
+	call := func(tok, method, path string, body any) (int, map[string]any) {
+		var rdr io.Reader
+		if body != nil {
+			b, _ := json.Marshal(body)
+			rdr = bytes.NewReader(b)
+		}
+		req, err := http.NewRequest(method, srv.URL+path, rdr)
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Authorization", "Bearer "+tok)
+		if body != nil {
+			req.Header.Set("Content-Type", "application/json")
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = resp.Body.Close() }()
+		var out map[string]any
+		b, _ := io.ReadAll(resp.Body)
+		_ = json.Unmarshal(b, &out)
+		return resp.StatusCode, out
+	}
+
+	adminTok := token("admin-sub")
+	for _, slug := range []string{"p-tenant-a", "p-tenant-b"} {
+		code, resp := call(adminTok, "POST", "/api/v1/tenants",
+			map[string]any{"slug": slug, "name": slug})
+		if code != 201 {
+			t.Fatalf("create %s: %d %v", slug, code, resp)
+		}
+	}
+	userID := func(sub string) string {
+		code, m := call(token(sub), "GET", "/api/v1/me", nil)
+		if code != 200 {
+			t.Fatalf("me %s: %d %v", sub, code, m)
+		}
+		id, _ := m["user_id"].(string)
+		return id
+	}
+	ua, ur, ub := userID("user-a"), userID("user-r"), userID("user-b")
+	for slug, m := range map[string]map[string]any{
+		"p-tenant-a": {"user_id": ua, "roles": []string{"tenant-admin"}},
+		"p-tenant-b": {"user_id": ub, "roles": []string{"viewer"}},
+	} {
+		if code, resp := call(adminTok, "POST", "/api/v1/tenants/"+slug+"/members", m); code != 201 {
+			t.Fatalf("member %s: %d %v", slug, code, resp)
+		}
+	}
+	if code, resp := call(adminTok, "POST", "/api/v1/tenants/p-tenant-a/members",
+		map[string]any{"user_id": ur, "roles": []string{"researcher"}}); code != 201 {
+		t.Fatalf("member r: %d %v", code, resp)
+	}
+	tokA, tokR, tokB := token("user-a"), token("user-r"), token("user-b")
+
+	// Cluster assigned to tenant A with partition + account-prefix
+	// constraints (created via the repo — registration API is covered
+	// by TestAPIClusters).
+	cid := uuid.Must(uuid.NewV7())
+	if err := clusterRepo.Create(context.Background(), clusters.Cluster{
+		ID: cid, Name: "pc1", DisplayName: "pc1",
+		BaseURL: "https://203.0.113.10/", APIVersion: "v0.0.45",
+		IdentityMode: clusters.IdentityService, ServiceUser: "custos",
+		TokenRef:   secrets.Reference{Provider: "file", Path: "tok"},
+		Visibility: clusters.VisibilityAssigned, State: clusters.StateActive, Version: 1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var tidA uuid.UUID
+	if err := pool.QueryRow(context.Background(),
+		`SELECT id FROM tenants WHERE slug='p-tenant-a'`).Scan(&tidA); err != nil {
+		t.Fatal(err)
+	}
+	if err := clusterRepo.UpsertAssignment(context.Background(), tenants.PlatformScope(),
+		clusters.Assignment{ClusterID: cid, TenantID: tidA, Source: clusters.SourceManual,
+			Defaults: clusters.AssignmentDefaults{
+				AllowedPartitions:    []string{"gpu", "batch"},
+				DefaultAccountPrefix: "acct-",
+			}}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Project lifecycle.
+	code, pr := call(tokA, "POST", "/api/v1/tenants/p-tenant-a/projects",
+		map[string]any{"slug": "proj1", "name": "Project 1"})
+	if code != 201 {
+		t.Fatalf("create project: %d %v", code, pr)
+	}
+	pid, _ := pr["id"].(string)
+	if pr["slug"] != "proj1" || pr["state"] != "active" {
+		t.Fatalf("project dto: %v", pr)
+	}
+	// Creator is a project-admin member (auto-membership).
+	code, ml := call(tokA, "GET", "/api/v1/tenants/p-tenant-a/projects/proj1/members", nil)
+	if code != 200 || len(ml["items"].([]any)) != 1 {
+		t.Fatalf("members: %d %v", code, ml)
+	}
+
+	// Add researcher r as project-member.
+	code, mr := call(tokA, "POST", "/api/v1/tenants/p-tenant-a/projects/proj1/members",
+		map[string]any{"user_id": ur, "roles": []string{"project-member"}})
+	if code != 201 {
+		t.Fatalf("add member: %d %v", code, mr)
+	}
+	// r sees exactly one project; r's /me shows the membership.
+	code, pl := call(tokR, "GET", "/api/v1/tenants/p-tenant-a/projects", nil)
+	if code != 200 || len(pl["items"].([]any)) != 1 {
+		t.Fatalf("r list: %d %v", code, pl)
+	}
+	code, me := call(tokR, "GET", "/api/v1/me", nil)
+	if code != 200 {
+		t.Fatalf("r me: %d", code)
+	}
+	pms, _ := me["project_memberships"].([]any)
+	if len(pms) != 1 {
+		t.Fatalf("project_memberships: %v", me)
+	}
+
+	// Bindings under assignment constraints.
+	code, br := call(tokA, "POST",
+		"/api/v1/tenants/p-tenant-a/projects/proj1/cluster-bindings",
+		map[string]any{"cluster_id": cid.String(), "slurm_account": "acct-p",
+			"allowed_partitions": []string{"gpu"}, "default_partition": "gpu"})
+	if code != 201 {
+		t.Fatalf("create binding: %d %v", code, br)
+	}
+	code, er := call(tokA, "POST",
+		"/api/v1/tenants/p-tenant-a/projects/proj1/cluster-bindings",
+		map[string]any{"cluster_id": uuid.Must(uuid.NewV7()).String(),
+			"slurm_account": "acct-x"})
+	if code != 422 {
+		t.Fatalf("unassigned cluster: %d %v", code, er)
+	}
+	cid2 := uuid.Must(uuid.NewV7())
+	if err := clusterRepo.Create(context.Background(), clusters.Cluster{
+		ID: cid2, Name: "pc2", DisplayName: "pc2",
+		BaseURL: "https://203.0.113.11/", APIVersion: "v0.0.45",
+		IdentityMode: clusters.IdentityService, ServiceUser: "custos",
+		TokenRef:   secrets.Reference{Provider: "file", Path: "tok"},
+		Visibility: clusters.VisibilityAssigned, State: clusters.StateActive, Version: 1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := clusterRepo.UpsertAssignment(context.Background(), tenants.PlatformScope(),
+		clusters.Assignment{ClusterID: cid2, TenantID: tidA, Source: clusters.SourceManual,
+			Defaults: clusters.AssignmentDefaults{AllowedPartitions: []string{"batch"},
+				DefaultAccountPrefix: "acct-"}}); err != nil {
+		t.Fatal(err)
+	}
+	code, er = call(tokA, "POST",
+		"/api/v1/tenants/p-tenant-a/projects/proj1/cluster-bindings",
+		map[string]any{"cluster_id": cid2.String(), "slurm_account": "acct-x",
+			"allowed_partitions": []string{"restricted"}})
+	if code != 422 {
+		t.Fatalf("restricted partition: %d %v", code, er)
+	}
+	code, er = call(tokA, "POST",
+		"/api/v1/tenants/p-tenant-a/projects/proj1/cluster-bindings",
+		map[string]any{"cluster_id": cid2.String(), "slurm_account": "other-x"})
+	if code != 422 {
+		t.Fatalf("account prefix: %d %v", code, er)
+	}
+
+	// Cross-tenant isolation: b (tenant B) gets 404 for A's project.
+	if code, _ := call(tokB, "GET", "/api/v1/tenants/p-tenant-a/projects/proj1", nil); code != 404 {
+		t.Fatalf("b GET A project: %d", code)
+	}
+
+	// Resource policies: tenant max_gpus 4, project max_gpus 8 →
+	// effective 4.
+	code, tp := call(tokA, "PUT", "/api/v1/tenants/p-tenant-a/policies/resource",
+		map[string]any{"policy": map[string]any{"max_gpus_per_job": 4}})
+	if code != 200 {
+		t.Fatalf("tenant policy: %d %v", code, tp)
+	}
+	code, pp := call(tokA, "PUT",
+		"/api/v1/tenants/p-tenant-a/projects/proj1/policies/resource",
+		map[string]any{"policy": map[string]any{"max_gpus_per_job": 8}})
+	if code != 200 {
+		t.Fatalf("project policy: %d %v", code, pp)
+	}
+	code, gp := call(tokA, "GET",
+		"/api/v1/tenants/p-tenant-a/projects/proj1/policies/resource", nil)
+	if code != 200 {
+		t.Fatalf("get project policy: %d %v", code, gp)
+	}
+	eff, _ := gp["effective"].(map[string]any)
+	if eff["max_gpus_per_job"] != float64(4) {
+		t.Fatalf("effective: %v", gp)
+	}
+	// A project-member can read the project but not set policy.
+	if code, _ := call(tokR, "PUT",
+		"/api/v1/tenants/p-tenant-a/projects/proj1/policies/resource",
+		map[string]any{"policy": map[string]any{}}); code != 403 {
+		t.Fatalf("member set policy: %d", code)
+	}
+	// The project id also resolves by uuid.
+	if code, _ := call(tokR, "GET", "/api/v1/tenants/p-tenant-a/projects/"+pid, nil); code != 200 {
+		t.Fatalf("get by uuid: %d", code)
 	}
 }

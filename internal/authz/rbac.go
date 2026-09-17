@@ -40,8 +40,20 @@ func (RBAC) Check(ctx context.Context, p authn.Principal, a Action, r Resource) 
 					return Decision{Allow: true, Reason: "tenant role " + role}, nil
 				}
 			}
+			// 3. Project roles apply only when the resource names the same
+			// project the request context resolved — and only for tenant
+			// members (a project membership requires tenant membership).
+			if r.ProjectID != "" {
+				if roles, ok := projectRolesFrom(ctx, r.ProjectID); ok {
+					for _, role := range roles {
+						if grants(role, a, p, r) {
+							return Decision{Allow: true, Reason: "project role " + role}, nil
+						}
+					}
+				}
+			}
 		}
-		return Decision{Reason: "tenant roles do not permit " + string(a)}, nil
+		return Decision{Reason: "tenant/project roles do not permit " + string(a)}, nil
 	}
 
 	return Decision{Reason: "no binding grants " + string(a)}, nil

@@ -42,10 +42,12 @@ linters:
               desc: "secrets access belongs in internal/secrets/openbao"
         domain-http:
           list-mode: lax
-          # tenants is excluded: tenants.Require is an HTTP middleware.
+          # tenants is excluded (not listed): tenants.Require is an HTTP
+          # middleware; projects.Require is too, so its file is excluded.
           files:
             - "**/internal/{authz,users,projects,clusters,policy,workflows,executions,jobs,scripts,validation,admission,submission,accounting}/**"
             - "!**/internal/*/postgres/**"
+            - "!**/internal/projects/middleware.go"
           deny:
             - pkg: "net/http"
               desc: "HTTP belongs in internal/api or internal/platform/httpx"

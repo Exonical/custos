@@ -52,8 +52,8 @@ project.read               project.create        project.manage   project.member
 cluster.read               cluster.manage        cluster.assign
 policy.read                policy.manage
 workflow.read              workflow.create       workflow.publish  workflow.execute  workflow.approve
-execution.read.self        execution.read.tenant execution.cancel.self  execution.cancel.any
-job.submit                 job.read.self         job.read.tenant   job.cancel.self   job.cancel.any
+execution.read.self        execution.read.project execution.read.tenant execution.cancel.self  execution.cancel.any
+job.submit                 job.read.self         job.read.project  job.read.tenant   job.cancel.self   job.cancel.any
 secret.reference.read      secret.reference.create  secret.reference.use
 accounting.read.self       accounting.read.project  accounting.read.tenant
 audit.read.tenant
@@ -96,8 +96,12 @@ workflow-author  : workflow.read/create/publish, secret.reference.read/use, + re
 researcher       : tenant.read, project.read, cluster.read, workflow.read, workflow.execute, job.submit, job.read.self, job.cancel.self, execution.*.self, accounting.read.self, secret.reference.use
 viewer           : *.read.self, tenant.read, project.read, cluster.read, workflow.read
 auditor          : tenant.read, project.read, cluster.read, workflow.read, audit.read.tenant, accounting.read.tenant, *.read.tenant
-project-admin    : project.manage, project.members.manage (on that project) + project-member
-project-member   : workflow.execute, job.submit (scoped to the project's bindings)
+project-admin    : project.read/manage/members.manage, workflow.read/create/publish/execute,
+                   job.submit/read.self/read.project/cancel.self, execution.read.self/read.project/cancel.self,
+                   accounting.read.self/read.project (on that project)
+project-member   : project.read, workflow.read/execute, job.submit/read.self/cancel.self,
+                   execution.read.self/cancel.self, accounting.read.self
+project-viewer   : project.read, workflow.read, job.read.self, execution.read.self
 ```
 
 Evaluation order in the RBAC authorizer:
@@ -105,8 +109,11 @@ Evaluation order in the RBAC authorizer:
 1. Platform bindings (checked against the platform role table).
 2. If `resource.TenantID != ""`: load tenant membership for principal (from
    `TenantContext`, already verified). No membership → deny.
-3. Union permissions from tenant roles, project roles (if `resource.ProjectID`
-   is set and principal is a member), cluster roles (if `resource.ClusterID`).
+3. Union permissions from tenant roles, then — only when
+   `resource.ProjectID` matches the project the request middleware resolved
+   *and* the principal is a tenant member — the roles from the principal's
+   `ProjectMembership` for that project (attached to the request context by
+   the project middleware), cluster roles (if `resource.ClusterID`).
 4. Match action, applying `*.self` owner check.
 
 Membership lookups are per-request cached in the context (loaded once when

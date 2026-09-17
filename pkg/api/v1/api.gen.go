@@ -495,6 +495,105 @@ func (e PrincipalKind) Valid() bool {
 	}
 }
 
+// Defines values for ProjectState.
+const (
+	ProjectStateActive   ProjectState = "active"
+	ProjectStateArchived ProjectState = "archived"
+)
+
+// Valid indicates whether the value is a known member of the ProjectState enum.
+func (e ProjectState) Valid() bool {
+	switch e {
+	case ProjectStateActive:
+		return true
+	case ProjectStateArchived:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ProjectMemberUpdateRoles.
+const (
+	ProjectMemberUpdateRolesProjectAdmin  ProjectMemberUpdateRoles = "project-admin"
+	ProjectMemberUpdateRolesProjectMember ProjectMemberUpdateRoles = "project-member"
+	ProjectMemberUpdateRolesProjectViewer ProjectMemberUpdateRoles = "project-viewer"
+)
+
+// Valid indicates whether the value is a known member of the ProjectMemberUpdateRoles enum.
+func (e ProjectMemberUpdateRoles) Valid() bool {
+	switch e {
+	case ProjectMemberUpdateRolesProjectAdmin:
+		return true
+	case ProjectMemberUpdateRolesProjectMember:
+		return true
+	case ProjectMemberUpdateRolesProjectViewer:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ProjectMemberUpsertRoles.
+const (
+	ProjectMemberUpsertRolesProjectAdmin  ProjectMemberUpsertRoles = "project-admin"
+	ProjectMemberUpsertRolesProjectMember ProjectMemberUpsertRoles = "project-member"
+	ProjectMemberUpsertRolesProjectViewer ProjectMemberUpsertRoles = "project-viewer"
+)
+
+// Valid indicates whether the value is a known member of the ProjectMemberUpsertRoles enum.
+func (e ProjectMemberUpsertRoles) Valid() bool {
+	switch e {
+	case ProjectMemberUpsertRolesProjectAdmin:
+		return true
+	case ProjectMemberUpsertRolesProjectMember:
+		return true
+	case ProjectMemberUpsertRolesProjectViewer:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ProjectMembershipRoles.
+const (
+	ProjectMembershipRolesProjectAdmin  ProjectMembershipRoles = "project-admin"
+	ProjectMembershipRolesProjectMember ProjectMembershipRoles = "project-member"
+	ProjectMembershipRolesProjectViewer ProjectMembershipRoles = "project-viewer"
+)
+
+// Valid indicates whether the value is a known member of the ProjectMembershipRoles enum.
+func (e ProjectMembershipRoles) Valid() bool {
+	switch e {
+	case ProjectMembershipRolesProjectAdmin:
+		return true
+	case ProjectMembershipRolesProjectMember:
+		return true
+	case ProjectMembershipRolesProjectViewer:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ProjectMembershipSource.
+const (
+	ProjectMembershipSourceIdp    ProjectMembershipSource = "idp"
+	ProjectMembershipSourceManual ProjectMembershipSource = "manual"
+)
+
+// Valid indicates whether the value is a known member of the ProjectMembershipSource enum.
+func (e ProjectMembershipSource) Valid() bool {
+	switch e {
+	case ProjectMembershipSourceIdp:
+		return true
+	case ProjectMembershipSourceManual:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ReadyStatusStatus.
 const (
 	ReadyStatusStatusDegraded    ReadyStatusStatus = "degraded"
@@ -770,6 +869,39 @@ type ClusterState string
 // ClusterVisibility defines model for Cluster.Visibility.
 type ClusterVisibility string
 
+// ClusterBinding defines model for ClusterBinding.
+type ClusterBinding struct {
+	AllowedPartitions []string           `json:"allowed_partitions"`
+	AllowedQos        []string           `json:"allowed_qos"`
+	ClusterId         openapi_types.UUID `json:"cluster_id"`
+	CreatedAt         time.Time          `json:"created_at"`
+	DefaultPartition  string             `json:"default_partition"`
+	DefaultQos        string             `json:"default_qos"`
+	Enabled           bool               `json:"enabled"`
+	Id                openapi_types.UUID `json:"id"`
+	ProjectId         openapi_types.UUID `json:"project_id"`
+	SlurmAccount      string             `json:"slurm_account"`
+	UpdatedAt         time.Time          `json:"updated_at"`
+	Version           int                `json:"version"`
+}
+
+// ClusterBindingList defines model for ClusterBindingList.
+type ClusterBindingList struct {
+	Items []ClusterBinding `json:"items"`
+}
+
+// ClusterBindingUpsert defines model for ClusterBindingUpsert.
+type ClusterBindingUpsert struct {
+	AllowedPartitions *[]string          `json:"allowed_partitions,omitempty"`
+	AllowedQos        *[]string          `json:"allowed_qos,omitempty"`
+	ClusterId         openapi_types.UUID `json:"cluster_id"`
+	DefaultPartition  *string            `json:"default_partition,omitempty"`
+	DefaultQos        *string            `json:"default_qos,omitempty"`
+	Enabled           *bool              `json:"enabled,omitempty"`
+	SlurmAccount      string             `json:"slurm_account"`
+	Version           *int               `json:"version,omitempty"`
+}
+
 // ClusterCreate defines model for ClusterCreate.
 type ClusterCreate struct {
 	ApiVersion ClusterCreateApiVersion `json:"api_version"`
@@ -945,10 +1077,11 @@ type HealthStatusStatus string
 
 // Me defines model for Me.
 type Me struct {
-	Memberships   []MembershipRef    `json:"memberships"`
-	PlatformRoles []string           `json:"platform_roles"`
-	Principal     Principal          `json:"principal"`
-	UserId        openapi_types.UUID `json:"user_id"`
+	Memberships        []MembershipRef         `json:"memberships"`
+	PlatformRoles      []string                `json:"platform_roles"`
+	Principal          Principal               `json:"principal"`
+	ProjectMemberships *[]ProjectMembershipRef `json:"project_memberships,omitempty"`
+	UserId             openapi_types.UUID      `json:"user_id"`
 }
 
 // MemberAdd defines model for MemberAdd.
@@ -1035,6 +1168,91 @@ type Principal struct {
 // PrincipalKind defines model for Principal.Kind.
 type PrincipalKind string
 
+// Project defines model for Project.
+type Project struct {
+	CreatedAt   time.Time              `json:"created_at"`
+	Description string                 `json:"description"`
+	Id          openapi_types.UUID     `json:"id"`
+	Name        string                 `json:"name"`
+	Settings    map[string]interface{} `json:"settings"`
+	Slug        string                 `json:"slug"`
+	State       ProjectState           `json:"state"`
+	UpdatedAt   time.Time              `json:"updated_at"`
+	Version     int                    `json:"version"`
+}
+
+// ProjectState defines model for Project.State.
+type ProjectState string
+
+// ProjectCreate defines model for ProjectCreate.
+type ProjectCreate struct {
+	Description *string                 `json:"description,omitempty"`
+	Name        string                  `json:"name"`
+	Settings    *map[string]interface{} `json:"settings,omitempty"`
+	Slug        string                  `json:"slug"`
+}
+
+// ProjectList defines model for ProjectList.
+type ProjectList struct {
+	Items      []Project `json:"items"`
+	NextCursor *string   `json:"next_cursor,omitempty"`
+}
+
+// ProjectMemberUpdate defines model for ProjectMemberUpdate.
+type ProjectMemberUpdate struct {
+	Roles []ProjectMemberUpdateRoles `json:"roles"`
+}
+
+// ProjectMemberUpdateRoles defines model for ProjectMemberUpdate.Roles.
+type ProjectMemberUpdateRoles string
+
+// ProjectMemberUpsert defines model for ProjectMemberUpsert.
+type ProjectMemberUpsert struct {
+	Roles  []ProjectMemberUpsertRoles `json:"roles"`
+	UserId openapi_types.UUID         `json:"user_id"`
+}
+
+// ProjectMemberUpsertRoles defines model for ProjectMemberUpsert.Roles.
+type ProjectMemberUpsertRoles string
+
+// ProjectMembership defines model for ProjectMembership.
+type ProjectMembership struct {
+	CreatedAt time.Time                `json:"created_at"`
+	ProjectId openapi_types.UUID       `json:"project_id"`
+	Roles     []ProjectMembershipRoles `json:"roles"`
+	Source    ProjectMembershipSource  `json:"source"`
+	UpdatedAt time.Time                `json:"updated_at"`
+	UserId    openapi_types.UUID       `json:"user_id"`
+}
+
+// ProjectMembershipRoles defines model for ProjectMembership.Roles.
+type ProjectMembershipRoles string
+
+// ProjectMembershipSource defines model for ProjectMembership.Source.
+type ProjectMembershipSource string
+
+// ProjectMembershipList defines model for ProjectMembershipList.
+type ProjectMembershipList struct {
+	Items      []ProjectMembership `json:"items"`
+	NextCursor *string             `json:"next_cursor,omitempty"`
+}
+
+// ProjectMembershipRef defines model for ProjectMembershipRef.
+type ProjectMembershipRef struct {
+	ProjectId openapi_types.UUID `json:"project_id"`
+	Roles     []string           `json:"roles"`
+	Slug      string             `json:"slug"`
+	TenantId  openapi_types.UUID `json:"tenant_id"`
+}
+
+// ProjectUpdate defines model for ProjectUpdate.
+type ProjectUpdate struct {
+	Description *string                 `json:"description,omitempty"`
+	Name        *string                 `json:"name,omitempty"`
+	Settings    *map[string]interface{} `json:"settings,omitempty"`
+	Version     *int                    `json:"version,omitempty"`
+}
+
 // ReadyStatus defines model for ReadyStatus.
 type ReadyStatus struct {
 	Checks []CheckResult     `json:"checks"`
@@ -1043,6 +1261,19 @@ type ReadyStatus struct {
 
 // ReadyStatusStatus defines model for ReadyStatus.Status.
 type ReadyStatusStatus string
+
+// ResourcePolicyRequest defines model for ResourcePolicyRequest.
+type ResourcePolicyRequest struct {
+	// Policy admission.ResourcePolicy JSON shape (see docs/script-validation.md).
+	Policy  map[string]interface{} `json:"policy"`
+	Version *int                   `json:"version,omitempty"`
+}
+
+// ResourcePolicyResponse defines model for ResourcePolicyResponse.
+type ResourcePolicyResponse struct {
+	Policy  map[string]interface{} `json:"policy"`
+	Version int                    `json:"version"`
+}
 
 // RoleBindingList defines model for RoleBindingList.
 type RoleBindingList struct {
@@ -1116,6 +1347,9 @@ type UserLookupResult struct {
 // UserLookupResultKind defines model for UserLookupResult.Kind.
 type UserLookupResultKind string
 
+// BindingRef defines model for BindingRef.
+type BindingRef = openapi_types.UUID
+
 // ClusterRef defines model for ClusterRef.
 type ClusterRef = string
 
@@ -1127,6 +1361,9 @@ type GroupRef = string
 
 // Limit defines model for Limit.
 type Limit = int
+
+// ProjectRef defines model for ProjectRef.
+type ProjectRef = string
 
 // RoleRef defines model for RoleRef.
 type RoleRef string
@@ -1195,6 +1432,20 @@ type ListMembersParams struct {
 	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// ListProjectsParams defines parameters for ListProjects.
+type ListProjectsParams struct {
+	// Cursor Opaque keyset cursor from a previous list response.
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ListProjectMembersParams defines parameters for ListProjectMembers.
+type ListProjectMembersParams struct {
+	// Cursor Opaque keyset cursor from a previous list response.
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // LookupUsersParams defines parameters for LookupUsers.
 type LookupUsersParams struct {
 	Email string `form:"email" json:"email"`
@@ -1235,6 +1486,30 @@ type AddMemberJSONRequestBody = MemberAdd
 
 // UpdateMemberJSONRequestBody defines body for UpdateMember for application/json ContentType.
 type UpdateMemberJSONRequestBody = MemberUpdate
+
+// SetTenantResourcePolicyJSONRequestBody defines body for SetTenantResourcePolicy for application/json ContentType.
+type SetTenantResourcePolicyJSONRequestBody = ResourcePolicyRequest
+
+// CreateProjectJSONRequestBody defines body for CreateProject for application/json ContentType.
+type CreateProjectJSONRequestBody = ProjectCreate
+
+// UpdateProjectJSONRequestBody defines body for UpdateProject for application/json ContentType.
+type UpdateProjectJSONRequestBody = ProjectUpdate
+
+// CreateClusterBindingJSONRequestBody defines body for CreateClusterBinding for application/json ContentType.
+type CreateClusterBindingJSONRequestBody = ClusterBindingUpsert
+
+// UpdateClusterBindingJSONRequestBody defines body for UpdateClusterBinding for application/json ContentType.
+type UpdateClusterBindingJSONRequestBody = ClusterBindingUpsert
+
+// AddProjectMemberJSONRequestBody defines body for AddProjectMember for application/json ContentType.
+type AddProjectMemberJSONRequestBody = ProjectMemberUpsert
+
+// UpdateProjectMemberJSONRequestBody defines body for UpdateProjectMember for application/json ContentType.
+type UpdateProjectMemberJSONRequestBody = ProjectMemberUpdate
+
+// SetProjectResourcePolicyJSONRequestBody defines body for SetProjectResourcePolicy for application/json ContentType.
+type SetProjectResourcePolicyJSONRequestBody = ResourcePolicyRequest
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
@@ -1361,6 +1636,63 @@ type ServerInterface interface {
 	// UpdateMember Replace a member's roles
 	// (PATCH /tenants/{tenant}/members/{user})
 	UpdateMember(w http.ResponseWriter, r *http.Request, tenant TenantSlug, user UserRef)
+	// GetTenantResourcePolicy Get the tenant resource policy (policy.read)
+	// (GET /tenants/{tenant}/policies/resource)
+	GetTenantResourcePolicy(w http.ResponseWriter, r *http.Request, tenant TenantSlug)
+	// SetTenantResourcePolicy Replace the tenant resource policy (policy.manage)
+	// (PUT /tenants/{tenant}/policies/resource)
+	SetTenantResourcePolicy(w http.ResponseWriter, r *http.Request, tenant TenantSlug)
+	// ListProjects List projects (all for project.read principals; member projects otherwise)
+	// (GET /tenants/{tenant}/projects)
+	ListProjects(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params ListProjectsParams)
+	// CreateProject Create a project (project.create; creator becomes project-admin)
+	// (POST /tenants/{tenant}/projects)
+	CreateProject(w http.ResponseWriter, r *http.Request, tenant TenantSlug)
+	// GetProject Get a project (project.read or project membership)
+	// (GET /tenants/{tenant}/projects/{project})
+	GetProject(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectRef)
+	// UpdateProject Update a project (project.manage; JSON merge patch fields)
+	// (PATCH /tenants/{tenant}/projects/{project})
+	UpdateProject(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectRef)
+	// ArchiveProject Archive a project (project.manage; blocks mutations and submissions)
+	// (POST /tenants/{tenant}/projects/{project}/archive)
+	ArchiveProject(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectRef)
+	// ListClusterBindings List project cluster bindings (project.read or membership)
+	// (GET /tenants/{tenant}/projects/{project}/cluster-bindings)
+	ListClusterBindings(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectRef)
+	// CreateClusterBinding Create a cluster binding (project.manage; cluster must be tenant-assigned)
+	// (POST /tenants/{tenant}/projects/{project}/cluster-bindings)
+	CreateClusterBinding(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectRef)
+	// DeleteClusterBinding Delete a cluster binding (project.manage)
+	// (DELETE /tenants/{tenant}/projects/{project}/cluster-bindings/{binding})
+	DeleteClusterBinding(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectRef, binding BindingRef)
+	// GetClusterBinding Get a cluster binding (project.read or membership)
+	// (GET /tenants/{tenant}/projects/{project}/cluster-bindings/{binding})
+	GetClusterBinding(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectRef, binding BindingRef)
+	// UpdateClusterBinding Update a cluster binding (project.manage; revalidates constraints)
+	// (PATCH /tenants/{tenant}/projects/{project}/cluster-bindings/{binding})
+	UpdateClusterBinding(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectRef, binding BindingRef)
+	// ListProjectMembers List project members (project.read or membership)
+	// (GET /tenants/{tenant}/projects/{project}/members)
+	ListProjectMembers(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectRef, params ListProjectMembersParams)
+	// AddProjectMember Add a project member (project.members.manage; must be a tenant member)
+	// (POST /tenants/{tenant}/projects/{project}/members)
+	AddProjectMember(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectRef)
+	// RemoveProjectMember Remove a project member (project.members.manage)
+	// (DELETE /tenants/{tenant}/projects/{project}/members/{user})
+	RemoveProjectMember(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectRef, user UserRef)
+	// UpdateProjectMember Replace a project member's roles (project.members.manage)
+	// (PATCH /tenants/{tenant}/projects/{project}/members/{user})
+	UpdateProjectMember(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectRef, user UserRef)
+	// GetProjectResourcePolicy Get the project resource policy (policy.read)
+	// (GET /tenants/{tenant}/projects/{project}/policies/resource)
+	GetProjectResourcePolicy(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectRef)
+	// SetProjectResourcePolicy Replace the project resource policy (policy.manage at tenant level)
+	// (PUT /tenants/{tenant}/projects/{project}/policies/resource)
+	SetProjectResourcePolicy(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectRef)
+	// UnarchiveProject Reactivate an archived project (project.manage)
+	// (POST /tenants/{tenant}/projects/{project}/unarchive)
+	UnarchiveProject(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectRef)
 	// LookupUsers Look up users by exact email (tenant.members.manage)
 	// (GET /tenants/{tenant}/users/lookup)
 	LookupUsers(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params LookupUsersParams)
@@ -2704,6 +3036,738 @@ func (siw *ServerInterfaceWrapper) UpdateMember(w http.ResponseWriter, r *http.R
 	handler.ServeHTTP(w, r)
 }
 
+// GetTenantResourcePolicy operation middleware
+func (siw *ServerInterfaceWrapper) GetTenantResourcePolicy(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetTenantResourcePolicy(w, r, tenant)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetTenantResourcePolicy operation middleware
+func (siw *ServerInterfaceWrapper) SetTenantResourcePolicy(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetTenantResourcePolicy(w, r, tenant)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListProjects operation middleware
+func (siw *ServerInterfaceWrapper) ListProjects(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListProjectsParams
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListProjects(w, r, tenant, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateProject operation middleware
+func (siw *ServerInterfaceWrapper) CreateProject(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateProject(w, r, tenant)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetProject operation middleware
+func (siw *ServerInterfaceWrapper) GetProject(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", r.PathValue("project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetProject(w, r, tenant, project)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateProject operation middleware
+func (siw *ServerInterfaceWrapper) UpdateProject(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", r.PathValue("project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateProject(w, r, tenant, project)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ArchiveProject operation middleware
+func (siw *ServerInterfaceWrapper) ArchiveProject(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", r.PathValue("project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ArchiveProject(w, r, tenant, project)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListClusterBindings operation middleware
+func (siw *ServerInterfaceWrapper) ListClusterBindings(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", r.PathValue("project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListClusterBindings(w, r, tenant, project)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateClusterBinding operation middleware
+func (siw *ServerInterfaceWrapper) CreateClusterBinding(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", r.PathValue("project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateClusterBinding(w, r, tenant, project)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteClusterBinding operation middleware
+func (siw *ServerInterfaceWrapper) DeleteClusterBinding(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", r.PathValue("project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "binding" -------------
+	var binding BindingRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "binding", r.PathValue("binding"), &binding, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "binding", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteClusterBinding(w, r, tenant, project, binding)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetClusterBinding operation middleware
+func (siw *ServerInterfaceWrapper) GetClusterBinding(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", r.PathValue("project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "binding" -------------
+	var binding BindingRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "binding", r.PathValue("binding"), &binding, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "binding", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetClusterBinding(w, r, tenant, project, binding)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateClusterBinding operation middleware
+func (siw *ServerInterfaceWrapper) UpdateClusterBinding(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", r.PathValue("project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "binding" -------------
+	var binding BindingRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "binding", r.PathValue("binding"), &binding, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "binding", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateClusterBinding(w, r, tenant, project, binding)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListProjectMembers operation middleware
+func (siw *ServerInterfaceWrapper) ListProjectMembers(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", r.PathValue("project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListProjectMembersParams
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListProjectMembers(w, r, tenant, project, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AddProjectMember operation middleware
+func (siw *ServerInterfaceWrapper) AddProjectMember(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", r.PathValue("project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AddProjectMember(w, r, tenant, project)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RemoveProjectMember operation middleware
+func (siw *ServerInterfaceWrapper) RemoveProjectMember(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", r.PathValue("project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "user" -------------
+	var user UserRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "user", r.PathValue("user"), &user, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "user", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RemoveProjectMember(w, r, tenant, project, user)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateProjectMember operation middleware
+func (siw *ServerInterfaceWrapper) UpdateProjectMember(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", r.PathValue("project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "user" -------------
+	var user UserRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "user", r.PathValue("user"), &user, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "user", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateProjectMember(w, r, tenant, project, user)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetProjectResourcePolicy operation middleware
+func (siw *ServerInterfaceWrapper) GetProjectResourcePolicy(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", r.PathValue("project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetProjectResourcePolicy(w, r, tenant, project)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetProjectResourcePolicy operation middleware
+func (siw *ServerInterfaceWrapper) SetProjectResourcePolicy(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", r.PathValue("project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetProjectResourcePolicy(w, r, tenant, project)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UnarchiveProject operation middleware
+func (siw *ServerInterfaceWrapper) UnarchiveProject(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", r.PathValue("project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UnarchiveProject(w, r, tenant, project)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // LookupUsers operation middleware
 func (siw *ServerInterfaceWrapper) LookupUsers(w http.ResponseWriter, r *http.Request) {
 
@@ -2908,6 +3972,25 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/tenants/{tenant}/clusters", wrapper.ListTenantClusters)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/tenants/{tenant}/clusters/{cluster}", wrapper.GetTenantCluster)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/tenants/{tenant}/clusters/{cluster}/partitions", wrapper.ListTenantClusterPartitions)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/tenants/{tenant}/projects", wrapper.ListProjects)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/tenants/{tenant}/projects", wrapper.CreateProject)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/tenants/{tenant}/projects/{project}", wrapper.GetProject)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/tenants/{tenant}/projects/{project}", wrapper.UpdateProject)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/tenants/{tenant}/projects/{project}/archive", wrapper.ArchiveProject)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/tenants/{tenant}/projects/{project}/unarchive", wrapper.UnarchiveProject)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/tenants/{tenant}/projects/{project}/members", wrapper.ListProjectMembers)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/tenants/{tenant}/projects/{project}/members", wrapper.AddProjectMember)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/tenants/{tenant}/projects/{project}/members/{user}", wrapper.RemoveProjectMember)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/tenants/{tenant}/projects/{project}/members/{user}", wrapper.UpdateProjectMember)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/tenants/{tenant}/projects/{project}/cluster-bindings", wrapper.ListClusterBindings)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/tenants/{tenant}/projects/{project}/cluster-bindings", wrapper.CreateClusterBinding)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/tenants/{tenant}/projects/{project}/cluster-bindings/{binding}", wrapper.DeleteClusterBinding)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/tenants/{tenant}/projects/{project}/cluster-bindings/{binding}", wrapper.GetClusterBinding)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/tenants/{tenant}/projects/{project}/cluster-bindings/{binding}", wrapper.UpdateClusterBinding)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/tenants/{tenant}/policies/resource", wrapper.GetTenantResourcePolicy)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/tenants/{tenant}/policies/resource", wrapper.SetTenantResourcePolicy)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/tenants/{tenant}/projects/{project}/policies/resource", wrapper.GetProjectResourcePolicy)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/tenants/{tenant}/projects/{project}/policies/resource", wrapper.SetProjectResourcePolicy)
 
 	return m
 }
@@ -5336,6 +6419,1170 @@ func (response UpdateMember422JSONResponse) VisitUpdateMemberResponse(w http.Res
 	return err
 }
 
+type GetTenantResourcePolicyRequestObject struct {
+	Tenant TenantSlug `json:"tenant"`
+}
+
+type GetTenantResourcePolicyResponseObject interface {
+	VisitGetTenantResourcePolicyResponse(w http.ResponseWriter) error
+}
+
+type GetTenantResourcePolicy200JSONResponse ResourcePolicyResponse
+
+func (response GetTenantResourcePolicy200JSONResponse) VisitGetTenantResourcePolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTenantResourcePolicy401JSONResponse Error
+
+func (response GetTenantResourcePolicy401JSONResponse) VisitGetTenantResourcePolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTenantResourcePolicy404JSONResponse Error
+
+func (response GetTenantResourcePolicy404JSONResponse) VisitGetTenantResourcePolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetTenantResourcePolicyRequestObject struct {
+	Tenant TenantSlug `json:"tenant"`
+	Body   *SetTenantResourcePolicyJSONRequestBody
+}
+
+type SetTenantResourcePolicyResponseObject interface {
+	VisitSetTenantResourcePolicyResponse(w http.ResponseWriter) error
+}
+
+type SetTenantResourcePolicy200JSONResponse ResourcePolicyResponse
+
+func (response SetTenantResourcePolicy200JSONResponse) VisitSetTenantResourcePolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetTenantResourcePolicy401JSONResponse Error
+
+func (response SetTenantResourcePolicy401JSONResponse) VisitSetTenantResourcePolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetTenantResourcePolicy403JSONResponse Error
+
+func (response SetTenantResourcePolicy403JSONResponse) VisitSetTenantResourcePolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListProjectsRequestObject struct {
+	Tenant TenantSlug `json:"tenant"`
+	Params ListProjectsParams
+}
+
+type ListProjectsResponseObject interface {
+	VisitListProjectsResponse(w http.ResponseWriter) error
+}
+
+type ListProjects200JSONResponse ProjectList
+
+func (response ListProjects200JSONResponse) VisitListProjectsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListProjects401JSONResponse Error
+
+func (response ListProjects401JSONResponse) VisitListProjectsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListProjects404JSONResponse Error
+
+func (response ListProjects404JSONResponse) VisitListProjectsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateProjectRequestObject struct {
+	Tenant TenantSlug `json:"tenant"`
+	Body   *CreateProjectJSONRequestBody
+}
+
+type CreateProjectResponseObject interface {
+	VisitCreateProjectResponse(w http.ResponseWriter) error
+}
+
+type CreateProject201JSONResponse Project
+
+func (response CreateProject201JSONResponse) VisitCreateProjectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateProject401JSONResponse Error
+
+func (response CreateProject401JSONResponse) VisitCreateProjectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateProject403JSONResponse Error
+
+func (response CreateProject403JSONResponse) VisitCreateProjectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateProject409JSONResponse Error
+
+func (response CreateProject409JSONResponse) VisitCreateProjectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateProject422JSONResponse Error
+
+func (response CreateProject422JSONResponse) VisitCreateProjectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectRequestObject struct {
+	Tenant  TenantSlug `json:"tenant"`
+	Project ProjectRef `json:"project"`
+}
+
+type GetProjectResponseObject interface {
+	VisitGetProjectResponse(w http.ResponseWriter) error
+}
+
+type GetProject200JSONResponse Project
+
+func (response GetProject200JSONResponse) VisitGetProjectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProject401JSONResponse Error
+
+func (response GetProject401JSONResponse) VisitGetProjectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProject404JSONResponse Error
+
+func (response GetProject404JSONResponse) VisitGetProjectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateProjectRequestObject struct {
+	Tenant  TenantSlug `json:"tenant"`
+	Project ProjectRef `json:"project"`
+	Body    *UpdateProjectJSONRequestBody
+}
+
+type UpdateProjectResponseObject interface {
+	VisitUpdateProjectResponse(w http.ResponseWriter) error
+}
+
+type UpdateProject200JSONResponse Project
+
+func (response UpdateProject200JSONResponse) VisitUpdateProjectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateProject401JSONResponse Error
+
+func (response UpdateProject401JSONResponse) VisitUpdateProjectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateProject403JSONResponse Error
+
+func (response UpdateProject403JSONResponse) VisitUpdateProjectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateProject404JSONResponse Error
+
+func (response UpdateProject404JSONResponse) VisitUpdateProjectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateProject409JSONResponse Error
+
+func (response UpdateProject409JSONResponse) VisitUpdateProjectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ArchiveProjectRequestObject struct {
+	Tenant  TenantSlug `json:"tenant"`
+	Project ProjectRef `json:"project"`
+}
+
+type ArchiveProjectResponseObject interface {
+	VisitArchiveProjectResponse(w http.ResponseWriter) error
+}
+
+type ArchiveProject200JSONResponse Project
+
+func (response ArchiveProject200JSONResponse) VisitArchiveProjectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ArchiveProject401JSONResponse Error
+
+func (response ArchiveProject401JSONResponse) VisitArchiveProjectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ArchiveProject404JSONResponse Error
+
+func (response ArchiveProject404JSONResponse) VisitArchiveProjectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListClusterBindingsRequestObject struct {
+	Tenant  TenantSlug `json:"tenant"`
+	Project ProjectRef `json:"project"`
+}
+
+type ListClusterBindingsResponseObject interface {
+	VisitListClusterBindingsResponse(w http.ResponseWriter) error
+}
+
+type ListClusterBindings200JSONResponse ClusterBindingList
+
+func (response ListClusterBindings200JSONResponse) VisitListClusterBindingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListClusterBindings401JSONResponse Error
+
+func (response ListClusterBindings401JSONResponse) VisitListClusterBindingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListClusterBindings404JSONResponse Error
+
+func (response ListClusterBindings404JSONResponse) VisitListClusterBindingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateClusterBindingRequestObject struct {
+	Tenant  TenantSlug `json:"tenant"`
+	Project ProjectRef `json:"project"`
+	Body    *CreateClusterBindingJSONRequestBody
+}
+
+type CreateClusterBindingResponseObject interface {
+	VisitCreateClusterBindingResponse(w http.ResponseWriter) error
+}
+
+type CreateClusterBinding201JSONResponse ClusterBinding
+
+func (response CreateClusterBinding201JSONResponse) VisitCreateClusterBindingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateClusterBinding401JSONResponse Error
+
+func (response CreateClusterBinding401JSONResponse) VisitCreateClusterBindingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateClusterBinding403JSONResponse Error
+
+func (response CreateClusterBinding403JSONResponse) VisitCreateClusterBindingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateClusterBinding404JSONResponse Error
+
+func (response CreateClusterBinding404JSONResponse) VisitCreateClusterBindingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateClusterBinding409JSONResponse Error
+
+func (response CreateClusterBinding409JSONResponse) VisitCreateClusterBindingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateClusterBinding422JSONResponse Error
+
+func (response CreateClusterBinding422JSONResponse) VisitCreateClusterBindingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteClusterBindingRequestObject struct {
+	Tenant  TenantSlug `json:"tenant"`
+	Project ProjectRef `json:"project"`
+	Binding BindingRef `json:"binding"`
+}
+
+type DeleteClusterBindingResponseObject interface {
+	VisitDeleteClusterBindingResponse(w http.ResponseWriter) error
+}
+
+type DeleteClusterBinding204Response struct {
+}
+
+func (response DeleteClusterBinding204Response) VisitDeleteClusterBindingResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteClusterBinding401JSONResponse Error
+
+func (response DeleteClusterBinding401JSONResponse) VisitDeleteClusterBindingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteClusterBinding404JSONResponse Error
+
+func (response DeleteClusterBinding404JSONResponse) VisitDeleteClusterBindingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetClusterBindingRequestObject struct {
+	Tenant  TenantSlug `json:"tenant"`
+	Project ProjectRef `json:"project"`
+	Binding BindingRef `json:"binding"`
+}
+
+type GetClusterBindingResponseObject interface {
+	VisitGetClusterBindingResponse(w http.ResponseWriter) error
+}
+
+type GetClusterBinding200JSONResponse ClusterBinding
+
+func (response GetClusterBinding200JSONResponse) VisitGetClusterBindingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetClusterBinding401JSONResponse Error
+
+func (response GetClusterBinding401JSONResponse) VisitGetClusterBindingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetClusterBinding404JSONResponse Error
+
+func (response GetClusterBinding404JSONResponse) VisitGetClusterBindingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateClusterBindingRequestObject struct {
+	Tenant  TenantSlug `json:"tenant"`
+	Project ProjectRef `json:"project"`
+	Binding BindingRef `json:"binding"`
+	Body    *UpdateClusterBindingJSONRequestBody
+}
+
+type UpdateClusterBindingResponseObject interface {
+	VisitUpdateClusterBindingResponse(w http.ResponseWriter) error
+}
+
+type UpdateClusterBinding200JSONResponse ClusterBinding
+
+func (response UpdateClusterBinding200JSONResponse) VisitUpdateClusterBindingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateClusterBinding401JSONResponse Error
+
+func (response UpdateClusterBinding401JSONResponse) VisitUpdateClusterBindingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateClusterBinding404JSONResponse Error
+
+func (response UpdateClusterBinding404JSONResponse) VisitUpdateClusterBindingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateClusterBinding409JSONResponse Error
+
+func (response UpdateClusterBinding409JSONResponse) VisitUpdateClusterBindingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateClusterBinding422JSONResponse Error
+
+func (response UpdateClusterBinding422JSONResponse) VisitUpdateClusterBindingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListProjectMembersRequestObject struct {
+	Tenant  TenantSlug `json:"tenant"`
+	Project ProjectRef `json:"project"`
+	Params  ListProjectMembersParams
+}
+
+type ListProjectMembersResponseObject interface {
+	VisitListProjectMembersResponse(w http.ResponseWriter) error
+}
+
+type ListProjectMembers200JSONResponse ProjectMembershipList
+
+func (response ListProjectMembers200JSONResponse) VisitListProjectMembersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListProjectMembers401JSONResponse Error
+
+func (response ListProjectMembers401JSONResponse) VisitListProjectMembersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListProjectMembers404JSONResponse Error
+
+func (response ListProjectMembers404JSONResponse) VisitListProjectMembersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AddProjectMemberRequestObject struct {
+	Tenant  TenantSlug `json:"tenant"`
+	Project ProjectRef `json:"project"`
+	Body    *AddProjectMemberJSONRequestBody
+}
+
+type AddProjectMemberResponseObject interface {
+	VisitAddProjectMemberResponse(w http.ResponseWriter) error
+}
+
+type AddProjectMember201JSONResponse ProjectMembership
+
+func (response AddProjectMember201JSONResponse) VisitAddProjectMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AddProjectMember401JSONResponse Error
+
+func (response AddProjectMember401JSONResponse) VisitAddProjectMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AddProjectMember403JSONResponse Error
+
+func (response AddProjectMember403JSONResponse) VisitAddProjectMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AddProjectMember404JSONResponse Error
+
+func (response AddProjectMember404JSONResponse) VisitAddProjectMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AddProjectMember422JSONResponse Error
+
+func (response AddProjectMember422JSONResponse) VisitAddProjectMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveProjectMemberRequestObject struct {
+	Tenant  TenantSlug `json:"tenant"`
+	Project ProjectRef `json:"project"`
+	User    UserRef    `json:"user"`
+}
+
+type RemoveProjectMemberResponseObject interface {
+	VisitRemoveProjectMemberResponse(w http.ResponseWriter) error
+}
+
+type RemoveProjectMember204Response struct {
+}
+
+func (response RemoveProjectMember204Response) VisitRemoveProjectMemberResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type RemoveProjectMember401JSONResponse Error
+
+func (response RemoveProjectMember401JSONResponse) VisitRemoveProjectMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveProjectMember404JSONResponse Error
+
+func (response RemoveProjectMember404JSONResponse) VisitRemoveProjectMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveProjectMember409JSONResponse Error
+
+func (response RemoveProjectMember409JSONResponse) VisitRemoveProjectMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateProjectMemberRequestObject struct {
+	Tenant  TenantSlug `json:"tenant"`
+	Project ProjectRef `json:"project"`
+	User    UserRef    `json:"user"`
+	Body    *UpdateProjectMemberJSONRequestBody
+}
+
+type UpdateProjectMemberResponseObject interface {
+	VisitUpdateProjectMemberResponse(w http.ResponseWriter) error
+}
+
+type UpdateProjectMember200JSONResponse ProjectMembership
+
+func (response UpdateProjectMember200JSONResponse) VisitUpdateProjectMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateProjectMember401JSONResponse Error
+
+func (response UpdateProjectMember401JSONResponse) VisitUpdateProjectMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateProjectMember404JSONResponse Error
+
+func (response UpdateProjectMember404JSONResponse) VisitUpdateProjectMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateProjectMember409JSONResponse Error
+
+func (response UpdateProjectMember409JSONResponse) VisitUpdateProjectMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectResourcePolicyRequestObject struct {
+	Tenant  TenantSlug `json:"tenant"`
+	Project ProjectRef `json:"project"`
+}
+
+type GetProjectResourcePolicyResponseObject interface {
+	VisitGetProjectResourcePolicyResponse(w http.ResponseWriter) error
+}
+
+type GetProjectResourcePolicy200JSONResponse ResourcePolicyResponse
+
+func (response GetProjectResourcePolicy200JSONResponse) VisitGetProjectResourcePolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectResourcePolicy401JSONResponse Error
+
+func (response GetProjectResourcePolicy401JSONResponse) VisitGetProjectResourcePolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectResourcePolicy404JSONResponse Error
+
+func (response GetProjectResourcePolicy404JSONResponse) VisitGetProjectResourcePolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetProjectResourcePolicyRequestObject struct {
+	Tenant  TenantSlug `json:"tenant"`
+	Project ProjectRef `json:"project"`
+	Body    *SetProjectResourcePolicyJSONRequestBody
+}
+
+type SetProjectResourcePolicyResponseObject interface {
+	VisitSetProjectResourcePolicyResponse(w http.ResponseWriter) error
+}
+
+type SetProjectResourcePolicy200JSONResponse ResourcePolicyResponse
+
+func (response SetProjectResourcePolicy200JSONResponse) VisitSetProjectResourcePolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetProjectResourcePolicy401JSONResponse Error
+
+func (response SetProjectResourcePolicy401JSONResponse) VisitSetProjectResourcePolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetProjectResourcePolicy403JSONResponse Error
+
+func (response SetProjectResourcePolicy403JSONResponse) VisitSetProjectResourcePolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetProjectResourcePolicy404JSONResponse Error
+
+func (response SetProjectResourcePolicy404JSONResponse) VisitSetProjectResourcePolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UnarchiveProjectRequestObject struct {
+	Tenant  TenantSlug `json:"tenant"`
+	Project ProjectRef `json:"project"`
+}
+
+type UnarchiveProjectResponseObject interface {
+	VisitUnarchiveProjectResponse(w http.ResponseWriter) error
+}
+
+type UnarchiveProject200JSONResponse Project
+
+func (response UnarchiveProject200JSONResponse) VisitUnarchiveProjectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UnarchiveProject401JSONResponse Error
+
+func (response UnarchiveProject401JSONResponse) VisitUnarchiveProjectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UnarchiveProject404JSONResponse Error
+
+func (response UnarchiveProject404JSONResponse) VisitUnarchiveProjectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type LookupUsersRequestObject struct {
 	Tenant TenantSlug `json:"tenant"`
 	Params LookupUsersParams
@@ -5512,6 +7759,63 @@ type StrictServerInterface interface {
 	// UpdateMember Replace a member's roles
 	// (PATCH /tenants/{tenant}/members/{user})
 	UpdateMember(ctx context.Context, request UpdateMemberRequestObject) (UpdateMemberResponseObject, error)
+	// GetTenantResourcePolicy Get the tenant resource policy (policy.read)
+	// (GET /tenants/{tenant}/policies/resource)
+	GetTenantResourcePolicy(ctx context.Context, request GetTenantResourcePolicyRequestObject) (GetTenantResourcePolicyResponseObject, error)
+	// SetTenantResourcePolicy Replace the tenant resource policy (policy.manage)
+	// (PUT /tenants/{tenant}/policies/resource)
+	SetTenantResourcePolicy(ctx context.Context, request SetTenantResourcePolicyRequestObject) (SetTenantResourcePolicyResponseObject, error)
+	// ListProjects List projects (all for project.read principals; member projects otherwise)
+	// (GET /tenants/{tenant}/projects)
+	ListProjects(ctx context.Context, request ListProjectsRequestObject) (ListProjectsResponseObject, error)
+	// CreateProject Create a project (project.create; creator becomes project-admin)
+	// (POST /tenants/{tenant}/projects)
+	CreateProject(ctx context.Context, request CreateProjectRequestObject) (CreateProjectResponseObject, error)
+	// GetProject Get a project (project.read or project membership)
+	// (GET /tenants/{tenant}/projects/{project})
+	GetProject(ctx context.Context, request GetProjectRequestObject) (GetProjectResponseObject, error)
+	// UpdateProject Update a project (project.manage; JSON merge patch fields)
+	// (PATCH /tenants/{tenant}/projects/{project})
+	UpdateProject(ctx context.Context, request UpdateProjectRequestObject) (UpdateProjectResponseObject, error)
+	// ArchiveProject Archive a project (project.manage; blocks mutations and submissions)
+	// (POST /tenants/{tenant}/projects/{project}/archive)
+	ArchiveProject(ctx context.Context, request ArchiveProjectRequestObject) (ArchiveProjectResponseObject, error)
+	// ListClusterBindings List project cluster bindings (project.read or membership)
+	// (GET /tenants/{tenant}/projects/{project}/cluster-bindings)
+	ListClusterBindings(ctx context.Context, request ListClusterBindingsRequestObject) (ListClusterBindingsResponseObject, error)
+	// CreateClusterBinding Create a cluster binding (project.manage; cluster must be tenant-assigned)
+	// (POST /tenants/{tenant}/projects/{project}/cluster-bindings)
+	CreateClusterBinding(ctx context.Context, request CreateClusterBindingRequestObject) (CreateClusterBindingResponseObject, error)
+	// DeleteClusterBinding Delete a cluster binding (project.manage)
+	// (DELETE /tenants/{tenant}/projects/{project}/cluster-bindings/{binding})
+	DeleteClusterBinding(ctx context.Context, request DeleteClusterBindingRequestObject) (DeleteClusterBindingResponseObject, error)
+	// GetClusterBinding Get a cluster binding (project.read or membership)
+	// (GET /tenants/{tenant}/projects/{project}/cluster-bindings/{binding})
+	GetClusterBinding(ctx context.Context, request GetClusterBindingRequestObject) (GetClusterBindingResponseObject, error)
+	// UpdateClusterBinding Update a cluster binding (project.manage; revalidates constraints)
+	// (PATCH /tenants/{tenant}/projects/{project}/cluster-bindings/{binding})
+	UpdateClusterBinding(ctx context.Context, request UpdateClusterBindingRequestObject) (UpdateClusterBindingResponseObject, error)
+	// ListProjectMembers List project members (project.read or membership)
+	// (GET /tenants/{tenant}/projects/{project}/members)
+	ListProjectMembers(ctx context.Context, request ListProjectMembersRequestObject) (ListProjectMembersResponseObject, error)
+	// AddProjectMember Add a project member (project.members.manage; must be a tenant member)
+	// (POST /tenants/{tenant}/projects/{project}/members)
+	AddProjectMember(ctx context.Context, request AddProjectMemberRequestObject) (AddProjectMemberResponseObject, error)
+	// RemoveProjectMember Remove a project member (project.members.manage)
+	// (DELETE /tenants/{tenant}/projects/{project}/members/{user})
+	RemoveProjectMember(ctx context.Context, request RemoveProjectMemberRequestObject) (RemoveProjectMemberResponseObject, error)
+	// UpdateProjectMember Replace a project member's roles (project.members.manage)
+	// (PATCH /tenants/{tenant}/projects/{project}/members/{user})
+	UpdateProjectMember(ctx context.Context, request UpdateProjectMemberRequestObject) (UpdateProjectMemberResponseObject, error)
+	// GetProjectResourcePolicy Get the project resource policy (policy.read)
+	// (GET /tenants/{tenant}/projects/{project}/policies/resource)
+	GetProjectResourcePolicy(ctx context.Context, request GetProjectResourcePolicyRequestObject) (GetProjectResourcePolicyResponseObject, error)
+	// SetProjectResourcePolicy Replace the project resource policy (policy.manage at tenant level)
+	// (PUT /tenants/{tenant}/projects/{project}/policies/resource)
+	SetProjectResourcePolicy(ctx context.Context, request SetProjectResourcePolicyRequestObject) (SetProjectResourcePolicyResponseObject, error)
+	// UnarchiveProject Reactivate an archived project (project.manage)
+	// (POST /tenants/{tenant}/projects/{project}/unarchive)
+	UnarchiveProject(ctx context.Context, request UnarchiveProjectRequestObject) (UnarchiveProjectResponseObject, error)
 	// LookupUsers Look up users by exact email (tenant.members.manage)
 	// (GET /tenants/{tenant}/users/lookup)
 	LookupUsers(ctx context.Context, request LookupUsersRequestObject) (LookupUsersResponseObject, error)
@@ -6715,6 +9019,578 @@ func (sh *strictHandler) UpdateMember(w http.ResponseWriter, r *http.Request, te
 	}
 }
 
+// GetTenantResourcePolicy operation middleware
+func (sh *strictHandler) GetTenantResourcePolicy(w http.ResponseWriter, r *http.Request, tenant TenantSlug) {
+	var request GetTenantResourcePolicyRequestObject
+
+	request.Tenant = tenant
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetTenantResourcePolicy(ctx, request.(GetTenantResourcePolicyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetTenantResourcePolicy")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetTenantResourcePolicyResponseObject); ok {
+		if err := validResponse.VisitGetTenantResourcePolicyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetTenantResourcePolicy operation middleware
+func (sh *strictHandler) SetTenantResourcePolicy(w http.ResponseWriter, r *http.Request, tenant TenantSlug) {
+	var request SetTenantResourcePolicyRequestObject
+
+	request.Tenant = tenant
+
+	var body SetTenantResourcePolicyJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetTenantResourcePolicy(ctx, request.(SetTenantResourcePolicyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetTenantResourcePolicy")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetTenantResourcePolicyResponseObject); ok {
+		if err := validResponse.VisitSetTenantResourcePolicyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListProjects operation middleware
+func (sh *strictHandler) ListProjects(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params ListProjectsParams) {
+	var request ListProjectsRequestObject
+
+	request.Tenant = tenant
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListProjects(ctx, request.(ListProjectsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListProjects")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListProjectsResponseObject); ok {
+		if err := validResponse.VisitListProjectsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateProject operation middleware
+func (sh *strictHandler) CreateProject(w http.ResponseWriter, r *http.Request, tenant TenantSlug) {
+	var request CreateProjectRequestObject
+
+	request.Tenant = tenant
+
+	var body CreateProjectJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateProject(ctx, request.(CreateProjectRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateProject")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateProjectResponseObject); ok {
+		if err := validResponse.VisitCreateProjectResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetProject operation middleware
+func (sh *strictHandler) GetProject(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectRef) {
+	var request GetProjectRequestObject
+
+	request.Tenant = tenant
+	request.Project = project
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetProject(ctx, request.(GetProjectRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetProject")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetProjectResponseObject); ok {
+		if err := validResponse.VisitGetProjectResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateProject operation middleware
+func (sh *strictHandler) UpdateProject(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectRef) {
+	var request UpdateProjectRequestObject
+
+	request.Tenant = tenant
+	request.Project = project
+
+	var body UpdateProjectJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateProject(ctx, request.(UpdateProjectRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateProject")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateProjectResponseObject); ok {
+		if err := validResponse.VisitUpdateProjectResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ArchiveProject operation middleware
+func (sh *strictHandler) ArchiveProject(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectRef) {
+	var request ArchiveProjectRequestObject
+
+	request.Tenant = tenant
+	request.Project = project
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ArchiveProject(ctx, request.(ArchiveProjectRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ArchiveProject")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ArchiveProjectResponseObject); ok {
+		if err := validResponse.VisitArchiveProjectResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListClusterBindings operation middleware
+func (sh *strictHandler) ListClusterBindings(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectRef) {
+	var request ListClusterBindingsRequestObject
+
+	request.Tenant = tenant
+	request.Project = project
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListClusterBindings(ctx, request.(ListClusterBindingsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListClusterBindings")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListClusterBindingsResponseObject); ok {
+		if err := validResponse.VisitListClusterBindingsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateClusterBinding operation middleware
+func (sh *strictHandler) CreateClusterBinding(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectRef) {
+	var request CreateClusterBindingRequestObject
+
+	request.Tenant = tenant
+	request.Project = project
+
+	var body CreateClusterBindingJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateClusterBinding(ctx, request.(CreateClusterBindingRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateClusterBinding")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateClusterBindingResponseObject); ok {
+		if err := validResponse.VisitCreateClusterBindingResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteClusterBinding operation middleware
+func (sh *strictHandler) DeleteClusterBinding(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectRef, binding BindingRef) {
+	var request DeleteClusterBindingRequestObject
+
+	request.Tenant = tenant
+	request.Project = project
+	request.Binding = binding
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteClusterBinding(ctx, request.(DeleteClusterBindingRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteClusterBinding")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteClusterBindingResponseObject); ok {
+		if err := validResponse.VisitDeleteClusterBindingResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetClusterBinding operation middleware
+func (sh *strictHandler) GetClusterBinding(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectRef, binding BindingRef) {
+	var request GetClusterBindingRequestObject
+
+	request.Tenant = tenant
+	request.Project = project
+	request.Binding = binding
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetClusterBinding(ctx, request.(GetClusterBindingRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetClusterBinding")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetClusterBindingResponseObject); ok {
+		if err := validResponse.VisitGetClusterBindingResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateClusterBinding operation middleware
+func (sh *strictHandler) UpdateClusterBinding(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectRef, binding BindingRef) {
+	var request UpdateClusterBindingRequestObject
+
+	request.Tenant = tenant
+	request.Project = project
+	request.Binding = binding
+
+	var body UpdateClusterBindingJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateClusterBinding(ctx, request.(UpdateClusterBindingRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateClusterBinding")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateClusterBindingResponseObject); ok {
+		if err := validResponse.VisitUpdateClusterBindingResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListProjectMembers operation middleware
+func (sh *strictHandler) ListProjectMembers(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectRef, params ListProjectMembersParams) {
+	var request ListProjectMembersRequestObject
+
+	request.Tenant = tenant
+	request.Project = project
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListProjectMembers(ctx, request.(ListProjectMembersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListProjectMembers")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListProjectMembersResponseObject); ok {
+		if err := validResponse.VisitListProjectMembersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// AddProjectMember operation middleware
+func (sh *strictHandler) AddProjectMember(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectRef) {
+	var request AddProjectMemberRequestObject
+
+	request.Tenant = tenant
+	request.Project = project
+
+	var body AddProjectMemberJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.AddProjectMember(ctx, request.(AddProjectMemberRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "AddProjectMember")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(AddProjectMemberResponseObject); ok {
+		if err := validResponse.VisitAddProjectMemberResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RemoveProjectMember operation middleware
+func (sh *strictHandler) RemoveProjectMember(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectRef, user UserRef) {
+	var request RemoveProjectMemberRequestObject
+
+	request.Tenant = tenant
+	request.Project = project
+	request.User = user
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RemoveProjectMember(ctx, request.(RemoveProjectMemberRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RemoveProjectMember")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RemoveProjectMemberResponseObject); ok {
+		if err := validResponse.VisitRemoveProjectMemberResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateProjectMember operation middleware
+func (sh *strictHandler) UpdateProjectMember(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectRef, user UserRef) {
+	var request UpdateProjectMemberRequestObject
+
+	request.Tenant = tenant
+	request.Project = project
+	request.User = user
+
+	var body UpdateProjectMemberJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateProjectMember(ctx, request.(UpdateProjectMemberRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateProjectMember")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateProjectMemberResponseObject); ok {
+		if err := validResponse.VisitUpdateProjectMemberResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetProjectResourcePolicy operation middleware
+func (sh *strictHandler) GetProjectResourcePolicy(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectRef) {
+	var request GetProjectResourcePolicyRequestObject
+
+	request.Tenant = tenant
+	request.Project = project
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetProjectResourcePolicy(ctx, request.(GetProjectResourcePolicyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetProjectResourcePolicy")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetProjectResourcePolicyResponseObject); ok {
+		if err := validResponse.VisitGetProjectResourcePolicyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetProjectResourcePolicy operation middleware
+func (sh *strictHandler) SetProjectResourcePolicy(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectRef) {
+	var request SetProjectResourcePolicyRequestObject
+
+	request.Tenant = tenant
+	request.Project = project
+
+	var body SetProjectResourcePolicyJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetProjectResourcePolicy(ctx, request.(SetProjectResourcePolicyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetProjectResourcePolicy")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetProjectResourcePolicyResponseObject); ok {
+		if err := validResponse.VisitSetProjectResourcePolicyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UnarchiveProject operation middleware
+func (sh *strictHandler) UnarchiveProject(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectRef) {
+	var request UnarchiveProjectRequestObject
+
+	request.Tenant = tenant
+	request.Project = project
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UnarchiveProject(ctx, request.(UnarchiveProjectRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UnarchiveProject")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UnarchiveProjectResponseObject); ok {
+		if err := validResponse.VisitUnarchiveProjectResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // LookupUsers operation middleware
 func (sh *strictHandler) LookupUsers(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params LookupUsersParams) {
 	var request LookupUsersRequestObject
@@ -6747,88 +9623,110 @@ func (sh *strictHandler) LookupUsers(w http.ResponseWriter, r *http.Request, ten
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
-	"AXxqwZjyyDvzBjghg+mp93z3/O8BAA==",
+	"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",
+	"U28EEzyavfGe757/bwA=",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,
