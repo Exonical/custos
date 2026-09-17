@@ -3,6 +3,7 @@ module github.com/Exonical/custos
 go 1.27.1
 
 require (
+	github.com/SlinkyProject/slurm-client v1.2.2
 	github.com/coreos/go-oidc/v3 v3.16.0
 	github.com/fergusstrange/embedded-postgres v1.34.0
 	github.com/getkin/kin-openapi v0.144.0
@@ -24,10 +25,10 @@ require (
 	go.opentelemetry.io/otel/trace v1.46.0
 	golang.org/x/sync v0.23.0
 	gopkg.in/yaml.v3 v3.0.1
+	mvdan.cc/sh/v3 v3.14.1
 )
 
 require (
-	github.com/SlinkyProject/slurm-client v1.2.2 // indirect
 	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect

@@ -68,6 +68,24 @@ linters:
           deny:
             - pkg: "github.com/SlinkyProject"
               desc: "only internal/slurm/slinky may import the Slinky client"
+        mvdan-boundary:
+          list-mode: lax
+          files:
+            - "**/internal/**"
+            - "!**/internal/validation/shsyntax/**"
+            - "!**/internal/validation/sbatchscan/**"
+          deny:
+            - pkg: "mvdan.cc/sh"
+              desc: "shell parsing belongs in internal/validation/{shsyntax,sbatchscan}"
+        no-script-bytes:
+          list-mode: lax
+          # ExecutionSpec carries PayloadRef only; admission/submission
+          # must never see script bodies (docs/script-validation.md).
+          files:
+            - "**/internal/{admission,submission}/**"
+          deny:
+            - pkg: "github.com/Exonical/custos/internal/scripts"
+              desc: "admission/submission handle PayloadRef, never script bytes"
   exclusions:
     rules:
       - path: '_test\.go'

@@ -155,10 +155,10 @@ sources never collide:
 
 | Range | Source | Examples |
 | --- | --- | --- |
-| `CUSTOS0xx` | `shsyntax` / general | `010` CRLF line endings, `011` directive-like text outside a comment, `012` foreign scheduler directive (`#PBS`, `#BSUB`) |
-| `CUSTOS1xx` | `sbatchscan` — one code per canonical field family | `101` gres/gpus, `102` qos, `103` account, `104` partition, `105` reservation, `106` nodes/tasks/cpus, `107` memory, `108` walltime, `109` array, `110` dependencies, `111` priority, `112` node selection/topology, `113` identity/env/export, `114` naming, `115` io paths, `116` cluster, `117` mail, `199` unknown directive |
+| `CUSTOS0xx` | `shsyntax` / general | `010` CRLF line endings, `011` directive-like text outside a comment, `012` foreign scheduler directive (`#PBS`, `#BSUB`), `013` byte-order mark (ERROR — bash executes it as a command), `014` suspicious directive-like comment (zero-width characters) |
+| `CUSTOS1xx` | `sbatchscan` — one code per canonical field family | `101` gres/gpus, `102` qos, `103` account, `104` partition, `105` reservation, `106` nodes/tasks/cpus, `107` memory, `108` walltime, `109` array, `110` dependencies, `111` priority, `112` node selection/topology/constraints/licenses, `113` identity/env/export, `114` naming, `115` io paths, `116` cluster, `117` mail, `118` behavioural/misc options, `199` unknown directive |
 | `CUSTOS2xx` | legacy import | `201` directive cannot be imported |
-| `CUSTOS3xx` | `envcheck` | `301` controlled name, `302` generated name, `303` filtered name, `304` invalid name/value |
+| `CUSTOS3xx` | `envcheck` | `301` controlled name, `302` generated name, `303` filtered name, `304` invalid name/value, `305` case variant of a filtered/controlled name (WARNING) |
 | `CUSTOS4xx` | `softwareenv` | `401` unknown/unauthorized software |
 | `CUSTOS5xx` | command scan (advisory) | `501` forbidden command |
 | `CUSTOS9xx` | pipeline/infrastructure | `900` validator unavailable, `901` script exceeds limits |
@@ -234,12 +234,15 @@ margin; canonicalize before judging; never regex-only.
    non-comment, non-blank line. The scanner records `honored: bool` for
    each candidate. Policy-controlled directives are rejected regardless of
    placement (defense in depth); unhonored ones carry a note.
-4. **Tokenize** the directive remainder with `syntax.Parser` in word mode
-   (shell-word splitting with quotes), matching sbatch's own
-   `getopt_long` behaviour: `--opt=value`, `--opt value`, `-o value`,
-   `-ovalue`, bundled short flags where sbatch permits, repeated options
-   (last wins for scalars; accumulated for `--gres`, `--constraint`
-   when Slurm merges them), and `--opt` with optional argument.
+4. **Tokenize** the directive remainder with shell-word splitting
+   (quotes removed; **no expansion** — sbatch reads `$VAR` as literal
+   text), matching sbatch's own `getopt_long` behaviour: `--opt=value`,
+   `--opt value`, `-o value`, `-ovalue`, bundled short flags where
+   sbatch permits, repeated options (last wins for scalars; accumulated
+   for `--gres`, `--constraint` when Slurm merges them), `--opt` with
+   optional argument, and unambiguous prefix abbreviations
+   (`--parti=gpu` resolves to `--partition`; the diagnostic notes the
+   abbreviation).
 5. **Canonicalize** via a generated option table (`sbatchscan/options.go`,
    derived from sbatch's option list for Slurm 26.05 and checked by a test
    against `sbatch --help` output captured as a fixture per supported
