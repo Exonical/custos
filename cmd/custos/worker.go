@@ -14,11 +14,15 @@ import (
 	"github.com/Exonical/custos/internal/audit/pgaudit"
 	clusterpg "github.com/Exonical/custos/internal/clusters/postgres"
 	clustersync "github.com/Exonical/custos/internal/clusters/sync"
+	jobpg "github.com/Exonical/custos/internal/jobs/postgres"
+	jobssvc "github.com/Exonical/custos/internal/jobs/service"
+	jobsworker "github.com/Exonical/custos/internal/jobs/worker"
 	"github.com/Exonical/custos/internal/platform/config"
 	"github.com/Exonical/custos/internal/platform/db"
 	"github.com/Exonical/custos/internal/platform/log"
 	"github.com/Exonical/custos/internal/platform/otel"
 	"github.com/Exonical/custos/internal/platform/workqueue"
+	scriptpg "github.com/Exonical/custos/internal/scripts/postgres"
 	tenantpg "github.com/Exonical/custos/internal/tenants/postgres"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/sync/errgroup"
@@ -76,6 +80,33 @@ func cmdWorker(parent context.Context, configPath string, lookupEnv config.Looku
 		clustersync.NewMetrics(prov.Meter)))
 	if err := clustersync.Bootstrap(ctx, pool, clusterRepo); err != nil {
 		logger.ErrorContext(ctx, "cluster.sync bootstrap", "error", err)
+		return 1
+	}
+
+	// Job handlers (docs/workers.md): submit, reconcile, cancel, sweep.
+	jdeps := jobsworker.Deps{
+		Jobs:     jobpg.New(pool),
+		Scripts:  scriptpg.New(pool),
+		Clusters: clusterRepo,
+		Factory:  sdeps.Factory,
+		Exec:     pool,
+		Audit:    recorder,
+		Metrics:  jobsworker.NewMetrics(prov.Meter, jobpg.New(pool)),
+	}
+	q.Register(jobssvc.KindSubmit, jobsworker.Submit(jdeps))
+	q.Register(jobsworker.KindReconcile, jobsworker.Reconcile(jdeps))
+	q.Register(jobssvc.KindCancel, jobsworker.Cancel(jdeps))
+	q.Register(jobsworker.KindSweep, jobsworker.Sweep(jdeps))
+	q.Register(jobsworker.KindIdemExpire, jobsworker.IdempotencyExpire(jdeps))
+	if err := jobsworker.BootstrapSweep(ctx, pool, clusterRepo); err != nil {
+		logger.ErrorContext(ctx, "jobs.sweep bootstrap", "error", err)
+		return 1
+	}
+	if _, err := workqueue.Enqueue(ctx, pool, workqueue.EnqueueRequest{
+		Kind: jobsworker.KindIdemExpire,
+		Key:  "singleton",
+	}); err != nil {
+		logger.ErrorContext(ctx, "enqueue idempotency.expire", "error", err)
 		return 1
 	}
 

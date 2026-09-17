@@ -77,12 +77,17 @@ Dead items are visible at `/api/v1/admin/work-items?state=dead` with a
 
 ## Work item kinds (initial)
 
+Implemented in M4-C: `job.submit`, `job.reconcile`, `job.cancel`,
+`jobs.sweep`, `idempotency.expire` (plus `cluster.sync`,
+`maintenance.partitions`, `tenant.delete` from earlier slices). The rest
+land with the workflow milestones.
+
 | Kind | Trigger | Handler outline |
 | --- | --- | --- |
-| `job.submit` | `task.admit` succeeded (ad-hoc jobs in Milestone 4 go through the same admission step) | reconcile-by-name first; build `JobSubmission` from the persisted `ExecutionSpec`; resolve credentials; `SubmitJob`; persist `slurm_job_id`; transition to QUEUED; enqueue `job.reconcile` |
-| `job.reconcile` | after submit; periodic while non-terminal; on demand | `GetJob`; map state; guarded transition; reschedule with interval growing 5s→60s; if Slurm says "unknown job" and accounting has a record → terminal from accounting; if unknown everywhere for >N minutes after submit → FAILED (`LOST`) |
-| `job.cancel` | cancel request | `CancelJob`; enqueue reconcile |
-| `job.sweep` | periodic per cluster (60s) | `ListJobs(name prefix custos-)` once; bulk-reconcile all non-terminal jobs on that cluster (see cadence below) |
+| `job.submit` | job admitted (ad-hoc jobs go through the same admission step) | reconcile-by-name first; build `JobSubmission` from the persisted `ExecutionSpec`; resolve credentials; `SubmitJob`; persist `slurm_job_id`; transition to QUEUED; enqueue `job.reconcile` |
+| `job.reconcile` | after submit; periodic while non-terminal; on demand | `GetJob`; map state; guarded transition; reschedule with interval growing 5s→60s (age-based); if Slurm says "unknown job" and accounting has a record → terminal from accounting; if unknown everywhere for >10 minutes after submit → FAILED (`LOST`) |
+| `job.cancel` | cancel request | `CancelJob` (`ErrNotFound` = done); SUBMITTING jobs go CANCELED directly and the submit handler skips them; enqueue reconcile ≈+2s |
+| `jobs.sweep` | periodic per cluster (60s) | `ListJobs(name prefix custos-)` once; bulk-reconcile all non-terminal jobs on that cluster; jobs absent for >10min → FAILED (`LOST`) (see cadence below) |
 | `task.admit` | task READY | verify script digest ↔ `ScriptValidation` currency (enqueue `script.validate` if stale, requeue self); build + persist `ExecutionSpec`; transition `ADMITTING → SUBMITTING`; enqueue `job.submit` |
 | `script.validate` | validate endpoint (async for large scripts), publish, stale validation at admission | run validator pipeline (external tools via sidecar); persist `ScriptValidation` |
 | `policy.sync` | ResourcePolicy / binding change; periodic per cluster (M7+) | mirror binding limits to slurmdbd associations via `slurm.Accounting` write ops; report drift |
@@ -115,8 +120,9 @@ slurmdbd and it already left the ctld job list (`MinJobAge`, default 300s)
 
 - Per non-terminal job: reconcile item with adaptive interval (5s while
   `SUBMITTING/QUEUED` young, up to 60s for long-running jobs).
-- Per cluster: a `job.sweep` item every 60s that lists all Slurm jobs with
-  `name LIKE 'custos-%'` in one call and reconciles in bulk — this is the
+- Per cluster: a `jobs.sweep` item every 60s that lists all Slurm jobs and
+  filters `custos-%` names client-side in one call (slurmrestd has no
+  server-side name filter) and reconciles in bulk — this is the
   primary path at scale; per-job items are the fallback for freshness on
   user-facing operations (e.g. right after submit or cancel).
 

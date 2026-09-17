@@ -330,6 +330,33 @@ func (e ClusterUpdateVisibility) Valid() bool {
 	}
 }
 
+// Defines values for DiagnosticSeverity.
+const (
+	ERROR    DiagnosticSeverity = "ERROR"
+	INFO     DiagnosticSeverity = "INFO"
+	POLICY   DiagnosticSeverity = "POLICY"
+	SECURITY DiagnosticSeverity = "SECURITY"
+	WARNING  DiagnosticSeverity = "WARNING"
+)
+
+// Valid indicates whether the value is a known member of the DiagnosticSeverity enum.
+func (e DiagnosticSeverity) Valid() bool {
+	switch e {
+	case ERROR:
+		return true
+	case INFO:
+		return true
+	case POLICY:
+		return true
+	case SECURITY:
+		return true
+	case WARNING:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for GroupSource.
 const (
 	GroupSourceIdp    GroupSource = "idp"
@@ -375,6 +402,54 @@ const (
 func (e HealthStatusStatus) Valid() bool {
 	switch e {
 	case HealthStatusStatusOk:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for JobState.
+const (
+	CANCELED   JobState = "CANCELED"
+	COMPLETED  JobState = "COMPLETED"
+	FAILED     JobState = "FAILED"
+	QUEUED     JobState = "QUEUED"
+	RUNNING    JobState = "RUNNING"
+	SUBMITTING JobState = "SUBMITTING"
+)
+
+// Valid indicates whether the value is a known member of the JobState enum.
+func (e JobState) Valid() bool {
+	switch e {
+	case CANCELED:
+		return true
+	case COMPLETED:
+		return true
+	case FAILED:
+		return true
+	case QUEUED:
+		return true
+	case RUNNING:
+		return true
+	case SUBMITTING:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for JobSubmitScriptLanguage.
+const (
+	Bash JobSubmitScriptLanguage = "bash"
+	Sh   JobSubmitScriptLanguage = "sh"
+)
+
+// Valid indicates whether the value is a known member of the JobSubmitScriptLanguage enum.
+func (e JobSubmitScriptLanguage) Valid() bool {
+	switch e {
+	case Bash:
+		return true
+	case Sh:
 		return true
 	default:
 		return false
@@ -997,6 +1072,23 @@ type ClusterUpdateIdentityMode string
 // ClusterUpdateVisibility defines model for ClusterUpdate.Visibility.
 type ClusterUpdateVisibility string
 
+// Diagnostic defines model for Diagnostic.
+type Diagnostic struct {
+	Code      string             `json:"code"`
+	Column    *int               `json:"column,omitempty"`
+	EndColumn *int               `json:"endColumn,omitempty"`
+	EndLine   *int               `json:"endLine,omitempty"`
+	Field     *string            `json:"field,omitempty"`
+	Fix       *string            `json:"fix,omitempty"`
+	Line      *int               `json:"line,omitempty"`
+	Message   string             `json:"message"`
+	Severity  DiagnosticSeverity `json:"severity"`
+	Source    string             `json:"source"`
+}
+
+// DiagnosticSeverity defines model for Diagnostic.Severity.
+type DiagnosticSeverity string
+
 // Error defines model for Error.
 type Error struct {
 	Error struct {
@@ -1074,6 +1166,74 @@ type HealthStatus struct {
 
 // HealthStatusStatus defines model for HealthStatus.Status.
 type HealthStatusStatus string
+
+// Job defines model for Job.
+type Job struct {
+	ClusterId openapi_types.UUID `json:"cluster_id"`
+	CreatedAt time.Time          `json:"created_at"`
+	CreatedBy openapi_types.UUID `json:"created_by"`
+	EndedAt   *time.Time         `json:"ended_at,omitempty"`
+
+	// ExecutionSpecId sha256:<hex> digest of the immutable ExecutionSpec
+	ExecutionSpecId  *string                `json:"execution_spec_id,omitempty"`
+	ExitCode         *int                   `json:"exit_code,omitempty"`
+	ExitSignal       *int                   `json:"exit_signal,omitempty"`
+	Id               openapi_types.UUID     `json:"id"`
+	LastReconciledAt *time.Time             `json:"last_reconciled_at,omitempty"`
+	Name             string                 `json:"name"`
+	ProjectId        openapi_types.UUID     `json:"project_id"`
+	ResourceRequest  map[string]interface{} `json:"resource_request"`
+
+	// ScriptDigest sha256:<hex>
+	ScriptDigest   string             `json:"script_digest"`
+	ScriptLanguage string             `json:"script_language"`
+	SlurmJobId     *int64             `json:"slurm_job_id,omitempty"`
+	SlurmState     *string            `json:"slurm_state,omitempty"`
+	StartedAt      *time.Time         `json:"started_at,omitempty"`
+	State          JobState           `json:"state"`
+	StateReason    *string            `json:"state_reason,omitempty"`
+	SubmittedAt    *time.Time         `json:"submitted_at,omitempty"`
+	TenantId       openapi_types.UUID `json:"tenant_id"`
+	UpdatedAt      time.Time          `json:"updated_at"`
+	Version        int                `json:"version"`
+}
+
+// JobState defines model for Job.State.
+type JobState string
+
+// JobList defines model for JobList.
+type JobList struct {
+	Items      []Job   `json:"items"`
+	NextCursor *string `json:"next_cursor,omitempty"`
+}
+
+// JobSubmit defines model for JobSubmit.
+type JobSubmit struct {
+	Args *[]string `json:"args,omitempty"`
+
+	// Cluster Cluster name or uuid.
+	Cluster   string             `json:"cluster"`
+	Env       *map[string]string `json:"env,omitempty"`
+	Name      *string            `json:"name,omitempty"`
+	Partition *string            `json:"partition,omitempty"`
+	Qos       *string            `json:"qos,omitempty"`
+
+	// Resources Resource request (workflowspec.Resources shape).
+	Resources map[string]interface{} `json:"resources"`
+	Script    *struct {
+		Body     string                  `json:"body"`
+		Language JobSubmitScriptLanguage `json:"language"`
+	} `json:"script,omitempty"`
+
+	// ScriptRef Digest of a previously stored script: sha256:<hex>
+	ScriptRef  *string `json:"script_ref,omitempty"`
+	Stderr     *string `json:"stderr,omitempty"`
+	Stdout     *string `json:"stdout,omitempty"`
+	WorkingDir *string `json:"working_dir,omitempty"`
+}
+
+// JobSubmitScriptLanguage defines model for JobSubmit.Script.Language.
+type JobSubmitScriptLanguage string
 
 // Me defines model for Me.
 type Me struct {
@@ -1271,8 +1431,10 @@ type ResourcePolicyRequest struct {
 
 // ResourcePolicyResponse defines model for ResourcePolicyResponse.
 type ResourcePolicyResponse struct {
-	Policy  map[string]interface{} `json:"policy"`
-	Version int                    `json:"version"`
+	// Effective Project-scope GETs also return the tenant ∩ project effective policy.
+	Effective *map[string]interface{} `json:"effective,omitempty"`
+	Policy    map[string]interface{}  `json:"policy"`
+	Version   int                     `json:"version"`
 }
 
 // RoleBindingList defines model for RoleBindingList.
@@ -1347,6 +1509,16 @@ type UserLookupResult struct {
 // UserLookupResultKind defines model for UserLookupResult.Kind.
 type UserLookupResultKind string
 
+// ValidationErrorBody 422 body for script-validation and admission failures: the normal error envelope plus the diagnostic list.
+type ValidationErrorBody struct {
+	Diagnostics *[]Diagnostic `json:"diagnostics,omitempty"`
+	Error       struct {
+		Code      string  `json:"code"`
+		Message   string  `json:"message"`
+		RequestId *string `json:"request_id,omitempty"`
+	} `json:"error"`
+}
+
 // BindingRef defines model for BindingRef.
 type BindingRef = openapi_types.UUID
 
@@ -1358,6 +1530,9 @@ type Cursor = string
 
 // GroupRef defines model for GroupRef.
 type GroupRef = string
+
+// IdempotencyKey defines model for Idempotency-Key.
+type IdempotencyKey = string
 
 // Limit defines model for Limit.
 type Limit = int
@@ -1425,6 +1600,19 @@ type ListGroupMembersParams struct {
 	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// ListTenantJobsParams defines parameters for ListTenantJobs.
+type ListTenantJobsParams struct {
+	// Cursor Opaque keyset cursor from a previous list response.
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// State Comma-separated job states filter.
+	State *string `form:"state,omitempty" json:"state,omitempty"`
+
+	// Cluster Cluster uuid filter.
+	Cluster *openapi_types.UUID `form:"cluster,omitempty" json:"cluster,omitempty"`
+}
+
 // ListMembersParams defines parameters for ListMembers.
 type ListMembersParams struct {
 	// Cursor Opaque keyset cursor from a previous list response.
@@ -1437,6 +1625,24 @@ type ListProjectsParams struct {
 	// Cursor Opaque keyset cursor from a previous list response.
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ListJobsParams defines parameters for ListJobs.
+type ListJobsParams struct {
+	// Cursor Opaque keyset cursor from a previous list response.
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// State Comma-separated job states filter.
+	State *string `form:"state,omitempty" json:"state,omitempty"`
+
+	// Cluster Cluster uuid filter.
+	Cluster *openapi_types.UUID `form:"cluster,omitempty" json:"cluster,omitempty"`
+}
+
+// SubmitJobParams defines parameters for SubmitJob.
+type SubmitJobParams struct {
+	IdempotencyKey *IdempotencyKey `json:"Idempotency-Key,omitempty"`
 }
 
 // ListProjectMembersParams defines parameters for ListProjectMembers.
@@ -1501,6 +1707,9 @@ type CreateClusterBindingJSONRequestBody = ClusterBindingUpsert
 
 // UpdateClusterBindingJSONRequestBody defines body for UpdateClusterBinding for application/json ContentType.
 type UpdateClusterBindingJSONRequestBody = ClusterBindingUpsert
+
+// SubmitJobJSONRequestBody defines body for SubmitJob for application/json ContentType.
+type SubmitJobJSONRequestBody = JobSubmit
 
 // AddProjectMemberJSONRequestBody defines body for AddProjectMember for application/json ContentType.
 type AddProjectMemberJSONRequestBody = ProjectMemberUpsert
@@ -1624,6 +1833,9 @@ type ServerInterface interface {
 	// RemoveGroupMember Remove a user from a group
 	// (DELETE /tenants/{tenant}/groups/{group}/members/{user})
 	RemoveGroupMember(w http.ResponseWriter, r *http.Request, tenant TenantSlug, group GroupRef, user UserRef)
+	// ListTenantJobs List jobs tenant-wide (job.read.tenant)
+	// (GET /tenants/{tenant}/jobs)
+	ListTenantJobs(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params ListTenantJobsParams)
 	// ListMembers List tenant members
 	// (GET /tenants/{tenant}/members)
 	ListMembers(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params ListMembersParams)
@@ -1672,6 +1884,21 @@ type ServerInterface interface {
 	// UpdateClusterBinding Update a cluster binding (project.manage; revalidates constraints)
 	// (PATCH /tenants/{tenant}/projects/{project}/cluster-bindings/{binding})
 	UpdateClusterBinding(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectRef, binding BindingRef)
+	// ListJobs List project jobs (job.read.project or own jobs)
+	// (GET /tenants/{tenant}/projects/{project}/jobs)
+	ListJobs(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectRef, params ListJobsParams)
+	// SubmitJob Submit a job (job.submit; Idempotency-Key required)
+	// (POST /tenants/{tenant}/projects/{project}/jobs)
+	SubmitJob(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectRef, params SubmitJobParams)
+	// GetJob Get a job
+	// (GET /tenants/{tenant}/projects/{project}/jobs/{job})
+	GetJob(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectRef, job openapi_types.UUID)
+	// CancelJob Request job cancellation (202)
+	// (POST /tenants/{tenant}/projects/{project}/jobs/{job}/cancel)
+	CancelJob(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectRef, job openapi_types.UUID)
+	// GetJobExecutionSpec Get the immutable admitted execution spec
+	// (GET /tenants/{tenant}/projects/{project}/jobs/{job}/execution-spec)
+	GetJobExecutionSpec(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectRef, job openapi_types.UUID)
 	// ListProjectMembers List project members (project.read or membership)
 	// (GET /tenants/{tenant}/projects/{project}/members)
 	ListProjectMembers(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectRef, params ListProjectMembersParams)
@@ -2885,6 +3112,87 @@ func (siw *ServerInterfaceWrapper) RemoveGroupMember(w http.ResponseWriter, r *h
 	handler.ServeHTTP(w, r)
 }
 
+// ListTenantJobs operation middleware
+func (siw *ServerInterfaceWrapper) ListTenantJobs(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListTenantJobsParams
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "state" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "state", r.URL.Query(), &params.State, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "state"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "state", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "cluster" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cluster", r.URL.Query(), &params.Cluster, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cluster"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cluster", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListTenantJobs(w, r, tenant, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListMembers operation middleware
 func (siw *ServerInterfaceWrapper) ListMembers(w http.ResponseWriter, r *http.Request) {
 
@@ -3476,6 +3784,287 @@ func (siw *ServerInterfaceWrapper) UpdateClusterBinding(w http.ResponseWriter, r
 	handler.ServeHTTP(w, r)
 }
 
+// ListJobs operation middleware
+func (siw *ServerInterfaceWrapper) ListJobs(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", r.PathValue("project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListJobsParams
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "state" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "state", r.URL.Query(), &params.State, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "state"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "state", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "cluster" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cluster", r.URL.Query(), &params.Cluster, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cluster"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cluster", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListJobs(w, r, tenant, project, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SubmitJob operation middleware
+func (siw *ServerInterfaceWrapper) SubmitJob(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", r.PathValue("project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params SubmitJobParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey IdempotencyKey
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = &IdempotencyKey
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SubmitJob(w, r, tenant, project, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetJob operation middleware
+func (siw *ServerInterfaceWrapper) GetJob(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", r.PathValue("project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "job" -------------
+	var job openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "job", r.PathValue("job"), &job, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "job", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetJob(w, r, tenant, project, job)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CancelJob operation middleware
+func (siw *ServerInterfaceWrapper) CancelJob(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", r.PathValue("project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "job" -------------
+	var job openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "job", r.PathValue("job"), &job, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "job", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CancelJob(w, r, tenant, project, job)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetJobExecutionSpec operation middleware
+func (siw *ServerInterfaceWrapper) GetJobExecutionSpec(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", r.PathValue("project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "job" -------------
+	var job openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "job", r.PathValue("job"), &job, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "job", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetJobExecutionSpec(w, r, tenant, project, job)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListProjectMembers operation middleware
 func (siw *ServerInterfaceWrapper) ListProjectMembers(w http.ResponseWriter, r *http.Request) {
 
@@ -3991,6 +4580,12 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/tenants/{tenant}/policies/resource", wrapper.SetTenantResourcePolicy)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/tenants/{tenant}/projects/{project}/policies/resource", wrapper.GetProjectResourcePolicy)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/tenants/{tenant}/projects/{project}/policies/resource", wrapper.SetProjectResourcePolicy)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/tenants/{tenant}/jobs", wrapper.ListTenantJobs)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/tenants/{tenant}/projects/{project}/jobs", wrapper.ListJobs)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/tenants/{tenant}/projects/{project}/jobs", wrapper.SubmitJob)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/tenants/{tenant}/projects/{project}/jobs/{job}", wrapper.GetJob)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/tenants/{tenant}/projects/{project}/jobs/{job}/cancel", wrapper.CancelJob)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/tenants/{tenant}/projects/{project}/jobs/{job}/execution-spec", wrapper.GetJobExecutionSpec)
 
 	return m
 }
@@ -6164,6 +6759,57 @@ func (response RemoveGroupMember404JSONResponse) VisitRemoveGroupMemberResponse(
 	return err
 }
 
+type ListTenantJobsRequestObject struct {
+	Tenant TenantSlug `json:"tenant"`
+	Params ListTenantJobsParams
+}
+
+type ListTenantJobsResponseObject interface {
+	VisitListTenantJobsResponse(w http.ResponseWriter) error
+}
+
+type ListTenantJobs200JSONResponse JobList
+
+func (response ListTenantJobs200JSONResponse) VisitListTenantJobsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListTenantJobs401JSONResponse Error
+
+func (response ListTenantJobs401JSONResponse) VisitListTenantJobsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListTenantJobs403JSONResponse Error
+
+func (response ListTenantJobs403JSONResponse) VisitListTenantJobsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListMembersRequestObject struct {
 	Tenant TenantSlug `json:"tenant"`
 	Params ListMembersParams
@@ -7156,6 +7802,351 @@ func (response UpdateClusterBinding422JSONResponse) VisitUpdateClusterBindingRes
 	return err
 }
 
+type ListJobsRequestObject struct {
+	Tenant  TenantSlug `json:"tenant"`
+	Project ProjectRef `json:"project"`
+	Params  ListJobsParams
+}
+
+type ListJobsResponseObject interface {
+	VisitListJobsResponse(w http.ResponseWriter) error
+}
+
+type ListJobs200JSONResponse JobList
+
+func (response ListJobs200JSONResponse) VisitListJobsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListJobs401JSONResponse Error
+
+func (response ListJobs401JSONResponse) VisitListJobsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListJobs404JSONResponse Error
+
+func (response ListJobs404JSONResponse) VisitListJobsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SubmitJobRequestObject struct {
+	Tenant  TenantSlug `json:"tenant"`
+	Project ProjectRef `json:"project"`
+	Params  SubmitJobParams
+	Body    *SubmitJobJSONRequestBody
+}
+
+type SubmitJobResponseObject interface {
+	VisitSubmitJobResponse(w http.ResponseWriter) error
+}
+
+type SubmitJob200JSONResponse Job
+
+func (response SubmitJob200JSONResponse) VisitSubmitJobResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SubmitJob202JSONResponse Job
+
+func (response SubmitJob202JSONResponse) VisitSubmitJobResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(202)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SubmitJob400JSONResponse Error
+
+func (response SubmitJob400JSONResponse) VisitSubmitJobResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SubmitJob401JSONResponse Error
+
+func (response SubmitJob401JSONResponse) VisitSubmitJobResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SubmitJob403JSONResponse Error
+
+func (response SubmitJob403JSONResponse) VisitSubmitJobResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SubmitJob404JSONResponse Error
+
+func (response SubmitJob404JSONResponse) VisitSubmitJobResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SubmitJob409JSONResponse Error
+
+func (response SubmitJob409JSONResponse) VisitSubmitJobResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SubmitJob422JSONResponse ValidationErrorBody
+
+func (response SubmitJob422JSONResponse) VisitSubmitJobResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetJobRequestObject struct {
+	Tenant  TenantSlug         `json:"tenant"`
+	Project ProjectRef         `json:"project"`
+	Job     openapi_types.UUID `json:"job"`
+}
+
+type GetJobResponseObject interface {
+	VisitGetJobResponse(w http.ResponseWriter) error
+}
+
+type GetJob200JSONResponse Job
+
+func (response GetJob200JSONResponse) VisitGetJobResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetJob401JSONResponse Error
+
+func (response GetJob401JSONResponse) VisitGetJobResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetJob404JSONResponse Error
+
+func (response GetJob404JSONResponse) VisitGetJobResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelJobRequestObject struct {
+	Tenant  TenantSlug         `json:"tenant"`
+	Project ProjectRef         `json:"project"`
+	Job     openapi_types.UUID `json:"job"`
+}
+
+type CancelJobResponseObject interface {
+	VisitCancelJobResponse(w http.ResponseWriter) error
+}
+
+type CancelJob202JSONResponse Job
+
+func (response CancelJob202JSONResponse) VisitCancelJobResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(202)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelJob401JSONResponse Error
+
+func (response CancelJob401JSONResponse) VisitCancelJobResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelJob404JSONResponse Error
+
+func (response CancelJob404JSONResponse) VisitCancelJobResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelJob409JSONResponse Error
+
+func (response CancelJob409JSONResponse) VisitCancelJobResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetJobExecutionSpecRequestObject struct {
+	Tenant  TenantSlug         `json:"tenant"`
+	Project ProjectRef         `json:"project"`
+	Job     openapi_types.UUID `json:"job"`
+}
+
+type GetJobExecutionSpecResponseObject interface {
+	VisitGetJobExecutionSpecResponse(w http.ResponseWriter) error
+}
+
+type GetJobExecutionSpec200JSONResponse map[string]interface{}
+
+func (response GetJobExecutionSpec200JSONResponse) VisitGetJobExecutionSpecResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetJobExecutionSpec401JSONResponse Error
+
+func (response GetJobExecutionSpec401JSONResponse) VisitGetJobExecutionSpecResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetJobExecutionSpec404JSONResponse Error
+
+func (response GetJobExecutionSpec404JSONResponse) VisitGetJobExecutionSpecResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListProjectMembersRequestObject struct {
 	Tenant  TenantSlug `json:"tenant"`
 	Project ProjectRef `json:"project"`
@@ -7747,6 +8738,9 @@ type StrictServerInterface interface {
 	// RemoveGroupMember Remove a user from a group
 	// (DELETE /tenants/{tenant}/groups/{group}/members/{user})
 	RemoveGroupMember(ctx context.Context, request RemoveGroupMemberRequestObject) (RemoveGroupMemberResponseObject, error)
+	// ListTenantJobs List jobs tenant-wide (job.read.tenant)
+	// (GET /tenants/{tenant}/jobs)
+	ListTenantJobs(ctx context.Context, request ListTenantJobsRequestObject) (ListTenantJobsResponseObject, error)
 	// ListMembers List tenant members
 	// (GET /tenants/{tenant}/members)
 	ListMembers(ctx context.Context, request ListMembersRequestObject) (ListMembersResponseObject, error)
@@ -7795,6 +8789,21 @@ type StrictServerInterface interface {
 	// UpdateClusterBinding Update a cluster binding (project.manage; revalidates constraints)
 	// (PATCH /tenants/{tenant}/projects/{project}/cluster-bindings/{binding})
 	UpdateClusterBinding(ctx context.Context, request UpdateClusterBindingRequestObject) (UpdateClusterBindingResponseObject, error)
+	// ListJobs List project jobs (job.read.project or own jobs)
+	// (GET /tenants/{tenant}/projects/{project}/jobs)
+	ListJobs(ctx context.Context, request ListJobsRequestObject) (ListJobsResponseObject, error)
+	// SubmitJob Submit a job (job.submit; Idempotency-Key required)
+	// (POST /tenants/{tenant}/projects/{project}/jobs)
+	SubmitJob(ctx context.Context, request SubmitJobRequestObject) (SubmitJobResponseObject, error)
+	// GetJob Get a job
+	// (GET /tenants/{tenant}/projects/{project}/jobs/{job})
+	GetJob(ctx context.Context, request GetJobRequestObject) (GetJobResponseObject, error)
+	// CancelJob Request job cancellation (202)
+	// (POST /tenants/{tenant}/projects/{project}/jobs/{job}/cancel)
+	CancelJob(ctx context.Context, request CancelJobRequestObject) (CancelJobResponseObject, error)
+	// GetJobExecutionSpec Get the immutable admitted execution spec
+	// (GET /tenants/{tenant}/projects/{project}/jobs/{job}/execution-spec)
+	GetJobExecutionSpec(ctx context.Context, request GetJobExecutionSpecRequestObject) (GetJobExecutionSpecResponseObject, error)
 	// ListProjectMembers List project members (project.read or membership)
 	// (GET /tenants/{tenant}/projects/{project}/members)
 	ListProjectMembers(ctx context.Context, request ListProjectMembersRequestObject) (ListProjectMembersResponseObject, error)
@@ -8898,6 +9907,33 @@ func (sh *strictHandler) RemoveGroupMember(w http.ResponseWriter, r *http.Reques
 	}
 }
 
+// ListTenantJobs operation middleware
+func (sh *strictHandler) ListTenantJobs(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params ListTenantJobsParams) {
+	var request ListTenantJobsRequestObject
+
+	request.Tenant = tenant
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListTenantJobs(ctx, request.(ListTenantJobsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListTenantJobs")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListTenantJobsResponseObject); ok {
+		if err := validResponse.VisitListTenantJobsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListMembers operation middleware
 func (sh *strictHandler) ListMembers(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params ListMembersParams) {
 	var request ListMembersRequestObject
@@ -9378,6 +10414,153 @@ func (sh *strictHandler) UpdateClusterBinding(w http.ResponseWriter, r *http.Req
 	}
 }
 
+// ListJobs operation middleware
+func (sh *strictHandler) ListJobs(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectRef, params ListJobsParams) {
+	var request ListJobsRequestObject
+
+	request.Tenant = tenant
+	request.Project = project
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListJobs(ctx, request.(ListJobsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListJobs")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListJobsResponseObject); ok {
+		if err := validResponse.VisitListJobsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SubmitJob operation middleware
+func (sh *strictHandler) SubmitJob(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectRef, params SubmitJobParams) {
+	var request SubmitJobRequestObject
+
+	request.Tenant = tenant
+	request.Project = project
+	request.Params = params
+
+	var body SubmitJobJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SubmitJob(ctx, request.(SubmitJobRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SubmitJob")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SubmitJobResponseObject); ok {
+		if err := validResponse.VisitSubmitJobResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetJob operation middleware
+func (sh *strictHandler) GetJob(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectRef, job openapi_types.UUID) {
+	var request GetJobRequestObject
+
+	request.Tenant = tenant
+	request.Project = project
+	request.Job = job
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetJob(ctx, request.(GetJobRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetJob")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetJobResponseObject); ok {
+		if err := validResponse.VisitGetJobResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CancelJob operation middleware
+func (sh *strictHandler) CancelJob(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectRef, job openapi_types.UUID) {
+	var request CancelJobRequestObject
+
+	request.Tenant = tenant
+	request.Project = project
+	request.Job = job
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CancelJob(ctx, request.(CancelJobRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CancelJob")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CancelJobResponseObject); ok {
+		if err := validResponse.VisitCancelJobResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetJobExecutionSpec operation middleware
+func (sh *strictHandler) GetJobExecutionSpec(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectRef, job openapi_types.UUID) {
+	var request GetJobExecutionSpecRequestObject
+
+	request.Tenant = tenant
+	request.Project = project
+	request.Job = job
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetJobExecutionSpec(ctx, request.(GetJobExecutionSpecRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetJobExecutionSpec")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetJobExecutionSpecResponseObject); ok {
+		if err := validResponse.VisitGetJobExecutionSpecResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListProjectMembers operation middleware
 func (sh *strictHandler) ListProjectMembers(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectRef, params ListProjectMembersParams) {
 	var request ListProjectMembersRequestObject
@@ -9623,110 +10806,129 @@ func (sh *strictHandler) LookupUsers(w http.ResponseWriter, r *http.Request, ten
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
-	"U28EEzyavfGe757/bwA=",
+	"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",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

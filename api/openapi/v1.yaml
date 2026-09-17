@@ -1554,6 +1554,207 @@ paths:
           description: Project not found.
           content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
 
+  /tenants/{tenant}/jobs:
+    get:
+      summary: List jobs tenant-wide (job.read.tenant)
+      operationId: listTenantJobs
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - name: state
+          in: query
+          description: Comma-separated job states filter.
+          schema: {type: string}
+        - name: cluster
+          in: query
+          description: Cluster uuid filter.
+          schema: {type: string, format: uuid}
+      responses:
+        "200":
+          description: Job list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobList"
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "403":
+          description: Requires job.read.tenant.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+
+  /tenants/{tenant}/projects/{project}/jobs:
+    get:
+      summary: List project jobs (job.read.project or own jobs)
+      operationId: listJobs
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+        - $ref: "#/components/parameters/ProjectRef"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - name: state
+          in: query
+          description: Comma-separated job states filter.
+          schema: {type: string}
+        - name: cluster
+          in: query
+          description: Cluster uuid filter.
+          schema: {type: string, format: uuid}
+      responses:
+        "200":
+          description: Job list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobList"
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "404":
+          description: Project not found.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+    post:
+      summary: Submit a job (job.submit; Idempotency-Key required)
+      operationId: submitJob
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+        - $ref: "#/components/parameters/ProjectRef"
+        - $ref: "#/components/parameters/Idempotency-Key"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JobSubmit"
+      responses:
+        "202":
+          description: Job accepted for submission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+        "200":
+          description: Idempotent replay of a previous submission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+        "400":
+          description: Missing/invalid Idempotency-Key or malformed body.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "403":
+          description: Requires job.submit.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "404":
+          description: Project not found.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "409":
+          description: Idempotency-Key reused with a different body (IDEMPOTENCY_MISMATCH).
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "422":
+          description: Script validation or admission denial.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorBody"
+
+  /tenants/{tenant}/projects/{project}/jobs/{job}:
+    get:
+      summary: Get a job
+      operationId: getJob
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+        - $ref: "#/components/parameters/ProjectRef"
+        - name: job
+          in: path
+          required: true
+          description: Job uuid.
+          schema: {type: string, format: uuid}
+      responses:
+        "200":
+          description: Job detail.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "404":
+          description: Job not found.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+
+  /tenants/{tenant}/projects/{project}/jobs/{job}/cancel:
+    post:
+      summary: Request job cancellation (202)
+      operationId: cancelJob
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+        - $ref: "#/components/parameters/ProjectRef"
+        - name: job
+          in: path
+          required: true
+          description: Job uuid.
+          schema: {type: string, format: uuid}
+      responses:
+        "202":
+          description: Cancellation accepted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "404":
+          description: Job not found.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "409":
+          description: Job is already terminal.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+
+  /tenants/{tenant}/projects/{project}/jobs/{job}/execution-spec:
+    get:
+      summary: Get the immutable admitted execution spec
+      operationId: getJobExecutionSpec
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+        - $ref: "#/components/parameters/ProjectRef"
+        - name: job
+          in: path
+          required: true
+          description: Job uuid.
+          schema: {type: string, format: uuid}
+      responses:
+        "200":
+          description: The frozen ExecutionSpec.
+          content:
+            application/json:
+              schema:
+                type: object
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "404":
+          description: Job not found.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+
 components:
   securitySchemes:
     bearerAuth:
@@ -2570,6 +2771,116 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/PartitionRecord"
+
+    Job:
+      type: object
+      required: [id, tenant_id, project_id, cluster_id, created_by, name,
+                 state, resource_request, script_digest, script_language,
+                 version, created_at, updated_at]
+      properties:
+        id: {type: string, format: uuid}
+        tenant_id: {type: string, format: uuid}
+        project_id: {type: string, format: uuid}
+        cluster_id: {type: string, format: uuid}
+        created_by: {type: string, format: uuid}
+        name: {type: string}
+        state:
+          type: string
+          enum: [SUBMITTING, QUEUED, RUNNING, COMPLETED, FAILED, CANCELED]
+        state_reason: {type: string}
+        slurm_job_id: {type: integer, format: int64}
+        slurm_state: {type: string}
+        exit_code: {type: integer}
+        exit_signal: {type: integer}
+        resource_request: {type: object}
+        script_digest: {type: string, description: "sha256:<hex>"}
+        script_language: {type: string}
+        execution_spec_id: {type: string, description: "sha256:<hex> digest of the immutable ExecutionSpec"}
+        submitted_at: {type: string, format: date-time}
+        started_at: {type: string, format: date-time}
+        ended_at: {type: string, format: date-time}
+        last_reconciled_at: {type: string, format: date-time}
+        version: {type: integer}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+
+    JobList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Job"
+        next_cursor:
+          type: string
+          nullable: true
+
+    JobSubmit:
+      type: object
+      required: [cluster, resources]
+      properties:
+        name: {type: string, maxLength: 128}
+        cluster:
+          type: string
+          description: Cluster name or uuid.
+        partition: {type: string}
+        qos: {type: string}
+        resources:
+          type: object
+          description: Resource request (workflowspec.Resources shape).
+        script:
+          type: object
+          required: [language, body]
+          properties:
+            language: {type: string, enum: [bash, sh]}
+            body: {type: string}
+        script_ref:
+          type: string
+          description: "Digest of a previously stored script: sha256:<hex>"
+        env:
+          type: object
+          additionalProperties: {type: string}
+        working_dir: {type: string}
+        args:
+          type: array
+          items: {type: string}
+        stdout: {type: string}
+        stderr: {type: string}
+
+    Diagnostic:
+      type: object
+      required: [source, code, severity, message]
+      properties:
+        source: {type: string}
+        code: {type: string}
+        severity: {type: string, enum: [INFO, WARNING, ERROR, POLICY, SECURITY]}
+        line: {type: integer}
+        column: {type: integer}
+        endLine: {type: integer}
+        endColumn: {type: integer}
+        message: {type: string}
+        field: {type: string}
+        fix: {type: string}
+
+    ValidationErrorBody:
+      type: object
+      required: [error]
+      description: >
+        422 body for script-validation and admission failures: the normal
+        error envelope plus the diagnostic list.
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: {type: string}
+            message: {type: string}
+            request_id: {type: string}
+        diagnostics:
+          type: array
+          items:
+            $ref: "#/components/schemas/Diagnostic"
 
   parameters:
     Cursor:

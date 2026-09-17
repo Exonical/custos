@@ -84,8 +84,18 @@ Error codes are an enum in the OpenAPI document.
   `POST .../workflows/{w}/versions/{v}/publish`). No `:verb` suffixes —
   ServeMux patterns and OpenAPI path templating both prefer plain
   sub-paths.
-- `Idempotency-Key` header required on `POST .../jobs` and
-  `POST .../workflow-executions`; optional elsewhere.
+- `Idempotency-Key` header (1–128 chars) required on `POST .../jobs` and
+  `POST .../workflow-executions`; optional elsewhere. Missing →
+  `400 IDEMPOTENCY_KEY_REQUIRED`. The server hashes the raw request body;
+  same key + same body replays the stored response (same job, `200`),
+  same key + different body → `409 IDEMPOTENCY_MISMATCH`. Keys expire
+  after 24h (`idempotency.expire` worker).
+- `422` responses on job submission carry the error envelope plus a
+  `diagnostics` array (`{error:{code,message,request_id}, diagnostics:
+  [{source,code,severity,line,column,message,field,fix}...]}`) — codes
+  are the `CUSTOS*` diagnostics of `docs/script-validation.md`;
+  admission failures use `POLICY_VIOLATION` with the denied field in the
+  message.
 - Filtering via explicit query parameters (`state=`, `cluster=`,
   `since=`), never a free-form query language.
 - Rate limiting: per-principal token bucket (in-process, per instance)
@@ -160,9 +170,13 @@ GET    /api/v1/tenants/{tenant}/workflow-executions/{execution}/tasks/{task}/val
 ...    /api/v1/tenants/{tenant}/workflow-executions
 POST   /api/v1/tenants/{tenant}/workflow-executions/{execution}/cancel
 GET    /api/v1/tenants/{tenant}/workflow-executions/{execution}/tasks
-...    /api/v1/tenants/{tenant}/jobs
-POST   /api/v1/tenants/{tenant}/jobs/{job}/cancel
-GET    /api/v1/tenants/{tenant}/jobs/{job}/output?stream=stdout   (Milestone 7+, via cluster file access policy)
+POST   /api/v1/tenants/{tenant}/projects/{project}/jobs                    job.submit; 202; Idempotency-Key required
+GET    /api/v1/tenants/{tenant}/projects/{project}/jobs                    job.read.project, or own jobs
+GET    /api/v1/tenants/{tenant}/projects/{project}/jobs/{job}
+POST   /api/v1/tenants/{tenant}/projects/{project}/jobs/{job}/cancel       202; job.cancel.self/any
+GET    /api/v1/tenants/{tenant}/projects/{project}/jobs/{job}/execution-spec
+GET    /api/v1/tenants/{tenant}/jobs                     tenant-wide; job.read.tenant
+GET    /api/v1/tenants/{tenant}/projects/{project}/jobs/{job}/output?stream=stdout   (Milestone 7+, via cluster file access policy)
 GET    /api/v1/tenants/{tenant}/accounting/usage?group_by=...&from=&to=
 GET    /api/v1/tenants/{tenant}/accounting/allocations
 GET    /api/v1/tenants/{tenant}/audit-events

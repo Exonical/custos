@@ -116,8 +116,11 @@ func CheckAdmission(req workflowspec.Resources, partition string,
 		return deny("NO_PARTITION", "partition",
 			"partition "+partition+" does not exist on the cluster")
 	}
+	// GRESTypes entries carry the gres name ("gpu:h100"); the request
+	// holds just the type ("h100").
 	if req.GPU != nil && req.GPU.Type != "" && len(caps.GRESTypes) > 0 &&
-		!slices.Contains(caps.GRESTypes, req.GPU.Type) {
+		!slices.Contains(caps.GRESTypes, req.GPU.Type) &&
+		!slices.Contains(caps.GRESTypes, "gpu:"+req.GPU.Type) {
 		return deny("NO_GRES", "gpu",
 			"gpu type "+req.GPU.Type+" is not available on the cluster")
 	}

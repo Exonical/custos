@@ -27,6 +27,7 @@ type Cluster struct {
 
 	jobs   map[uint32]*jobState
 	nextID uint32
+	subs   []slurm.JobSubmission
 
 	failNext   int
 	failErr    error
@@ -214,6 +215,7 @@ func (c *Cluster) SubmitJob(_ context.Context, req slurm.JobSubmission) (slurm.J
 	if err := c.inject(); err != nil {
 		return slurm.JobRef{}, err
 	}
+	c.subs = append(c.subs, req)
 	id := c.nextID
 	c.nextID++
 	j := &jobState{state: slurm.JobPending}
@@ -229,6 +231,14 @@ func (c *Cluster) SubmitJob(_ context.Context, req slurm.JobSubmission) (slurm.J
 		return slurm.JobRef{}, slurm.ErrUnavailable
 	}
 	return slurm.JobRef{ID: j.job.ID, State: j.state}, nil
+}
+
+// Submissions returns every JobSubmission passed to SubmitJob, in order
+// (invariant tests inspect the exact request).
+func (c *Cluster) Submissions() []slurm.JobSubmission {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]slurm.JobSubmission(nil), c.subs...)
 }
 
 // GetJob implements slurm.Cluster.

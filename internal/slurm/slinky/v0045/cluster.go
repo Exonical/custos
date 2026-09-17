@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Exonical/custos/internal/platform/apperr"
 	"github.com/Exonical/custos/internal/slurm"
 )
 
@@ -244,29 +243,5 @@ func (c *Client) GetReservations(ctx context.Context) ([]slurm.Reservation, erro
 	return out, nil
 }
 
-// --- job ops (stubs until M4) ------------------------------------------
-
-func notImplemented(op string) error {
-	return apperr.New(apperr.Internal, "slurm.not_implemented",
-		"v0045 adapter: "+op+" not implemented until M4")
-}
-
-// SubmitJob implements slurm.Cluster (stub until M4).
-func (c *Client) SubmitJob(_ context.Context, _ slurm.JobSubmission) (slurm.JobRef, error) {
-	return slurm.JobRef{}, notImplemented("SubmitJob")
-}
-
-// GetJob implements slurm.Cluster (stub until M4).
-func (c *Client) GetJob(_ context.Context, _ slurm.JobID) (slurm.Job, error) {
-	return slurm.Job{}, notImplemented("GetJob")
-}
-
-// ListJobs implements slurm.Cluster (stub until M4).
-func (c *Client) ListJobs(_ context.Context, _ slurm.JobFilter) ([]slurm.Job, error) {
-	return nil, notImplemented("ListJobs")
-}
-
-// CancelJob implements slurm.Cluster (stub until M4).
-func (c *Client) CancelJob(_ context.Context, _ slurm.JobID, _ slurm.CancelOptions) error {
-	return notImplemented("CancelJob")
-}
+// --- job ops -----------------------------------------------------------
+// Implemented in jobs.go (SubmitJob, GetJob, ListJobs, CancelJob).

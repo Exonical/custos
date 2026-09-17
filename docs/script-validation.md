@@ -668,7 +668,7 @@ persistence, M8 for UI):
 
 | Milestone | Delivered |
 | --- | --- |
-| M4 Jobs | `scripts` storage + digests; `shsyntax`; `sbatchscan` (reject mode); `envcheck`; `admission.ExecutionSpec`; `submission` wrapper; invariant + bypass tests. A batch job cannot be submitted without them. |
+| M4 Jobs (delivered) | `scripts` storage + digests; `shsyntax`; `sbatchscan` (reject mode); `envcheck`; `admission.ExecutionSpec`; `submission` wrapper; invariant + bypass tests; the secure job submission path (`job.submit/reconcile/cancel`, `jobs.sweep`). A batch job cannot be submitted without them. Until M5 persists `ValidationPolicy`, the submission path applies the hardcoded default `{BlockAt: ERROR}` — `POLICY`/`SECURITY` severities are immutable regardless. |
 | M5 Workflows | Validation pipeline + persistence, `ValidationPolicy`, ShellCheck sidecar, validate/preview-submission endpoints, `ADMITTING` state, publish gate, import mode |
 | M6 Secrets | secret-injected env class, wrapped tokens in `SecurityContext` |
 | M7 Accounting/Policy | `softwareenv` catalog sync; `policy.sync` to slurmdbd associations |

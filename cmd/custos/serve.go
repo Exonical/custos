@@ -21,6 +21,8 @@ import (
 	clusterpg "github.com/Exonical/custos/internal/clusters/postgres"
 	clustersvc "github.com/Exonical/custos/internal/clusters/service"
 	clustersync "github.com/Exonical/custos/internal/clusters/sync"
+	jobpg "github.com/Exonical/custos/internal/jobs/postgres"
+	jobssvc "github.com/Exonical/custos/internal/jobs/service"
 	"github.com/Exonical/custos/internal/platform/config"
 	"github.com/Exonical/custos/internal/platform/db"
 	"github.com/Exonical/custos/internal/platform/health"
@@ -31,10 +33,14 @@ import (
 	policiesvc "github.com/Exonical/custos/internal/policies/service"
 	projectpg "github.com/Exonical/custos/internal/projects/postgres"
 	projectsvc "github.com/Exonical/custos/internal/projects/service"
+	scriptpg "github.com/Exonical/custos/internal/scripts/postgres"
 	tenantpg "github.com/Exonical/custos/internal/tenants/postgres"
 	tenantsvc "github.com/Exonical/custos/internal/tenants/service"
 	"github.com/Exonical/custos/internal/users"
 	userpg "github.com/Exonical/custos/internal/users/postgres"
+	"github.com/Exonical/custos/internal/validation"
+	"github.com/Exonical/custos/internal/validation/sbatchscan"
+	"github.com/Exonical/custos/internal/validation/shsyntax"
 )
 
 func cmdServe(parent context.Context, configPath string, lookupEnv config.LookupEnv, stderr io.Writer) int {
@@ -140,6 +146,21 @@ func cmdServe(parent context.Context, configPath string, lookupEnv config.Lookup
 		tenantRepo, clusterRepo, authz.RBAC{}, recorder)
 	policySvc := policiesvc.NewService(policypg.New(pool), authz.RBAC{}, recorder)
 
+	// Jobs: the synchronous admission pipeline; actual Slurm submission
+	// happens in the worker (docs/workers.md).
+	jobSvc := jobssvc.New(jobssvc.Deps{
+		Jobs:     jobpg.New(pool),
+		Scripts:  scriptpg.New(pool),
+		Projects: projectSvc,
+		Policies: policySvc,
+		Clusters: clusterRepo,
+		Validators: []validation.ScriptValidator{
+			shsyntax.Validator{}, sbatchscan.Validator{},
+		},
+		AZ:    authz.RBAC{},
+		Audit: recorder,
+	})
+
 	mux := http.NewServeMux()
 	api.Mount(mux, api.Deps{
 		Health:         reg,
@@ -156,6 +177,8 @@ func cmdServe(parent context.Context, configPath string, lookupEnv config.Lookup
 		ProjectRepo:    projectRepo,
 		ProjectMembers: projectRepo,
 		Policies:       policySvc,
+		Jobs:           jobSvc,
+		JobExec:        pool,
 	})
 
 	handler := otel.Instrument(httpx.Chain(

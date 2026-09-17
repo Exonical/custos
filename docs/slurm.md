@@ -182,6 +182,15 @@ a pure function of the admitted `ExecutionSpec` (`docs/script-validation.md`):
   `allowShellTasks` in the effective ValidationPolicy (see
   `docs/script-validation.md`), and is shown as such in the UI.
 
+Job operations are implemented for `v0.0.45` (`internal/slurm/slinky/v0045`):
+`SubmitJob` maps `JobSubmission` onto `V0045JobDescMsg` strictly per the
+allow-list below (a reflection test asserts no other field is ever set —
+mail, `user_id`/`group_id`, and any environment-inheritance fields are
+never emitted). `GetJob`/`ListJobs`/`CancelJob` map `V0045JobInfo` back
+to the neutral `slurm.Job`. `GET /jobs` has no server-side name filter,
+so `ListJobs` fetches the queue and filters `Names`/`Users`/`States`/
+`Since` client-side — bounded by queue size; `jobs.sweep` relies on this.
+
 Slurm option allow-list (v1) — the only `JobDescMsg` fields the adapter
 ever sets: account, partition, qos, reservation, nodes, tasks,
 tasks_per_node, cpus_per_task, memory_per_node/memory_per_cpu, tres_per_node

@@ -19,9 +19,11 @@ import (
 	"github.com/Exonical/custos/internal/audit"
 	"github.com/Exonical/custos/internal/authn"
 	clustersvc "github.com/Exonical/custos/internal/clusters/service"
+	jobssvc "github.com/Exonical/custos/internal/jobs/service"
 	"github.com/Exonical/custos/internal/platform/apperr"
 	"github.com/Exonical/custos/internal/platform/health"
 	"github.com/Exonical/custos/internal/platform/httpx"
+	"github.com/Exonical/custos/internal/platform/workqueue"
 	policiesvc "github.com/Exonical/custos/internal/policies/service"
 	"github.com/Exonical/custos/internal/projects"
 	projectsvc "github.com/Exonical/custos/internal/projects/service"
@@ -65,6 +67,8 @@ type Deps struct {
 	ProjectRepo    projects.Repository           // required when Projects is set
 	ProjectMembers projects.MembershipRepository // required when Projects is set
 	Policies       *policiesvc.Service           // enables resource-policy routes
+	Jobs           *jobssvc.Service              // enables job routes
+	JobExec        workqueue.Execer              // cancel enqueue (pool)
 }
 
 // Mount registers the v1 routes on mux. The generated types in
@@ -124,6 +128,24 @@ func Mount(mux *http.ServeMux, deps Deps) {
 			tr := func(h http.Handler) http.Handler { return bearer(tenantMW(h)) }
 			mountProjectRoutes(mux, ph, deps.ProjectRepo, deps.ProjectMembers,
 				deps.Logger, bearer, tr)
+		}
+
+		if deps.Jobs != nil && deps.JobExec != nil {
+			jh := &jobHandlers{svc: deps.Jobs, exec: deps.JobExec}
+			tenantMW := tenants.Require(deps.TenantRepo, deps.Logger, deps.Audit)
+			tr := func(h http.Handler) http.Handler { return bearer(tenantMW(h)) }
+			mux.Handle("GET /api/v1/tenants/{tenant}/jobs",
+				tr(http.HandlerFunc(jh.listTenant)))
+			projectMW := projects.Require(deps.ProjectRepo, deps.ProjectMembers,
+				deps.Logger)
+			pr := func(h http.Handler) http.Handler { return tr(projectMW(h)) }
+			base := "/api/v1/tenants/{tenant}/projects/{project}/jobs"
+			mux.Handle("POST "+base, pr(http.HandlerFunc(jh.submit)))
+			mux.Handle("GET "+base, pr(http.HandlerFunc(jh.list)))
+			mux.Handle("GET "+base+"/{job}", pr(http.HandlerFunc(jh.get)))
+			mux.Handle("POST "+base+"/{job}/cancel", pr(http.HandlerFunc(jh.cancel)))
+			mux.Handle("GET "+base+"/{job}/execution-spec",
+				pr(http.HandlerFunc(jh.executionSpec)))
 		}
 
 		if deps.Users != nil {

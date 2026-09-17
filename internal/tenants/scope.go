@@ -20,6 +20,12 @@ func ScopeFor(tc *TenantContext) Scope {
 	return Scope{tenantID: tc.Tenant.ID}
 }
 
+// TenantScope returns the scope of tenantID for trusted internal
+// callers (e.g. workers that loaded the tenant id from a job row).
+func TenantScope(tenantID uuid.UUID) Scope {
+	return Scope{tenantID: tenantID}
+}
+
 // TenantID returns the scoped tenant id, or false for platform scope.
 func (s Scope) TenantID() (uuid.UUID, bool) {
 	if s.platform {
