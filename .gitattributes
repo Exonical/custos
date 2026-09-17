@@ -4,3 +4,6 @@
 *.jpg binary
 *.jpeg binary
 *.ico binary
+
+# Test fixtures must keep their exact bytes (CRLF, BOM, etc.)
+**/testdata/** -text
