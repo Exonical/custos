@@ -48,6 +48,9 @@ linters:
             - "**/internal/{authz,users,projects,clusters,policy,workflows,executions,jobs,scripts,validation,admission,submission,accounting}/**"
             - "!**/internal/*/postgres/**"
             - "!**/internal/projects/middleware.go"
+            # shellcheck is the external-tool adapter: its HTTP client
+            # targets the loopback sidecar only (enforced in code).
+            - "!**/internal/validation/shellcheck/**"
           deny:
             - pkg: "net/http"
               desc: "HTTP belongs in internal/api or internal/platform/httpx"

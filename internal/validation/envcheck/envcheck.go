@@ -3,10 +3,12 @@
 package envcheck
 
 import (
+	"context"
 	"regexp"
 	"strings"
 
 	"github.com/Exonical/custos/internal/validation"
+	"github.com/Exonical/custos/internal/workflowspec"
 )
 
 // Class of an environment variable.
@@ -146,4 +148,27 @@ func Validate(env map[string]string, pol EnvPolicy) []validation.Diagnostic {
 func diag(d validation.Diagnostic, code string, sev validation.Severity, msg string) validation.Diagnostic {
 	d.Code, d.Severity, d.Message = code, sev, msg
 	return d
+}
+
+// Validator adapts Validate to the pipeline's ScriptValidator port so
+// the pipeline is the single place that produces diagnostics. The
+// effective policy's FilteredEnvAllowed list is read per-request from
+// the input.
+type Validator struct{}
+
+// Name returns the validator source name.
+func (Validator) Name() string { return "envcheck" }
+
+// Languages returns nil — env check applies to every language.
+func (Validator) Languages() []workflowspec.Language { return nil }
+
+// Validate checks Input.Environment against the configured policy.
+func (v Validator) Validate(ctx context.Context, in validation.Input) (validation.Result, error) {
+	res := validation.Result{Tool: validation.ToolVersion{Name: "envcheck", Version: "v1"}}
+	if err := ctx.Err(); err != nil {
+		return res, err
+	}
+	res.Diagnostics = Validate(in.Environment,
+		EnvPolicy{AllowFiltered: in.Policy.FilteredEnvAllowed})
+	return res, nil
 }

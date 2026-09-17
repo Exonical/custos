@@ -153,6 +153,10 @@ GET    /api/v1/tenants/{tenant}/clusters/{cluster}  visible cluster summary
 GET    /api/v1/tenants/{tenant}/clusters/{cluster}/partitions
 GET    /api/v1/tenants/{tenant}/policies/resource              policy.read
 PUT    /api/v1/tenants/{tenant}/policies/resource              policy.manage
+GET    /api/v1/tenants/{tenant}/policies/validation            policy.read; returns policy + version
+PUT    /api/v1/tenants/{tenant}/policies/validation            policy.manage; optimistic `version`; 422 POLICY_NOT_STRICTER when looser than an assigned cluster's
+GET    /api/v1/clusters/{cluster}/policies/validation          platform admin
+PUT    /api/v1/clusters/{cluster}/policies/validation          platform admin; optimistic `version`
 GET    /api/v1/tenants/{tenant}/projects/{project}/policies/resource   policy.read; includes `effective` (tenant ∩ project)
 PUT    /api/v1/tenants/{tenant}/projects/{project}/policies/resource   policy.manage at tenant level
 ...    /api/v1/tenants/{tenant}/secret-references
@@ -164,7 +168,8 @@ POST   /api/v1/tenants/{tenant}/workflows/{workflow}/versions/{version}/tasks/{t
 POST   /api/v1/tenants/{tenant}/workflows/{workflow}/versions/{version}/tasks/{task}/import-sbatch
 POST   /api/v1/tenants/{tenant}/workflows/{workflow}/versions/{version}/tasks/{task}/preview-submission
 GET    /api/v1/tenants/{tenant}/workflows/{workflow}/versions/{version}/validations
-POST   /api/v1/tenants/{tenant}/scripts/validate                (ad-hoc editor validation; see script-validation.md)
+POST   /api/v1/tenants/{tenant}/scripts/validate                workflow.create; ad-hoc editor validation (see script-validation.md); rate-limited 30/min per principal
+POST   /api/v1/tenants/{tenant}/scripts/import-sbatch           workflow.create; ad-hoc legacy import proposal; 403 IMPORT_DISABLED unless the effective policy allows it; rate-limited
 GET    /api/v1/tenants/{tenant}/workflow-executions/{execution}/tasks/{task}/execution-spec
 GET    /api/v1/tenants/{tenant}/workflow-executions/{execution}/tasks/{task}/validation
 ...    /api/v1/tenants/{tenant}/workflow-executions

@@ -109,6 +109,7 @@ type Job struct {
 	ExecutionSpecDigest validation.Digest
 	ScriptDigest        validation.Digest
 	ScriptLanguage      workflowspec.Language
+	ScriptValidationID  *uuid.UUID
 	SubmittedAt         *time.Time
 	StartedAt           *time.Time
 	EndedAt             *time.Time

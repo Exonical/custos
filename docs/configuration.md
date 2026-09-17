@@ -113,6 +113,12 @@ Validation aborts startup (`config.invalid`) when:
 | `telemetry.insecure` | bool | `false` | `CUSTOS_TELEMETRY__INSECURE` | Plaintext OTLP (dev_mode only) |
 | `telemetry.sample_ratio` | float64 | `0.1` | `CUSTOS_TELEMETRY__SAMPLE_RATIO` | Trace sampling ratio in [0,1] |
 | `telemetry.service_name` | string | `custos` | `CUSTOS_TELEMETRY__SERVICE_NAME` | service.name resource attribute |
+| `validation` | section | `` | `CUSTOS_VALIDATION` | Script-validation pipeline and ShellCheck sidecar (docs/script-validation.md) |
+| `validation.shellcheck` | section | `` | `CUSTOS_VALIDATION__SHELLCHECK` | ShellCheck sidecar client |
+| `validation.shellcheck.enabled` | bool | `true` | `CUSTOS_VALIDATION__SHELLCHECK__ENABLED` | Enable the ShellCheck validator; false requires dev_mode |
+| `validation.shellcheck.endpoint` | string | `http://127.0.0.1:8481` | `CUSTOS_VALIDATION__SHELLCHECK__ENDPOINT` | Sidecar base URL; loopback only |
+| `validation.shellcheck.timeout` | duration | `10s` | `CUSTOS_VALIDATION__SHELLCHECK__TIMEOUT` | Per-request timeout |
+| `validation.unavailable_severity` | string | `ERROR` | `CUSTOS_VALIDATION__UNAVAILABLE_SEVERITY` | Severity for CUSTOS900 when a validator is down; WARNING requires dev_mode |
 | `worker` | section | `` | `CUSTOS_WORKER` | Work-queue lease loop |
 | `worker.cluster_sync_interval` | duration | `1m0s` | `CUSTOS_WORKER__CLUSTER_SYNC_INTERVAL` | Base interval between cluster.sync runs per cluster |
 | `worker.default_concurrency` | int | `4` | `CUSTOS_WORKER__DEFAULT_CONCURRENCY` | Default per-kind handler concurrency |

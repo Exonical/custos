@@ -136,6 +136,25 @@ func (c Config) Validate() error {
 			"allow_loopback/allow_http require dev_mode")
 	}
 
+	if sc := c.Validation.Shellcheck; sc.Enabled {
+		if u, err := url.Parse(sc.Endpoint); err != nil ||
+			u.Scheme != "http" ||
+			(u.Hostname() != "127.0.0.1" && u.Hostname() != "localhost") {
+			v.fail("validation.shellcheck.endpoint",
+				"must be http://127.0.0.1 or http://localhost")
+		}
+		v.durPos("validation.shellcheck.timeout", sc.Timeout)
+	} else if !c.DevMode {
+		v.fail("validation.shellcheck.enabled",
+			"false requires dev_mode (fail-closed validation)")
+	}
+	if c.Validation.UnavailableSeverity != "ERROR" && !c.DevMode {
+		v.fail("validation.unavailable_severity",
+			"non-ERROR requires dev_mode")
+	}
+	v.oneOf("validation.unavailable_severity",
+		c.Validation.UnavailableSeverity, "INFO", "WARNING", "ERROR")
+
 	v.oneOf("log.level", c.Log.Level, "debug", "info", "warn", "error")
 	v.oneOf("log.format", c.Log.Format, "json", "text")
 

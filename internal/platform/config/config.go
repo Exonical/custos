@@ -17,16 +17,17 @@ import (
 
 // Config is the root configuration.
 type Config struct {
-	DevMode   bool      `yaml:"dev_mode" doc:"Permit insecure settings for local development; never enable in production"`
-	Server    Server    `yaml:"server" doc:"Public HTTP API listener"`
-	Metrics   Metrics   `yaml:"metrics" doc:"Separate Prometheus metrics listener"`
-	Log       Log       `yaml:"log" doc:"Structured logging"`
-	Database  Database  `yaml:"database" doc:"PostgreSQL connection pool"`
-	Auth      Auth      `yaml:"auth" doc:"OIDC authentication"`
-	Telemetry Telemetry `yaml:"telemetry" doc:"OpenTelemetry export"`
-	Worker    Worker    `yaml:"worker" doc:"Work-queue lease loop"`
-	Secrets   Secrets   `yaml:"secrets" doc:"Secret-provider settings (docs/secrets.md)"`
-	Slurm     Slurm     `yaml:"slurm" doc:"Slurm adapter defaults (docs/slurm.md)"`
+	DevMode    bool       `yaml:"dev_mode" doc:"Permit insecure settings for local development; never enable in production"`
+	Server     Server     `yaml:"server" doc:"Public HTTP API listener"`
+	Metrics    Metrics    `yaml:"metrics" doc:"Separate Prometheus metrics listener"`
+	Log        Log        `yaml:"log" doc:"Structured logging"`
+	Database   Database   `yaml:"database" doc:"PostgreSQL connection pool"`
+	Auth       Auth       `yaml:"auth" doc:"OIDC authentication"`
+	Telemetry  Telemetry  `yaml:"telemetry" doc:"OpenTelemetry export"`
+	Worker     Worker     `yaml:"worker" doc:"Work-queue lease loop"`
+	Validation Validation `yaml:"validation" doc:"Script-validation pipeline and ShellCheck sidecar (docs/script-validation.md)"`
+	Secrets    Secrets    `yaml:"secrets" doc:"Secret-provider settings (docs/secrets.md)"`
+	Slurm      Slurm      `yaml:"slurm" doc:"Slurm adapter defaults (docs/slurm.md)"`
 }
 
 // Slurm configures Slurm connectivity policy.
@@ -163,6 +164,20 @@ type Worker struct {
 	ClusterSyncInterval time.Duration         `yaml:"cluster_sync_interval" doc:"Base interval between cluster.sync runs per cluster"`
 }
 
+// Validation configures the synchronous validation pipeline and the
+// ShellCheck sidecar client.
+type Validation struct {
+	Shellcheck          Shellcheck `yaml:"shellcheck" doc:"ShellCheck sidecar client"`
+	UnavailableSeverity string     `yaml:"unavailable_severity" doc:"Severity for CUSTOS900 when a validator is down; WARNING requires dev_mode"`
+}
+
+// Shellcheck points the pipeline at the custos-validator sidecar.
+type Shellcheck struct {
+	Enabled  bool          `yaml:"enabled" doc:"Enable the ShellCheck validator; false requires dev_mode"`
+	Endpoint string        `yaml:"endpoint" doc:"Sidecar base URL; loopback only"`
+	Timeout  time.Duration `yaml:"timeout" doc:"Per-request timeout"`
+}
+
 // KindLimits tunes one work-item kind. Zero fields inherit defaults.
 type KindLimits struct {
 	Concurrency int           `yaml:"concurrency" doc:"Max concurrent handlers for this kind"`
@@ -213,6 +228,10 @@ func Default() Config {
 	c.Worker.ShutdownTimeout = 20 * time.Second
 	c.Worker.DefaultConcurrency = 4
 	c.Worker.ClusterSyncInterval = 60 * time.Second
+	c.Validation.Shellcheck.Enabled = true
+	c.Validation.Shellcheck.Endpoint = "http://127.0.0.1:8481"
+	c.Validation.Shellcheck.Timeout = 10 * time.Second
+	c.Validation.UnavailableSeverity = "ERROR"
 	if runtime.GOOS == "windows" {
 		c.Secrets.FileRoots = []string{`C:\custos\secrets`}
 	} else {

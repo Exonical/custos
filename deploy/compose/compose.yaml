@@ -116,6 +116,7 @@ services:
     <<: *custos-hardening
     volumes:
       - ./custos.yaml:/etc/custos/config.yaml:ro
+      - ./.secrets:/etc/custos/secrets:ro
     secrets:
       - custos-app-url
       - pg-server-ca
@@ -135,6 +136,7 @@ services:
     <<: *custos-hardening
     volumes:
       - ./custos.yaml:/etc/custos/config.yaml:ro
+      - ./.secrets:/etc/custos/secrets:ro
     secrets:
       - custos-app-url
       - pg-server-ca
@@ -146,3 +148,25 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
+
+  # Validator sidecars share the API/worker network namespaces so
+  # custos reaches them at 127.0.0.1:8481 and the port is never
+  # published (docs/script-validation.md §Validation sandboxing).
+  validator-api:
+    image: custos-validator:local
+    build:
+      context: ../..
+      dockerfile: deploy/Containerfile.validator
+    <<: *custos-hardening
+    network_mode: "service:custos"
+    depends_on:
+      custos:
+        condition: service_started
+
+  validator-worker:
+    image: custos-validator:local
+    <<: *custos-hardening
+    network_mode: "service:worker"
+    depends_on:
+      worker:
+        condition: service_started

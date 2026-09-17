@@ -40,6 +40,28 @@ containers:
       {{- end }}
     resources:
       {{- toYaml .Values.resources | nindent 6 }}
+  {{- if .Values.validator.enabled }}
+  - name: validator
+    # Sidecar shares the pod network namespace: custos reaches it at
+    # 127.0.0.1:8481 and it is never exposed (docs/script-validation.md).
+    image: "{{ .Values.validator.image.repository }}:{{ .Values.validator.image.tag }}"
+    imagePullPolicy: {{ .Values.validator.image.pullPolicy }}
+    securityContext:
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities:
+        drop: ["ALL"]
+    volumeMounts:
+      - name: tmp
+        mountPath: /tmp
+    resources:
+      {{- toYaml .Values.validator.resources | nindent 6 }}
+    livenessProbe:
+      httpGet:
+        path: /healthz
+        port: 8481
+      periodSeconds: 15
+  {{- end }}
     {{- if eq .component "serve" }}
     ports:
       - name: api

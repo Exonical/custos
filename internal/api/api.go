@@ -18,6 +18,7 @@ import (
 
 	"github.com/Exonical/custos/internal/audit"
 	"github.com/Exonical/custos/internal/authn"
+	"github.com/Exonical/custos/internal/authz"
 	clustersvc "github.com/Exonical/custos/internal/clusters/service"
 	jobssvc "github.com/Exonical/custos/internal/jobs/service"
 	"github.com/Exonical/custos/internal/platform/apperr"
@@ -27,9 +28,12 @@ import (
 	policiesvc "github.com/Exonical/custos/internal/policies/service"
 	"github.com/Exonical/custos/internal/projects"
 	projectsvc "github.com/Exonical/custos/internal/projects/service"
+	"github.com/Exonical/custos/internal/scripts"
 	"github.com/Exonical/custos/internal/tenants"
 	tenantsvc "github.com/Exonical/custos/internal/tenants/service"
 	"github.com/Exonical/custos/internal/users"
+	"github.com/Exonical/custos/internal/validation/pipeline"
+	vpolicy "github.com/Exonical/custos/internal/validation/policy"
 )
 
 // specJSON is computed once at init from the spec embedded in the
@@ -69,6 +73,13 @@ type Deps struct {
 	Policies       *policiesvc.Service           // enables resource-policy routes
 	Jobs           *jobssvc.Service              // enables job routes
 	JobExec        workqueue.Execer              // cancel enqueue (pool)
+	Scripts        scripts.Store                 // enables validate/import routes
+	Pipeline       *pipeline.Pipeline            // enables validate/import routes
+	VPolicy        *vpolicy.Service              // enables validation-policy routes
+	VStore         ValidationStore               // persists ScriptValidations
+	VMetrics       *pipeline.Metrics             // may be nil
+	VLimiter       *httpx.PrincipalRateLimiter   // may be nil (no limit)
+	AZ             authz.Authorizer              // required for validate routes
 }
 
 // Mount registers the v1 routes on mux. The generated types in
@@ -146,6 +157,39 @@ func Mount(mux *http.ServeMux, deps Deps) {
 			mux.Handle("POST "+base+"/{job}/cancel", pr(http.HandlerFunc(jh.cancel)))
 			mux.Handle("GET "+base+"/{job}/execution-spec",
 				pr(http.HandlerFunc(jh.executionSpec)))
+		}
+
+		if deps.Pipeline != nil && deps.VPolicy != nil && deps.Scripts != nil {
+			sh := &scriptHandlers{
+				pipe: deps.Pipeline, vpol: deps.VPolicy,
+				vstore: deps.VStore, scripts: deps.Scripts,
+				clusterSvc: deps.Clusters, metrics: deps.VMetrics,
+				az: deps.AZ, audit: deps.Audit,
+			}
+			tenantMW := tenants.Require(deps.TenantRepo, deps.Logger, deps.Audit)
+			tr := func(h http.Handler) http.Handler { return bearer(tenantMW(h)) }
+			guard := func(h http.Handler) http.Handler {
+				h = httpx.BodyLimit(validateBodyLimit)(h)
+				if deps.VLimiter != nil {
+					h = deps.VLimiter.Middleware(func(r *http.Request) string {
+						return authn.MustPrincipal(r.Context()).UserID.String()
+					})(h)
+				}
+				return h
+			}
+			base := "/api/v1/tenants/{tenant}/scripts"
+			mux.Handle("POST "+base+"/validate",
+				tr(guard(http.HandlerFunc(sh.validate))))
+			mux.Handle("POST "+base+"/import-sbatch",
+				tr(guard(http.HandlerFunc(sh.importSbatch))))
+			mux.Handle("GET /api/v1/tenants/{tenant}/policies/validation",
+				tr(http.HandlerFunc(sh.getTenantPolicy)))
+			mux.Handle("PUT /api/v1/tenants/{tenant}/policies/validation",
+				tr(http.HandlerFunc(sh.putTenantPolicy)))
+			mux.Handle("GET /api/v1/clusters/{cluster}/policies/validation",
+				bearer(http.HandlerFunc(sh.getClusterPolicy)))
+			mux.Handle("PUT /api/v1/clusters/{cluster}/policies/validation",
+				bearer(http.HandlerFunc(sh.putClusterPolicy)))
 		}
 
 		if deps.Users != nil {

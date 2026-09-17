@@ -1,0 +1,21 @@
+# syntax=docker/dockerfile:1
+# Validator sidecar (docs/script-validation.md §Validation sandboxing):
+# no credentials, loopback listener only, read-only rootfs.
+
+FROM golang:1.27 AS build
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" \
+    -o /out/custos-validator ./cmd/custos-validator
+
+# ShellCheck ships a static binary in koalaman/shellcheck.
+FROM docker.io/koalaman/shellcheck:v0.11.0 AS shellcheck
+
+FROM gcr.io/distroless/static-debian12:nonroot
+COPY --from=build /out/custos-validator /custos-validator
+COPY --from=shellcheck /bin/shellcheck /bin/shellcheck
+USER 65532
+EXPOSE 8481
+ENTRYPOINT ["/custos-validator"]

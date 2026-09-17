@@ -7,6 +7,21 @@ replicas:
   serve: 2
   worker: 1
 
+# ShellCheck validator sidecar (one per pod, loopback only).
+validator:
+  enabled: true
+  image:
+    repository: custos-validator
+    tag: "0.1.0"
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: "1"
+      memory: 256Mi
+
 # Rendered into the custos ConfigMap and mounted at /etc/custos/config.yaml.
 config:
   dev_mode: false
@@ -28,6 +43,12 @@ config:
     format: json
   telemetry:
     exporter: none
+  validation:
+    shellcheck:
+      enabled: true
+      endpoint: "http://127.0.0.1:8481"
+      timeout: 10s
+    unavailable_severity: ERROR
 
 # Existing secrets / volumes mounted into the pods.
 databaseURLSecret:

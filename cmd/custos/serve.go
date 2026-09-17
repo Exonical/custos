@@ -39,7 +39,12 @@ import (
 	"github.com/Exonical/custos/internal/users"
 	userpg "github.com/Exonical/custos/internal/users/postgres"
 	"github.com/Exonical/custos/internal/validation"
+	"github.com/Exonical/custos/internal/validation/envcheck"
+	"github.com/Exonical/custos/internal/validation/pipeline"
+	vpolicy "github.com/Exonical/custos/internal/validation/policy"
+	vpolicypg "github.com/Exonical/custos/internal/validation/postgres"
 	"github.com/Exonical/custos/internal/validation/sbatchscan"
+	"github.com/Exonical/custos/internal/validation/shellcheck"
 	"github.com/Exonical/custos/internal/validation/shsyntax"
 )
 
@@ -146,19 +151,47 @@ func cmdServe(parent context.Context, configPath string, lookupEnv config.Lookup
 		tenantRepo, clusterRepo, authz.RBAC{}, recorder)
 	policySvc := policiesvc.NewService(policypg.New(pool), authz.RBAC{}, recorder)
 
+	// Validation pipeline: in-process validators always; ShellCheck via
+	// the loopback sidecar when enabled (docs/script-validation.md).
+	validators := []validation.ScriptValidator{
+		shsyntax.Validator{}, sbatchscan.Validator{}, envcheck.Validator{},
+	}
+	if cfg.Validation.Shellcheck.Enabled {
+		sc, err := shellcheck.New(shellcheck.Config{
+			Endpoint: cfg.Validation.Shellcheck.Endpoint,
+			Timeout:  cfg.Validation.Shellcheck.Timeout,
+		})
+		if err != nil {
+			_, _ = fmt.Fprintf(stderr, "shellcheck config: %v\n", err)
+			return 1
+		}
+		validators = append(validators, sc)
+	}
+	pipe := pipeline.New(validators)
+	pipe.UnavailableSeverity = validation.Severity(
+		cfg.Validation.UnavailableSeverity)
+	vpolStore := vpolicypg.NewPolicyStore(pool)
+	vstore := vpolicypg.NewValidationStore(pool)
+	vpolSvc := vpolicy.NewService(vpolicy.Deps{
+		Store: vpolStore, Clusters: clusterRepo,
+		AZ: authz.RBAC{}, Audit: recorder,
+	})
+	vMetrics := pipeline.NewMetrics(prov.Meter)
+
 	// Jobs: the synchronous admission pipeline; actual Slurm submission
 	// happens in the worker (docs/workers.md).
 	jobSvc := jobssvc.New(jobssvc.Deps{
-		Jobs:     jobpg.New(pool),
-		Scripts:  scriptpg.New(pool),
-		Projects: projectSvc,
-		Policies: policySvc,
-		Clusters: clusterRepo,
-		Validators: []validation.ScriptValidator{
-			shsyntax.Validator{}, sbatchscan.Validator{},
-		},
-		AZ:    authz.RBAC{},
-		Audit: recorder,
+		Jobs:        jobpg.New(pool),
+		Scripts:     scriptpg.New(pool),
+		Projects:    projectSvc,
+		Policies:    policySvc,
+		Clusters:    clusterRepo,
+		Pipeline:    pipe,
+		VPolicy:     vpolSvc,
+		Validations: vstore,
+		Metrics:     vMetrics,
+		AZ:          authz.RBAC{},
+		Audit:       recorder,
 	})
 
 	mux := http.NewServeMux()
@@ -179,6 +212,13 @@ func cmdServe(parent context.Context, configPath string, lookupEnv config.Lookup
 		Policies:       policySvc,
 		Jobs:           jobSvc,
 		JobExec:        pool,
+		Scripts:        scriptpg.New(pool),
+		Pipeline:       pipe,
+		VPolicy:        vpolSvc,
+		VStore:         vstore,
+		VMetrics:       vMetrics,
+		VLimiter:       httpx.NewPrincipalRateLimiter(30, 10, 0),
+		AZ:             authz.RBAC{},
 	})
 
 	handler := otel.Instrument(httpx.Chain(

@@ -38,6 +38,10 @@ import (
 	"github.com/Exonical/custos/internal/tenants"
 	tenantpg "github.com/Exonical/custos/internal/tenants/postgres"
 	"github.com/Exonical/custos/internal/validation"
+	"github.com/Exonical/custos/internal/validation/envcheck"
+	"github.com/Exonical/custos/internal/validation/pipeline"
+	vpolicy "github.com/Exonical/custos/internal/validation/policy"
+	vpolicypg "github.com/Exonical/custos/internal/validation/postgres"
 	"github.com/Exonical/custos/internal/validation/sbatchscan"
 	"github.com/Exonical/custos/internal/validation/shsyntax"
 	"github.com/Exonical/custos/internal/workflowspec"
@@ -143,9 +147,14 @@ func newFx(t *testing.T, slug string) *fx {
 	fx.svc = jobssvc.New(jobssvc.Deps{
 		Jobs: jrepo, Scripts: scriptpg.New(pool), Projects: projectSvc,
 		Policies: policySvc, Clusters: crepo,
-		Validators: []validation.ScriptValidator{
-			shsyntax.Validator{}, sbatchscan.Validator{}},
-		AZ: authz.RBAC{}, Audit: audit.Multi{},
+		Pipeline: pipeline.New([]validation.ScriptValidator{
+			shsyntax.Validator{}, sbatchscan.Validator{},
+			envcheck.Validator{}}),
+		VPolicy: vpolicy.NewService(vpolicy.Deps{
+			Store: vpolicypg.NewPolicyStore(pool), Clusters: crepo,
+			AZ: authz.RBAC{}}),
+		Validations: vpolicypg.NewValidationStore(pool),
+		AZ:          authz.RBAC{}, Audit: audit.Multi{},
 	})
 	return fx
 }

@@ -25,23 +25,33 @@ import (
 	"github.com/Exonical/custos/internal/scripts"
 	"github.com/Exonical/custos/internal/tenants"
 	"github.com/Exonical/custos/internal/validation"
-	"github.com/Exonical/custos/internal/validation/envcheck"
+	"github.com/Exonical/custos/internal/validation/pipeline"
+	vpolicy "github.com/Exonical/custos/internal/validation/policy"
 	"github.com/Exonical/custos/internal/workflowspec"
 )
 
 // KindSubmit is the workqueue kind that runs the submit handler.
 const KindSubmit = "job.submit"
 
+// ValidationStore persists ScriptValidation results.
+type ValidationStore interface {
+	Put(ctx context.Context, scope tenants.Scope,
+		sv validation.ScriptValidation) error
+}
+
 // Deps wires the service.
 type Deps struct {
-	Jobs       jobs.Repository
-	Scripts    scripts.Store
-	Projects   *projectsvc.Service
-	Policies   *policiessvc.Service
-	Clusters   clusters.Repository
-	Validators []validation.ScriptValidator
-	AZ         authz.Authorizer
-	Audit      audit.Recorder
+	Jobs        jobs.Repository
+	Scripts     scripts.Store
+	Projects    *projectsvc.Service
+	Policies    *policiessvc.Service
+	Clusters    clusters.Repository
+	Pipeline    *pipeline.Pipeline // the durable validator set
+	VPolicy     *vpolicy.Service   // effective validation policy
+	Validations ValidationStore    // ScriptValidation persistence
+	Metrics     *pipeline.Metrics  // may be nil
+	AZ          authz.Authorizer
+	Audit       audit.Recorder
 }
 
 // Service is the jobs application service.
@@ -49,8 +59,15 @@ type Service struct {
 	d Deps
 }
 
-// New wires the service.
-func New(d Deps) *Service { return &Service{d: d} }
+// New wires the service. Pipeline, VPolicy and Validations are
+// mandatory since M5-A: submission must never run without the durable
+// validation pipeline.
+func New(d Deps) *Service {
+	if d.Pipeline == nil || d.VPolicy == nil || d.Validations == nil {
+		panic("jobs service: Pipeline, VPolicy and Validations are required")
+	}
+	return &Service{d: d}
+}
 
 // ScriptInput is either inline bytes or a reference to a stored script.
 type ScriptInput struct {
@@ -78,13 +95,6 @@ type SubmitInput struct {
 type Result struct {
 	Job      jobs.Job
 	Replayed bool // idempotent replay of a stored response
-}
-
-// defaultValidationPolicy is the hardcoded effective validation policy
-// until ValidationPolicy persistence lands in M5
-// (docs/script-validation.md).
-var defaultValidationPolicy = validation.EffectivePolicy{
-	BlockAt: validation.SeverityError,
 }
 
 func (s *Service) audit(ctx context.Context, p authn.Principal,
@@ -200,6 +210,20 @@ func (s *Service) Submit(ctx context.Context, p authn.Principal,
 		return Result{}, nil, err
 	}
 	snap := clusterSnapshot(cluster)
+
+	// Effective validation policy: tenant ∩ cluster; its fingerprint is
+	// what the persisted ScriptValidation carries as PolicyVersion.
+	vpol := vpolicy.Default()
+	var fp int64
+	if s.d.VPolicy != nil {
+		vpol, fp, err = s.d.VPolicy.Effective(ctx, scope, tenantID,
+			&cluster.ID)
+		if err != nil {
+			return Result{}, nil, err
+		}
+	} else {
+		fp = vpolicy.Fingerprint(vpol)
+	}
 	vin := validation.Input{
 		Language:    in.Script.Language,
 		Script:      body,
@@ -207,22 +231,24 @@ func (s *Service) Submit(ctx context.Context, p authn.Principal,
 		Resources:   in.Resources,
 		Environment: in.Env,
 		Cluster:     snap,
-		Policy:      defaultValidationPolicy,
+		Policy:      vpol.Effective(),
 	}
-	var diags []validation.Diagnostic
-	for _, v := range s.d.Validators {
-		res, err := v.Validate(ctx, vin)
-		if err != nil {
-			return Result{}, nil, apperr.Wrap(err, apperr.Internal,
-				"validation.tool_error", "validator "+v.Name()+" failed")
+	sv := s.d.Pipeline.Run(ctx, tenantID, pipeline.Request{
+		In:            vin,
+		PolicyVersion: fp,
+		TaskName:      "adhoc",
+	})
+	if s.d.Metrics != nil {
+		s.d.Metrics.Observe(ctx, sv)
+	}
+	if s.d.Validations != nil {
+		if err := s.d.Validations.Put(ctx, scope, sv); err != nil {
+			return Result{}, nil, err
 		}
-		diags = append(diags, res.Diagnostics...)
 	}
-	diags = append(diags, envcheck.Validate(in.Env, envcheck.EnvPolicy{})...)
-	diags, valid := validation.ApplyPolicy(diags, defaultValidationPolicy)
-	if !valid {
-		codes := make([]any, 0, len(diags))
-		for _, d := range diags {
+	if !sv.Valid {
+		codes := make([]any, 0, len(sv.Diagnostics))
+		for _, d := range sv.Diagnostics {
 			codes = append(codes, d.Code+":"+d.Field)
 		}
 		s.audit(ctx, p, tenantID, "job.submit_rejected", "project",
@@ -230,9 +256,9 @@ func (s *Service) Submit(ctx context.Context, p authn.Principal,
 			audit.ResultDeny, map[string]any{
 				"script_digest": digest.String(),
 				"diagnostics":   codes,
-				"count":         len(diags),
+				"count":         len(sv.Diagnostics),
 			})
-		return Result{}, diags, apperr.New(apperr.Validation,
+		return Result{}, sv.Diagnostics, apperr.New(apperr.Validation,
 			"SCRIPT_INVALID", "script failed validation")
 	}
 
@@ -312,7 +338,8 @@ func (s *Service) Submit(ctx context.Context, p authn.Principal,
 		State: jobs.StateSubmitting, ResourceRequest: in.Resources,
 		ExecutionSpec: built, ExecutionSpecDigest: built.Digest,
 		ScriptDigest: digest, ScriptLanguage: in.Script.Language,
-		Version: 1, CreatedAt: now, UpdatedAt: now,
+		ScriptValidationID: &sv.ID,
+		Version:            1, CreatedAt: now, UpdatedAt: now,
 	}
 	res, err := s.d.Jobs.CreateWithIdempotency(ctx, scope, j,
 		jobs.IdemRecord{

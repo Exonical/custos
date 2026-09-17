@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -22,6 +23,7 @@ import (
 	"github.com/Exonical/custos/internal/authz"
 	"github.com/Exonical/custos/internal/clusters"
 	clusterpg "github.com/Exonical/custos/internal/clusters/postgres"
+	clustersvc "github.com/Exonical/custos/internal/clusters/service"
 	jobpg "github.com/Exonical/custos/internal/jobs/postgres"
 	jobssvc "github.com/Exonical/custos/internal/jobs/service"
 	jobsworker "github.com/Exonical/custos/internal/jobs/worker"
@@ -43,6 +45,10 @@ import (
 	"github.com/Exonical/custos/internal/users"
 	userpg "github.com/Exonical/custos/internal/users/postgres"
 	"github.com/Exonical/custos/internal/validation"
+	"github.com/Exonical/custos/internal/validation/envcheck"
+	"github.com/Exonical/custos/internal/validation/pipeline"
+	vpolicy "github.com/Exonical/custos/internal/validation/policy"
+	vpolicypg "github.com/Exonical/custos/internal/validation/postgres"
 	"github.com/Exonical/custos/internal/validation/sbatchscan"
 	"github.com/Exonical/custos/internal/validation/shsyntax"
 )
@@ -93,12 +99,23 @@ func TestAPIJobs(t *testing.T) {
 		trepo, clusterRepo, authz.RBAC{}, rec)
 	policySvc := policiesvc.NewService(policypg.New(pool), authz.RBAC{}, rec)
 	jobRepo := jobpg.New(pool)
+	pipe := pipeline.New([]validation.ScriptValidator{
+		shsyntax.Validator{}, sbatchscan.Validator{},
+		envcheck.Validator{}})
+	vpolSvc := vpolicy.NewService(vpolicy.Deps{
+		Store: vpolicypg.NewPolicyStore(pool), Clusters: clusterRepo,
+		AZ: authz.RBAC{}, Audit: rec})
 	jobSvc := jobssvc.New(jobssvc.Deps{
 		Jobs: jobRepo, Scripts: scriptpg.New(pool),
 		Projects: projectSvc, Policies: policySvc, Clusters: clusterRepo,
-		Validators: []validation.ScriptValidator{
-			shsyntax.Validator{}, sbatchscan.Validator{}},
-		AZ: authz.RBAC{}, Audit: rec,
+		Pipeline:    pipe,
+		VPolicy:     vpolSvc,
+		Validations: vpolicypg.NewValidationStore(pool),
+		AZ:          authz.RBAC{}, Audit: rec,
+	})
+	clusterSvc := clustersvc.New(clustersvc.Deps{
+		Repository: clusterRepo, Tenants: trepo,
+		Authorizer: authz.RBAC{}, Recorder: rec,
 	})
 
 	mux := http.NewServeMux()
@@ -116,6 +133,12 @@ func TestAPIJobs(t *testing.T) {
 		Policies: policySvc,
 		Jobs:     jobSvc,
 		JobExec:  pool,
+		Scripts:  scriptpg.New(pool),
+		Pipeline: pipe,
+		VPolicy:  vpolSvc,
+		VStore:   vpolicypg.NewValidationStore(pool),
+		AZ:       authz.RBAC{},
+		Clusters: clusterSvc,
 	})
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
@@ -253,7 +276,7 @@ func TestAPIJobs(t *testing.T) {
 	// Replay same key + body -> same job.
 	code, jr2 := call(tokR, "POST", base, jobBody, "idem-1")
 	if code != 200 && code != 202 {
-		t.Fatalf("replay: %d", code)
+		t.Fatalf("replay: %d %v", code, jr2)
 	}
 	if jr2["id"] != jid {
 		t.Fatalf("replay id: %v vs %v", jr2["id"], jid)
@@ -302,6 +325,9 @@ func TestAPIJobs(t *testing.T) {
 	if _, ok := gr["slurm_job_id"]; !ok {
 		t.Fatalf("no slurm_job_id: %v", gr)
 	}
+	if _, ok := gr["validation_id"]; !ok {
+		t.Fatalf("no validation_id: %v", gr)
+	}
 	// Exactly one submission reached the fake.
 	if n := len(fc.Submissions()); n != 1 {
 		t.Fatalf("fake submissions: %d", n)
@@ -338,5 +364,74 @@ func TestAPIJobs(t *testing.T) {
 	code, gr = call(tokR, "GET", base+"/"+jid, nil, "")
 	if code != 200 || gr["state"] != "CANCELED" {
 		t.Fatalf("after cancel: %d %v", code, gr)
+	}
+
+	// --- M5-A: ad-hoc validation / import / validation-policy routes ---
+	// Ad-hoc validate: directive-bearing script -> 200, valid=false.
+	code, vr := call(adminTok, "POST", "/api/v1/tenants/j-tenant/scripts/validate",
+		map[string]any{"language": "bash",
+			"script": "#!/bin/bash\n#SBATCH --qos=premium\necho hi\n"}, "")
+	if code != 200 || vr["valid"] != false {
+		t.Fatalf("validate: %d %v", code, vr)
+	}
+	vdiags, _ := vr["diagnostics"].([]any)
+	if len(vdiags) == 0 || vr["digest"] == nil {
+		t.Fatalf("validate response: %v", vr)
+	}
+	// Legacy import disabled by default -> 403 IMPORT_DISABLED.
+	if code, ir := call(adminTok, "POST",
+		"/api/v1/tenants/j-tenant/scripts/import-sbatch",
+		map[string]any{"language": "bash",
+			"script": "#SBATCH --nodes=2\nsrun x\n"}, ""); code != 403 {
+		t.Fatalf("import disabled: %d %v", code, ir)
+	}
+	// Cluster policy enables legacy import (platform-admin route);
+	// without it the tenant PUT below would be rejected as looser.
+	if code, cp := call(adminTok, "PUT",
+		"/api/v1/clusters/jc1/policies/validation",
+		map[string]any{"policy": map[string]any{
+			"blockAt":                 "WARNING",
+			"allowLegacySbatchImport": true}, "version": 0}, ""); code != 200 {
+		t.Fatalf("cluster policy: %d %v", code, cp)
+	}
+	// Tenant policy write, version 0 create; then import works.
+	code, pr := call(adminTok, "PUT",
+		"/api/v1/tenants/j-tenant/policies/validation",
+		map[string]any{"policy": map[string]any{
+			"blockAt":                   "WARNING",
+			"allowLegacySbatchImport":   true,
+			"shellcheckShell":           "bash",
+			"forbiddenCommands":         []string{"sbatch", "salloc"},
+			"forbiddenCommandsSeverity": "WARNING"}, "version": 0}, "")
+	if code != 200 {
+		t.Fatalf("policy put: %d %v", code, pr)
+	}
+	pv := int64(pr["version"].(float64))
+	code, ir := call(adminTok, "POST",
+		"/api/v1/tenants/j-tenant/scripts/import-sbatch",
+		map[string]any{"language": "bash",
+			"script": "#SBATCH --nodes=2\nsrun x\n"}, "")
+	if code != 200 || ir["rewritten"] == nil {
+		t.Fatalf("import: %d %v", code, ir)
+	}
+	if s, _ := ir["rewritten"].(string); !strings.Contains(s, "# [custos] imported:") {
+		t.Fatalf("rewritten: %v", ir["rewritten"])
+	}
+	// Looser-than-cluster rule: enabling shell tasks conflicts with the
+	// (default, unset) cluster policy where it is off.
+	if code, lr := call(adminTok, "PUT",
+		"/api/v1/tenants/j-tenant/policies/validation",
+		map[string]any{"policy": map[string]any{
+			"blockAt":         "WARNING",
+			"allowShellTasks": true,
+		}, "version": pv}, ""); code != 422 {
+		t.Fatalf("not stricter: %d %v", code, lr)
+	}
+	// Stale version -> conflict.
+	if code, sv := call(adminTok, "PUT",
+		"/api/v1/tenants/j-tenant/policies/validation",
+		map[string]any{"policy": map[string]any{
+			"blockAt": "WARNING"}, "version": 0}, ""); code != 409 {
+		t.Fatalf("stale version: %d %v", code, sv)
 	}
 }

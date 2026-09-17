@@ -1554,6 +1554,192 @@ paths:
           description: Project not found.
           content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
 
+  /tenants/{tenant}/scripts/validate:
+    post:
+      summary: Validate a script ad hoc (workflow.create; rate-limited)
+      operationId: validateScript
+      description: >
+        Runs the validation pipeline with the effective policy
+        (tenant ∩ cluster when `cluster` is given) and persists the
+        ScriptValidation. The script bytes are stored so the returned
+        digest can be referenced by a job or task.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScriptValidateRequest"
+      responses:
+        "200":
+          description: Validation result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScriptValidateResponse"
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "403":
+          description: Requires workflow.create.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "413":
+          description: Body exceeds script limit + envelope.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "429":
+          description: Per-principal validation rate limit exceeded.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+
+  /tenants/{tenant}/scripts/import-sbatch:
+    post:
+      summary: Convert legacy #SBATCH directives into a resource proposal (workflow.create)
+      operationId: importSbatch
+      description: >
+        Returns the proposed resources/placement plus the rewritten
+        script (directive lines replaced by "# [custos] imported:").
+        403 IMPORT_DISABLED when the effective policy has
+        allowLegacySbatchImport=false.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ImportSbatchRequest"
+      responses:
+        "200":
+          description: Import proposal.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportSbatchResponse"
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "403":
+          description: Requires workflow.create or import disabled.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "429":
+          description: Per-principal validation rate limit exceeded.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+
+  /tenants/{tenant}/policies/validation:
+    get:
+      summary: Get the tenant validation policy (policy.read)
+      operationId: getTenantValidationPolicy
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+      responses:
+        "200":
+          description: Validation policy (defaults when unset, version 0).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationPolicyResponse"
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "404":
+          description: Tenant not found.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+    put:
+      summary: Replace the tenant validation policy (policy.manage)
+      operationId: setTenantValidationPolicy
+      description: >
+        Tenant policy may only be stricter than every assigned cluster's
+        policy — a looser write is rejected 422 POLICY_NOT_STRICTER.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ValidationPolicyRequest"
+      responses:
+        "200":
+          description: Policy stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationPolicyResponse"
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "403":
+          description: Requires policy.manage.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "409":
+          description: Version conflict.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "422":
+          description: Invalid policy or not stricter than a cluster policy.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+
+  /clusters/{cluster}/policies/validation:
+    get:
+      summary: Get the cluster validation policy (platform)
+      operationId: getClusterValidationPolicy
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ClusterRef"
+      responses:
+        "200":
+          description: Validation policy (defaults when unset, version 0).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationPolicyResponse"
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "404":
+          description: Cluster not found.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+    put:
+      summary: Replace the cluster validation policy (platform only)
+      operationId: setClusterValidationPolicy
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ClusterRef"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ValidationPolicyRequest"
+      responses:
+        "200":
+          description: Policy stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationPolicyResponse"
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "403":
+          description: Requires policy.manage at platform scope.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "404":
+          description: Cluster not found.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "409":
+          description: Version conflict.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+
   /tenants/{tenant}/jobs:
     get:
       summary: List jobs tenant-wide (job.read.tenant)
@@ -2796,6 +2982,7 @@ components:
         script_digest: {type: string, description: "sha256:<hex>"}
         script_language: {type: string}
         execution_spec_id: {type: string, description: "sha256:<hex> digest of the immutable ExecutionSpec"}
+        validation_id: {type: string, format: uuid, description: "ScriptValidation that admitted this job"}
         submitted_at: {type: string, format: date-time}
         started_at: {type: string, format: date-time}
         ended_at: {type: string, format: date-time}
@@ -2848,13 +3035,131 @@ components:
         stdout: {type: string}
         stderr: {type: string}
 
+    ValidationPolicy:
+      type: object
+      description: ValidationPolicy (docs/script-validation.md).
+      properties:
+        blockAt: {type: string, enum: [INFO, WARNING, ERROR]}
+        overrides:
+          type: array
+          items:
+            type: object
+            required: [source, code, severity]
+            properties:
+              source: {type: string}
+              code: {type: string}
+              severity: {type: string, enum: [INFO, WARNING, ERROR]}
+        disabledCodes:
+          type: array
+          items: {type: string}
+          description: Only non-CUSTOS codes (e.g. shellcheck) may be disabled.
+        shellcheckShell: {type: string, enum: [bash, sh, dash, ksh]}
+        allowShellTasks: {type: boolean}
+        allowLegacySbatchImport: {type: boolean}
+        forbiddenCommands:
+          type: array
+          items: {type: string}
+        forbiddenCommandsSeverity: {type: string, enum: [INFO, WARNING, ERROR]}
+        filteredEnvAllow:
+          type: array
+          items: {type: string}
+
+    ValidationPolicyRequest:
+      type: object
+      required: [policy, version]
+      properties:
+        policy:
+          $ref: "#/components/schemas/ValidationPolicy"
+        version:
+          type: integer
+          format: int64
+          description: Expected current version; 0 creates.
+
+    ValidationPolicyResponse:
+      type: object
+      required: [policy, version]
+      properties:
+        policy:
+          $ref: "#/components/schemas/ValidationPolicy"
+        version:
+          type: integer
+          format: int64
+
+    ScriptValidateRequest:
+      type: object
+      required: [language, script]
+      properties:
+        language: {type: string, enum: [bash, sh, python, yaml, json]}
+        script: {type: string}
+        resources: {type: object}
+        environment:
+          type: object
+          additionalProperties: {type: string}
+        software:
+          type: array
+          items: {type: object}
+        cluster: {type: string, description: "Cluster name or uuid"}
+
+    ScriptValidateResponse:
+      type: object
+      required: [valid, digest, blockAt, diagnostics, toolVersions, effectivePolicy]
+      properties:
+        valid: {type: boolean}
+        digest: {type: string, description: "sha256:<hex>"}
+        blockAt: {type: string}
+        diagnostics:
+          type: array
+          items:
+            $ref: "#/components/schemas/Diagnostic"
+        toolVersions:
+          type: object
+          additionalProperties: {type: string}
+        effectivePolicy:
+          type: object
+          properties:
+            blockAt: {type: string}
+            allowShellTasks: {type: boolean}
+            allowLegacySbatchImport: {type: boolean}
+            filteredEnvAllowed:
+              type: array
+              items: {type: string}
+
+    ImportSbatchRequest:
+      type: object
+      required: [language, script]
+      properties:
+        language: {type: string, enum: [bash, sh]}
+        script: {type: string}
+
+    ImportSbatchResponse:
+      type: object
+      required: [resources, rewritten, imported, diagnostics]
+      properties:
+        resources: {type: object}
+        partition: {type: string}
+        qos: {type: string}
+        name: {type: string}
+        stdout: {type: string}
+        stderr: {type: string}
+        working_dir: {type: string}
+        rewritten:
+          type: string
+          description: "Script with each directive line replaced by '# [custos] imported: <original>'"
+        imported:
+          type: array
+          items: {type: string}
+        diagnostics:
+          type: array
+          items:
+            $ref: "#/components/schemas/Diagnostic"
+
     Diagnostic:
       type: object
       required: [source, code, severity, message]
       properties:
         source: {type: string}
         code: {type: string}
-        severity: {type: string, enum: [INFO, WARNING, ERROR, POLICY, SECURITY]}
+        severity: {type: string, enum: [INFO, WARNING, ERROR, POLICY_VIOLATION, SECURITY_VIOLATION]}
         line: {type: integer}
         column: {type: integer}
         endLine: {type: integer}

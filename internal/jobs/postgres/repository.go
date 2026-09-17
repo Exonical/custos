@@ -51,8 +51,8 @@ func scopeTenant(s tenants.Scope, tenantID uuid.UUID) uuid.UUID {
 const jobCols = `id, tenant_id, project_id, cluster_id, created_by, name,
 	state, state_reason, slurm_job_id, slurm_state, exit_code, exit_signal,
 	resource_request, execution_spec, execution_spec_digest, script_digest,
-	script_language, submitted_at, started_at, ended_at,
-	last_reconciled_at, version, created_at, updated_at`
+	script_language, script_validation_id, submitted_at, started_at,
+	ended_at, last_reconciled_at, version, created_at, updated_at`
 
 func scanJob(row pgx.Row) (jobs.Job, error) {
 	var j jobs.Job
@@ -63,7 +63,8 @@ func scanJob(row pgx.Row) (jobs.Job, error) {
 	err := row.Scan(&j.ID, &j.TenantID, &j.ProjectID, &j.ClusterID,
 		&j.CreatedBy, &j.Name, &state, &reason, &j.SlurmJobID,
 		&slurmState, &j.ExitCode, &j.ExitSignal, &reqJSON, &specJSON,
-		&specDigest, &scriptDigest, &lang, &j.SubmittedAt,
+		&specDigest, &scriptDigest, &lang, &j.ScriptValidationID,
+		&j.SubmittedAt,
 		&j.StartedAt, &j.EndedAt, &j.LastReconciledAt, &j.Version,
 		&j.CreatedAt, &j.UpdatedAt)
 	if err != nil {
@@ -150,14 +151,14 @@ func (r *Repository) CreateWithIdempotency(ctx context.Context,
 		if _, err := tx.Exec(ctx, `
 			INSERT INTO jobs (`+jobCols+`)
 			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,
-			        $17,$18,$19,$20,$21,$22,$23,$24)`,
+			        $17,$18,$19,$20,$21,$22,$23,$24,$25)`,
 			j.ID, tid, j.ProjectID, j.ClusterID, j.CreatedBy, j.Name,
 			string(j.State), nilStr(j.StateReason), j.SlurmJobID,
 			nilStr(j.SlurmState), j.ExitCode, j.ExitSignal, reqJSON,
 			specJSON, j.ExecutionSpecDigest[:], j.ScriptDigest[:],
-			string(j.ScriptLanguage), j.SubmittedAt, j.StartedAt,
-			j.EndedAt, j.LastReconciledAt, j.Version, j.CreatedAt,
-			j.UpdatedAt); err != nil {
+			string(j.ScriptLanguage), j.ScriptValidationID, j.SubmittedAt,
+			j.StartedAt, j.EndedAt, j.LastReconciledAt, j.Version,
+			j.CreatedAt, j.UpdatedAt); err != nil {
 			return db.MapError(err)
 		}
 		if enqueue != nil {

@@ -24,3 +24,10 @@ log:
 
 telemetry:
   exporter: none
+
+validation:
+  shellcheck:
+    enabled: true
+    endpoint: "http://127.0.0.1:8481"
+    timeout: 10s
+  unavailable_severity: ERROR

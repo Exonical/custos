@@ -332,25 +332,25 @@ func (e ClusterUpdateVisibility) Valid() bool {
 
 // Defines values for DiagnosticSeverity.
 const (
-	ERROR    DiagnosticSeverity = "ERROR"
-	INFO     DiagnosticSeverity = "INFO"
-	POLICY   DiagnosticSeverity = "POLICY"
-	SECURITY DiagnosticSeverity = "SECURITY"
-	WARNING  DiagnosticSeverity = "WARNING"
+	DiagnosticSeverityERROR             DiagnosticSeverity = "ERROR"
+	DiagnosticSeverityINFO              DiagnosticSeverity = "INFO"
+	DiagnosticSeverityPOLICYVIOLATION   DiagnosticSeverity = "POLICY_VIOLATION"
+	DiagnosticSeveritySECURITYVIOLATION DiagnosticSeverity = "SECURITY_VIOLATION"
+	DiagnosticSeverityWARNING           DiagnosticSeverity = "WARNING"
 )
 
 // Valid indicates whether the value is a known member of the DiagnosticSeverity enum.
 func (e DiagnosticSeverity) Valid() bool {
 	switch e {
-	case ERROR:
+	case DiagnosticSeverityERROR:
 		return true
-	case INFO:
+	case DiagnosticSeverityINFO:
 		return true
-	case POLICY:
+	case DiagnosticSeverityPOLICYVIOLATION:
 		return true
-	case SECURITY:
+	case DiagnosticSeveritySECURITYVIOLATION:
 		return true
-	case WARNING:
+	case DiagnosticSeverityWARNING:
 		return true
 	default:
 		return false
@@ -408,6 +408,24 @@ func (e HealthStatusStatus) Valid() bool {
 	}
 }
 
+// Defines values for ImportSbatchRequestLanguage.
+const (
+	ImportSbatchRequestLanguageBash ImportSbatchRequestLanguage = "bash"
+	ImportSbatchRequestLanguageSh   ImportSbatchRequestLanguage = "sh"
+)
+
+// Valid indicates whether the value is a known member of the ImportSbatchRequestLanguage enum.
+func (e ImportSbatchRequestLanguage) Valid() bool {
+	switch e {
+	case ImportSbatchRequestLanguageBash:
+		return true
+	case ImportSbatchRequestLanguageSh:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for JobState.
 const (
 	CANCELED   JobState = "CANCELED"
@@ -440,16 +458,16 @@ func (e JobState) Valid() bool {
 
 // Defines values for JobSubmitScriptLanguage.
 const (
-	Bash JobSubmitScriptLanguage = "bash"
-	Sh   JobSubmitScriptLanguage = "sh"
+	JobSubmitScriptLanguageBash JobSubmitScriptLanguage = "bash"
+	JobSubmitScriptLanguageSh   JobSubmitScriptLanguage = "sh"
 )
 
 // Valid indicates whether the value is a known member of the JobSubmitScriptLanguage enum.
 func (e JobSubmitScriptLanguage) Valid() bool {
 	switch e {
-	case Bash:
+	case JobSubmitScriptLanguageBash:
 		return true
-	case Sh:
+	case JobSubmitScriptLanguageSh:
 		return true
 	default:
 		return false
@@ -690,6 +708,33 @@ func (e ReadyStatusStatus) Valid() bool {
 	}
 }
 
+// Defines values for ScriptValidateRequestLanguage.
+const (
+	ScriptValidateRequestLanguageBash   ScriptValidateRequestLanguage = "bash"
+	ScriptValidateRequestLanguageJson   ScriptValidateRequestLanguage = "json"
+	ScriptValidateRequestLanguagePython ScriptValidateRequestLanguage = "python"
+	ScriptValidateRequestLanguageSh     ScriptValidateRequestLanguage = "sh"
+	ScriptValidateRequestLanguageYaml   ScriptValidateRequestLanguage = "yaml"
+)
+
+// Valid indicates whether the value is a known member of the ScriptValidateRequestLanguage enum.
+func (e ScriptValidateRequestLanguage) Valid() bool {
+	switch e {
+	case ScriptValidateRequestLanguageBash:
+		return true
+	case ScriptValidateRequestLanguageJson:
+		return true
+	case ScriptValidateRequestLanguagePython:
+		return true
+	case ScriptValidateRequestLanguageSh:
+		return true
+	case ScriptValidateRequestLanguageYaml:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for SecretRefProvider.
 const (
 	File SecretRefProvider = "file"
@@ -762,6 +807,93 @@ func (e UserLookupResultKind) Valid() bool {
 	case UserLookupResultKindService:
 		return true
 	case UserLookupResultKindUser:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ValidationPolicyBlockAt.
+const (
+	ValidationPolicyBlockAtERROR   ValidationPolicyBlockAt = "ERROR"
+	ValidationPolicyBlockAtINFO    ValidationPolicyBlockAt = "INFO"
+	ValidationPolicyBlockAtWARNING ValidationPolicyBlockAt = "WARNING"
+)
+
+// Valid indicates whether the value is a known member of the ValidationPolicyBlockAt enum.
+func (e ValidationPolicyBlockAt) Valid() bool {
+	switch e {
+	case ValidationPolicyBlockAtERROR:
+		return true
+	case ValidationPolicyBlockAtINFO:
+		return true
+	case ValidationPolicyBlockAtWARNING:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ValidationPolicyForbiddenCommandsSeverity.
+const (
+	ValidationPolicyForbiddenCommandsSeverityERROR   ValidationPolicyForbiddenCommandsSeverity = "ERROR"
+	ValidationPolicyForbiddenCommandsSeverityINFO    ValidationPolicyForbiddenCommandsSeverity = "INFO"
+	ValidationPolicyForbiddenCommandsSeverityWARNING ValidationPolicyForbiddenCommandsSeverity = "WARNING"
+)
+
+// Valid indicates whether the value is a known member of the ValidationPolicyForbiddenCommandsSeverity enum.
+func (e ValidationPolicyForbiddenCommandsSeverity) Valid() bool {
+	switch e {
+	case ValidationPolicyForbiddenCommandsSeverityERROR:
+		return true
+	case ValidationPolicyForbiddenCommandsSeverityINFO:
+		return true
+	case ValidationPolicyForbiddenCommandsSeverityWARNING:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ValidationPolicyOverridesSeverity.
+const (
+	ValidationPolicyOverridesSeverityERROR   ValidationPolicyOverridesSeverity = "ERROR"
+	ValidationPolicyOverridesSeverityINFO    ValidationPolicyOverridesSeverity = "INFO"
+	ValidationPolicyOverridesSeverityWARNING ValidationPolicyOverridesSeverity = "WARNING"
+)
+
+// Valid indicates whether the value is a known member of the ValidationPolicyOverridesSeverity enum.
+func (e ValidationPolicyOverridesSeverity) Valid() bool {
+	switch e {
+	case ValidationPolicyOverridesSeverityERROR:
+		return true
+	case ValidationPolicyOverridesSeverityINFO:
+		return true
+	case ValidationPolicyOverridesSeverityWARNING:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ValidationPolicyShellcheckShell.
+const (
+	ValidationPolicyShellcheckShellBash ValidationPolicyShellcheckShell = "bash"
+	ValidationPolicyShellcheckShellDash ValidationPolicyShellcheckShell = "dash"
+	ValidationPolicyShellcheckShellKsh  ValidationPolicyShellcheckShell = "ksh"
+	ValidationPolicyShellcheckShellSh   ValidationPolicyShellcheckShell = "sh"
+)
+
+// Valid indicates whether the value is a known member of the ValidationPolicyShellcheckShell enum.
+func (e ValidationPolicyShellcheckShell) Valid() bool {
+	switch e {
+	case ValidationPolicyShellcheckShellBash:
+		return true
+	case ValidationPolicyShellcheckShellDash:
+		return true
+	case ValidationPolicyShellcheckShellKsh:
+		return true
+	case ValidationPolicyShellcheckShellSh:
 		return true
 	default:
 		return false
@@ -1167,6 +1299,31 @@ type HealthStatus struct {
 // HealthStatusStatus defines model for HealthStatus.Status.
 type HealthStatusStatus string
 
+// ImportSbatchRequest defines model for ImportSbatchRequest.
+type ImportSbatchRequest struct {
+	Language ImportSbatchRequestLanguage `json:"language"`
+	Script   string                      `json:"script"`
+}
+
+// ImportSbatchRequestLanguage defines model for ImportSbatchRequest.Language.
+type ImportSbatchRequestLanguage string
+
+// ImportSbatchResponse defines model for ImportSbatchResponse.
+type ImportSbatchResponse struct {
+	Diagnostics []Diagnostic           `json:"diagnostics"`
+	Imported    []string               `json:"imported"`
+	Name        *string                `json:"name,omitempty"`
+	Partition   *string                `json:"partition,omitempty"`
+	Qos         *string                `json:"qos,omitempty"`
+	Resources   map[string]interface{} `json:"resources"`
+
+	// Rewritten Script with each directive line replaced by '# [custos] imported: <original>'
+	Rewritten  string  `json:"rewritten"`
+	Stderr     *string `json:"stderr,omitempty"`
+	Stdout     *string `json:"stdout,omitempty"`
+	WorkingDir *string `json:"working_dir,omitempty"`
+}
+
 // Job defines model for Job.
 type Job struct {
 	ClusterId openapi_types.UUID `json:"cluster_id"`
@@ -1195,7 +1352,10 @@ type Job struct {
 	SubmittedAt    *time.Time         `json:"submitted_at,omitempty"`
 	TenantId       openapi_types.UUID `json:"tenant_id"`
 	UpdatedAt      time.Time          `json:"updated_at"`
-	Version        int                `json:"version"`
+
+	// ValidationId ScriptValidation that admitted this job
+	ValidationId *openapi_types.UUID `json:"validation_id,omitempty"`
+	Version      int                 `json:"version"`
 }
 
 // JobState defines model for Job.State.
@@ -1442,6 +1602,37 @@ type RoleBindingList struct {
 	Items []PlatformRoleBinding `json:"items"`
 }
 
+// ScriptValidateRequest defines model for ScriptValidateRequest.
+type ScriptValidateRequest struct {
+	// Cluster Cluster name or uuid
+	Cluster     *string                       `json:"cluster,omitempty"`
+	Environment *map[string]string            `json:"environment,omitempty"`
+	Language    ScriptValidateRequestLanguage `json:"language"`
+	Resources   *map[string]interface{}       `json:"resources,omitempty"`
+	Script      string                        `json:"script"`
+	Software    *[]map[string]interface{}     `json:"software,omitempty"`
+}
+
+// ScriptValidateRequestLanguage defines model for ScriptValidateRequest.Language.
+type ScriptValidateRequestLanguage string
+
+// ScriptValidateResponse defines model for ScriptValidateResponse.
+type ScriptValidateResponse struct {
+	BlockAt     string       `json:"blockAt"`
+	Diagnostics []Diagnostic `json:"diagnostics"`
+
+	// Digest sha256:<hex>
+	Digest          string `json:"digest"`
+	EffectivePolicy struct {
+		AllowLegacySbatchImport *bool     `json:"allowLegacySbatchImport,omitempty"`
+		AllowShellTasks         *bool     `json:"allowShellTasks,omitempty"`
+		BlockAt                 *string   `json:"blockAt,omitempty"`
+		FilteredEnvAllowed      *[]string `json:"filteredEnvAllowed,omitempty"`
+	} `json:"effectivePolicy"`
+	ToolVersions map[string]string `json:"toolVersions"`
+	Valid        bool              `json:"valid"`
+}
+
 // SecretRef Reference to a secret value (docs/secrets.md); never the value.
 type SecretRef struct {
 	// Key Optional JSON key inside the file.
@@ -1517,6 +1708,53 @@ type ValidationErrorBody struct {
 		Message   string  `json:"message"`
 		RequestId *string `json:"request_id,omitempty"`
 	} `json:"error"`
+}
+
+// ValidationPolicy ValidationPolicy (docs/script-validation.md).
+type ValidationPolicy struct {
+	AllowLegacySbatchImport *bool                    `json:"allowLegacySbatchImport,omitempty"`
+	AllowShellTasks         *bool                    `json:"allowShellTasks,omitempty"`
+	BlockAt                 *ValidationPolicyBlockAt `json:"blockAt,omitempty"`
+
+	// DisabledCodes Only non-CUSTOS codes (e.g. shellcheck) may be disabled.
+	DisabledCodes             *[]string                                  `json:"disabledCodes,omitempty"`
+	FilteredEnvAllow          *[]string                                  `json:"filteredEnvAllow,omitempty"`
+	ForbiddenCommands         *[]string                                  `json:"forbiddenCommands,omitempty"`
+	ForbiddenCommandsSeverity *ValidationPolicyForbiddenCommandsSeverity `json:"forbiddenCommandsSeverity,omitempty"`
+	Overrides                 *[]struct {
+		Code     string                            `json:"code"`
+		Severity ValidationPolicyOverridesSeverity `json:"severity"`
+		Source   string                            `json:"source"`
+	} `json:"overrides,omitempty"`
+	ShellcheckShell *ValidationPolicyShellcheckShell `json:"shellcheckShell,omitempty"`
+}
+
+// ValidationPolicyBlockAt defines model for ValidationPolicy.BlockAt.
+type ValidationPolicyBlockAt string
+
+// ValidationPolicyForbiddenCommandsSeverity defines model for ValidationPolicy.ForbiddenCommandsSeverity.
+type ValidationPolicyForbiddenCommandsSeverity string
+
+// ValidationPolicyOverridesSeverity defines model for ValidationPolicy.Overrides.Severity.
+type ValidationPolicyOverridesSeverity string
+
+// ValidationPolicyShellcheckShell defines model for ValidationPolicy.ShellcheckShell.
+type ValidationPolicyShellcheckShell string
+
+// ValidationPolicyRequest defines model for ValidationPolicyRequest.
+type ValidationPolicyRequest struct {
+	// Policy ValidationPolicy (docs/script-validation.md).
+	Policy ValidationPolicy `json:"policy"`
+
+	// Version Expected current version; 0 creates.
+	Version int64 `json:"version"`
+}
+
+// ValidationPolicyResponse defines model for ValidationPolicyResponse.
+type ValidationPolicyResponse struct {
+	// Policy ValidationPolicy (docs/script-validation.md).
+	Policy  ValidationPolicy `json:"policy"`
+	Version int64            `json:"version"`
 }
 
 // BindingRef defines model for BindingRef.
@@ -1663,6 +1901,9 @@ type CreateClusterJSONRequestBody = ClusterCreate
 // UpdateClusterJSONRequestBody defines body for UpdateCluster for application/json ContentType.
 type UpdateClusterJSONRequestBody = ClusterUpdate
 
+// SetClusterValidationPolicyJSONRequestBody defines body for SetClusterValidationPolicy for application/json ContentType.
+type SetClusterValidationPolicyJSONRequestBody = ValidationPolicyRequest
+
 // AssignClusterJSONRequestBody defines body for AssignCluster for application/json ContentType.
 type AssignClusterJSONRequestBody = AssignmentPut
 
@@ -1696,6 +1937,9 @@ type UpdateMemberJSONRequestBody = MemberUpdate
 // SetTenantResourcePolicyJSONRequestBody defines body for SetTenantResourcePolicy for application/json ContentType.
 type SetTenantResourcePolicyJSONRequestBody = ResourcePolicyRequest
 
+// SetTenantValidationPolicyJSONRequestBody defines body for SetTenantValidationPolicy for application/json ContentType.
+type SetTenantValidationPolicyJSONRequestBody = ValidationPolicyRequest
+
 // CreateProjectJSONRequestBody defines body for CreateProject for application/json ContentType.
 type CreateProjectJSONRequestBody = ProjectCreate
 
@@ -1720,6 +1964,12 @@ type UpdateProjectMemberJSONRequestBody = ProjectMemberUpdate
 // SetProjectResourcePolicyJSONRequestBody defines body for SetProjectResourcePolicy for application/json ContentType.
 type SetProjectResourcePolicyJSONRequestBody = ResourcePolicyRequest
 
+// ImportSbatchJSONRequestBody defines body for ImportSbatch for application/json ContentType.
+type ImportSbatchJSONRequestBody = ImportSbatchRequest
+
+// ValidateScriptJSONRequestBody defines body for ValidateScript for application/json ContentType.
+type ValidateScriptJSONRequestBody = ScriptValidateRequest
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// ListClusters List clusters
@@ -1737,6 +1987,12 @@ type ServerInterface interface {
 	// DisableCluster Disable a cluster
 	// (POST /clusters/{cluster}/disable)
 	DisableCluster(w http.ResponseWriter, r *http.Request, cluster ClusterRef)
+	// GetClusterValidationPolicy Get the cluster validation policy (platform)
+	// (GET /clusters/{cluster}/policies/validation)
+	GetClusterValidationPolicy(w http.ResponseWriter, r *http.Request, cluster ClusterRef)
+	// SetClusterValidationPolicy Replace the cluster validation policy (platform only)
+	// (PUT /clusters/{cluster}/policies/validation)
+	SetClusterValidationPolicy(w http.ResponseWriter, r *http.Request, cluster ClusterRef)
 	// ListClusterAssignments List cluster tenant assignments
 	// (GET /clusters/{cluster}/tenants)
 	ListClusterAssignments(w http.ResponseWriter, r *http.Request, cluster ClusterRef, params ListClusterAssignmentsParams)
@@ -1854,6 +2110,12 @@ type ServerInterface interface {
 	// SetTenantResourcePolicy Replace the tenant resource policy (policy.manage)
 	// (PUT /tenants/{tenant}/policies/resource)
 	SetTenantResourcePolicy(w http.ResponseWriter, r *http.Request, tenant TenantSlug)
+	// GetTenantValidationPolicy Get the tenant validation policy (policy.read)
+	// (GET /tenants/{tenant}/policies/validation)
+	GetTenantValidationPolicy(w http.ResponseWriter, r *http.Request, tenant TenantSlug)
+	// SetTenantValidationPolicy Replace the tenant validation policy (policy.manage)
+	// (PUT /tenants/{tenant}/policies/validation)
+	SetTenantValidationPolicy(w http.ResponseWriter, r *http.Request, tenant TenantSlug)
 	// ListProjects List projects (all for project.read principals; member projects otherwise)
 	// (GET /tenants/{tenant}/projects)
 	ListProjects(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params ListProjectsParams)
@@ -1920,6 +2182,12 @@ type ServerInterface interface {
 	// UnarchiveProject Reactivate an archived project (project.manage)
 	// (POST /tenants/{tenant}/projects/{project}/unarchive)
 	UnarchiveProject(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectRef)
+	// ImportSbatch Convert legacy
+	// (POST /tenants/{tenant}/scripts/import-sbatch)
+	ImportSbatch(w http.ResponseWriter, r *http.Request, tenant TenantSlug)
+	// ValidateScript Validate a script ad hoc (workflow.create; rate-limited)
+	// (POST /tenants/{tenant}/scripts/validate)
+	ValidateScript(w http.ResponseWriter, r *http.Request, tenant TenantSlug)
 	// LookupUsers Look up users by exact email (tenant.members.manage)
 	// (GET /tenants/{tenant}/users/lookup)
 	LookupUsers(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params LookupUsersParams)
@@ -2063,6 +2331,58 @@ func (siw *ServerInterfaceWrapper) DisableCluster(w http.ResponseWriter, r *http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.DisableCluster(w, r, cluster)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetClusterValidationPolicy operation middleware
+func (siw *ServerInterfaceWrapper) GetClusterValidationPolicy(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "cluster" -------------
+	var cluster ClusterRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "cluster", r.PathValue("cluster"), &cluster, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cluster", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetClusterValidationPolicy(w, r, cluster)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetClusterValidationPolicy operation middleware
+func (siw *ServerInterfaceWrapper) SetClusterValidationPolicy(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "cluster" -------------
+	var cluster ClusterRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "cluster", r.PathValue("cluster"), &cluster, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cluster", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetClusterValidationPolicy(w, r, cluster)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3396,6 +3716,58 @@ func (siw *ServerInterfaceWrapper) SetTenantResourcePolicy(w http.ResponseWriter
 	handler.ServeHTTP(w, r)
 }
 
+// GetTenantValidationPolicy operation middleware
+func (siw *ServerInterfaceWrapper) GetTenantValidationPolicy(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetTenantValidationPolicy(w, r, tenant)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetTenantValidationPolicy operation middleware
+func (siw *ServerInterfaceWrapper) SetTenantValidationPolicy(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetTenantValidationPolicy(w, r, tenant)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListProjects operation middleware
 func (siw *ServerInterfaceWrapper) ListProjects(w http.ResponseWriter, r *http.Request) {
 
@@ -4357,6 +4729,58 @@ func (siw *ServerInterfaceWrapper) UnarchiveProject(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// ImportSbatch operation middleware
+func (siw *ServerInterfaceWrapper) ImportSbatch(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ImportSbatch(w, r, tenant)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ValidateScript operation middleware
+func (siw *ServerInterfaceWrapper) ValidateScript(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ValidateScript(w, r, tenant)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // LookupUsers operation middleware
 func (siw *ServerInterfaceWrapper) LookupUsers(w http.ResponseWriter, r *http.Request) {
 
@@ -4580,6 +5004,12 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/tenants/{tenant}/policies/resource", wrapper.SetTenantResourcePolicy)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/tenants/{tenant}/projects/{project}/policies/resource", wrapper.GetProjectResourcePolicy)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/tenants/{tenant}/projects/{project}/policies/resource", wrapper.SetProjectResourcePolicy)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/tenants/{tenant}/scripts/validate", wrapper.ValidateScript)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/tenants/{tenant}/scripts/import-sbatch", wrapper.ImportSbatch)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/tenants/{tenant}/policies/validation", wrapper.GetTenantValidationPolicy)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/tenants/{tenant}/policies/validation", wrapper.SetTenantValidationPolicy)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/clusters/{cluster}/policies/validation", wrapper.GetClusterValidationPolicy)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/clusters/{cluster}/policies/validation", wrapper.SetClusterValidationPolicy)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/tenants/{tenant}/jobs", wrapper.ListTenantJobs)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/tenants/{tenant}/projects/{project}/jobs", wrapper.ListJobs)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/tenants/{tenant}/projects/{project}/jobs", wrapper.SubmitJob)
@@ -4935,6 +5365,135 @@ func (response DisableCluster404JSONResponse) VisitDisableClusterResponse(w http
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetClusterValidationPolicyRequestObject struct {
+	Cluster ClusterRef `json:"cluster"`
+}
+
+type GetClusterValidationPolicyResponseObject interface {
+	VisitGetClusterValidationPolicyResponse(w http.ResponseWriter) error
+}
+
+type GetClusterValidationPolicy200JSONResponse ValidationPolicyResponse
+
+func (response GetClusterValidationPolicy200JSONResponse) VisitGetClusterValidationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetClusterValidationPolicy401JSONResponse Error
+
+func (response GetClusterValidationPolicy401JSONResponse) VisitGetClusterValidationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetClusterValidationPolicy404JSONResponse Error
+
+func (response GetClusterValidationPolicy404JSONResponse) VisitGetClusterValidationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetClusterValidationPolicyRequestObject struct {
+	Cluster ClusterRef `json:"cluster"`
+	Body    *SetClusterValidationPolicyJSONRequestBody
+}
+
+type SetClusterValidationPolicyResponseObject interface {
+	VisitSetClusterValidationPolicyResponse(w http.ResponseWriter) error
+}
+
+type SetClusterValidationPolicy200JSONResponse ValidationPolicyResponse
+
+func (response SetClusterValidationPolicy200JSONResponse) VisitSetClusterValidationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetClusterValidationPolicy401JSONResponse Error
+
+func (response SetClusterValidationPolicy401JSONResponse) VisitSetClusterValidationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetClusterValidationPolicy403JSONResponse Error
+
+func (response SetClusterValidationPolicy403JSONResponse) VisitSetClusterValidationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetClusterValidationPolicy404JSONResponse Error
+
+func (response SetClusterValidationPolicy404JSONResponse) VisitSetClusterValidationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetClusterValidationPolicy409JSONResponse Error
+
+func (response SetClusterValidationPolicy409JSONResponse) VisitSetClusterValidationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -7166,6 +7725,135 @@ func (response SetTenantResourcePolicy403JSONResponse) VisitSetTenantResourcePol
 	return err
 }
 
+type GetTenantValidationPolicyRequestObject struct {
+	Tenant TenantSlug `json:"tenant"`
+}
+
+type GetTenantValidationPolicyResponseObject interface {
+	VisitGetTenantValidationPolicyResponse(w http.ResponseWriter) error
+}
+
+type GetTenantValidationPolicy200JSONResponse ValidationPolicyResponse
+
+func (response GetTenantValidationPolicy200JSONResponse) VisitGetTenantValidationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTenantValidationPolicy401JSONResponse Error
+
+func (response GetTenantValidationPolicy401JSONResponse) VisitGetTenantValidationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTenantValidationPolicy404JSONResponse Error
+
+func (response GetTenantValidationPolicy404JSONResponse) VisitGetTenantValidationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetTenantValidationPolicyRequestObject struct {
+	Tenant TenantSlug `json:"tenant"`
+	Body   *SetTenantValidationPolicyJSONRequestBody
+}
+
+type SetTenantValidationPolicyResponseObject interface {
+	VisitSetTenantValidationPolicyResponse(w http.ResponseWriter) error
+}
+
+type SetTenantValidationPolicy200JSONResponse ValidationPolicyResponse
+
+func (response SetTenantValidationPolicy200JSONResponse) VisitSetTenantValidationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetTenantValidationPolicy401JSONResponse Error
+
+func (response SetTenantValidationPolicy401JSONResponse) VisitSetTenantValidationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetTenantValidationPolicy403JSONResponse Error
+
+func (response SetTenantValidationPolicy403JSONResponse) VisitSetTenantValidationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetTenantValidationPolicy409JSONResponse Error
+
+func (response SetTenantValidationPolicy409JSONResponse) VisitSetTenantValidationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetTenantValidationPolicy422JSONResponse Error
+
+func (response SetTenantValidationPolicy422JSONResponse) VisitSetTenantValidationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListProjectsRequestObject struct {
 	Tenant TenantSlug `json:"tenant"`
 	Params ListProjectsParams
@@ -8574,6 +9262,150 @@ func (response UnarchiveProject404JSONResponse) VisitUnarchiveProjectResponse(w 
 	return err
 }
 
+type ImportSbatchRequestObject struct {
+	Tenant TenantSlug `json:"tenant"`
+	Body   *ImportSbatchJSONRequestBody
+}
+
+type ImportSbatchResponseObject interface {
+	VisitImportSbatchResponse(w http.ResponseWriter) error
+}
+
+type ImportSbatch200JSONResponse ImportSbatchResponse
+
+func (response ImportSbatch200JSONResponse) VisitImportSbatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ImportSbatch401JSONResponse Error
+
+func (response ImportSbatch401JSONResponse) VisitImportSbatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ImportSbatch403JSONResponse Error
+
+func (response ImportSbatch403JSONResponse) VisitImportSbatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ImportSbatch429JSONResponse Error
+
+func (response ImportSbatch429JSONResponse) VisitImportSbatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ValidateScriptRequestObject struct {
+	Tenant TenantSlug `json:"tenant"`
+	Body   *ValidateScriptJSONRequestBody
+}
+
+type ValidateScriptResponseObject interface {
+	VisitValidateScriptResponse(w http.ResponseWriter) error
+}
+
+type ValidateScript200JSONResponse ScriptValidateResponse
+
+func (response ValidateScript200JSONResponse) VisitValidateScriptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ValidateScript401JSONResponse Error
+
+func (response ValidateScript401JSONResponse) VisitValidateScriptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ValidateScript403JSONResponse Error
+
+func (response ValidateScript403JSONResponse) VisitValidateScriptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ValidateScript413JSONResponse Error
+
+func (response ValidateScript413JSONResponse) VisitValidateScriptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(413)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ValidateScript429JSONResponse Error
+
+func (response ValidateScript429JSONResponse) VisitValidateScriptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type LookupUsersRequestObject struct {
 	Tenant TenantSlug `json:"tenant"`
 	Params LookupUsersParams
@@ -8642,6 +9474,12 @@ type StrictServerInterface interface {
 	// DisableCluster Disable a cluster
 	// (POST /clusters/{cluster}/disable)
 	DisableCluster(ctx context.Context, request DisableClusterRequestObject) (DisableClusterResponseObject, error)
+	// GetClusterValidationPolicy Get the cluster validation policy (platform)
+	// (GET /clusters/{cluster}/policies/validation)
+	GetClusterValidationPolicy(ctx context.Context, request GetClusterValidationPolicyRequestObject) (GetClusterValidationPolicyResponseObject, error)
+	// SetClusterValidationPolicy Replace the cluster validation policy (platform only)
+	// (PUT /clusters/{cluster}/policies/validation)
+	SetClusterValidationPolicy(ctx context.Context, request SetClusterValidationPolicyRequestObject) (SetClusterValidationPolicyResponseObject, error)
 	// ListClusterAssignments List cluster tenant assignments
 	// (GET /clusters/{cluster}/tenants)
 	ListClusterAssignments(ctx context.Context, request ListClusterAssignmentsRequestObject) (ListClusterAssignmentsResponseObject, error)
@@ -8759,6 +9597,12 @@ type StrictServerInterface interface {
 	// SetTenantResourcePolicy Replace the tenant resource policy (policy.manage)
 	// (PUT /tenants/{tenant}/policies/resource)
 	SetTenantResourcePolicy(ctx context.Context, request SetTenantResourcePolicyRequestObject) (SetTenantResourcePolicyResponseObject, error)
+	// GetTenantValidationPolicy Get the tenant validation policy (policy.read)
+	// (GET /tenants/{tenant}/policies/validation)
+	GetTenantValidationPolicy(ctx context.Context, request GetTenantValidationPolicyRequestObject) (GetTenantValidationPolicyResponseObject, error)
+	// SetTenantValidationPolicy Replace the tenant validation policy (policy.manage)
+	// (PUT /tenants/{tenant}/policies/validation)
+	SetTenantValidationPolicy(ctx context.Context, request SetTenantValidationPolicyRequestObject) (SetTenantValidationPolicyResponseObject, error)
 	// ListProjects List projects (all for project.read principals; member projects otherwise)
 	// (GET /tenants/{tenant}/projects)
 	ListProjects(ctx context.Context, request ListProjectsRequestObject) (ListProjectsResponseObject, error)
@@ -8825,6 +9669,12 @@ type StrictServerInterface interface {
 	// UnarchiveProject Reactivate an archived project (project.manage)
 	// (POST /tenants/{tenant}/projects/{project}/unarchive)
 	UnarchiveProject(ctx context.Context, request UnarchiveProjectRequestObject) (UnarchiveProjectResponseObject, error)
+	// ImportSbatch Convert legacy
+	// (POST /tenants/{tenant}/scripts/import-sbatch)
+	ImportSbatch(ctx context.Context, request ImportSbatchRequestObject) (ImportSbatchResponseObject, error)
+	// ValidateScript Validate a script ad hoc (workflow.create; rate-limited)
+	// (POST /tenants/{tenant}/scripts/validate)
+	ValidateScript(ctx context.Context, request ValidateScriptRequestObject) (ValidateScriptResponseObject, error)
 	// LookupUsers Look up users by exact email (tenant.members.manage)
 	// (GET /tenants/{tenant}/users/lookup)
 	LookupUsers(ctx context.Context, request LookupUsersRequestObject) (LookupUsersResponseObject, error)
@@ -9004,6 +9854,65 @@ func (sh *strictHandler) DisableCluster(w http.ResponseWriter, r *http.Request, 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(DisableClusterResponseObject); ok {
 		if err := validResponse.VisitDisableClusterResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetClusterValidationPolicy operation middleware
+func (sh *strictHandler) GetClusterValidationPolicy(w http.ResponseWriter, r *http.Request, cluster ClusterRef) {
+	var request GetClusterValidationPolicyRequestObject
+
+	request.Cluster = cluster
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetClusterValidationPolicy(ctx, request.(GetClusterValidationPolicyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetClusterValidationPolicy")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetClusterValidationPolicyResponseObject); ok {
+		if err := validResponse.VisitGetClusterValidationPolicyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetClusterValidationPolicy operation middleware
+func (sh *strictHandler) SetClusterValidationPolicy(w http.ResponseWriter, r *http.Request, cluster ClusterRef) {
+	var request SetClusterValidationPolicyRequestObject
+
+	request.Cluster = cluster
+
+	var body SetClusterValidationPolicyJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetClusterValidationPolicy(ctx, request.(SetClusterValidationPolicyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetClusterValidationPolicy")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetClusterValidationPolicyResponseObject); ok {
+		if err := validResponse.VisitSetClusterValidationPolicyResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -10114,6 +11023,65 @@ func (sh *strictHandler) SetTenantResourcePolicy(w http.ResponseWriter, r *http.
 	}
 }
 
+// GetTenantValidationPolicy operation middleware
+func (sh *strictHandler) GetTenantValidationPolicy(w http.ResponseWriter, r *http.Request, tenant TenantSlug) {
+	var request GetTenantValidationPolicyRequestObject
+
+	request.Tenant = tenant
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetTenantValidationPolicy(ctx, request.(GetTenantValidationPolicyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetTenantValidationPolicy")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetTenantValidationPolicyResponseObject); ok {
+		if err := validResponse.VisitGetTenantValidationPolicyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetTenantValidationPolicy operation middleware
+func (sh *strictHandler) SetTenantValidationPolicy(w http.ResponseWriter, r *http.Request, tenant TenantSlug) {
+	var request SetTenantValidationPolicyRequestObject
+
+	request.Tenant = tenant
+
+	var body SetTenantValidationPolicyJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetTenantValidationPolicy(ctx, request.(SetTenantValidationPolicyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetTenantValidationPolicy")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetTenantValidationPolicyResponseObject); ok {
+		if err := validResponse.VisitSetTenantValidationPolicyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListProjects operation middleware
 func (sh *strictHandler) ListProjects(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params ListProjectsParams) {
 	var request ListProjectsRequestObject
@@ -10774,6 +11742,72 @@ func (sh *strictHandler) UnarchiveProject(w http.ResponseWriter, r *http.Request
 	}
 }
 
+// ImportSbatch operation middleware
+func (sh *strictHandler) ImportSbatch(w http.ResponseWriter, r *http.Request, tenant TenantSlug) {
+	var request ImportSbatchRequestObject
+
+	request.Tenant = tenant
+
+	var body ImportSbatchJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ImportSbatch(ctx, request.(ImportSbatchRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ImportSbatch")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ImportSbatchResponseObject); ok {
+		if err := validResponse.VisitImportSbatchResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ValidateScript operation middleware
+func (sh *strictHandler) ValidateScript(w http.ResponseWriter, r *http.Request, tenant TenantSlug) {
+	var request ValidateScriptRequestObject
+
+	request.Tenant = tenant
+
+	var body ValidateScriptJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ValidateScript(ctx, request.(ValidateScriptRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ValidateScript")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ValidateScriptResponseObject); ok {
+		if err := validResponse.VisitValidateScriptResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // LookupUsers operation middleware
 func (sh *strictHandler) LookupUsers(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params LookupUsersParams) {
 	var request LookupUsersRequestObject
@@ -10806,129 +11840,149 @@ func (sh *strictHandler) LookupUsers(w http.ResponseWriter, r *http.Request, ten
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
+	"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",
+	"R5M3zrfHb/89AA==",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

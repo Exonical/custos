@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/Exonical/custos/internal/workflowspec"
 )
 
@@ -100,6 +102,9 @@ type EffectivePolicy struct {
 	AllowLegacySbatchImport   bool
 	ForbiddenCommands         []string
 	ForbiddenCommandsSeverity Severity
+	// FilteredEnvAllowed lists filtered env names the policy explicitly
+	// allows (surfaced to the author as filteredEnvAllowed).
+	FilteredEnvAllowed []string
 }
 
 // Input is everything a validator sees; Script is bounded by CheckLimits
@@ -135,6 +140,25 @@ type ScriptValidator interface {
 	Name() string
 	Languages() []workflowspec.Language
 	Validate(ctx context.Context, in Input) (Result, error)
+}
+
+// ScriptValidation is the persisted result of one pipeline run
+// (docs/script-validation.md §Persistence). PolicyVersion is the
+// FNV-64a fingerprint of the effective ValidationPolicy
+// (internal/validation/policy.Fingerprint), not a row version.
+type ScriptValidation struct {
+	ID                uuid.UUID
+	TenantID          uuid.UUID
+	WorkflowVersionID *uuid.UUID // nil for ad-hoc validate calls
+	TaskName          string
+	ScriptDigest      Digest
+	Language          Language
+	Valid             bool // no diagnostic at or above the blocking threshold
+	Diagnostics       []Diagnostic
+	ToolVersions      map[string]string
+	PolicyVersion     int64 // ValidationPolicy fingerprint applied
+	ValidatedAt       time.Time
+	ExpiresAt         time.Time // default 30d; re-validate after
 }
 
 // Digest is a sha256 over exact stored bytes.

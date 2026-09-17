@@ -79,8 +79,14 @@ Dead items are visible at `/api/v1/admin/work-items?state=dead` with a
 
 Implemented in M4-C: `job.submit`, `job.reconcile`, `job.cancel`,
 `jobs.sweep`, `idempotency.expire` (plus `cluster.sync`,
-`maintenance.partitions`, `tenant.delete` from earlier slices). The rest
-land with the workflow milestones.
+`maintenance.partitions`, `tenant.delete` from earlier slices). M5-A
+moved script validation into the durable pipeline
+(`internal/validation/pipeline`): submissions run concurrent validators
+(panic/timeout → `CUSTOS900`, fail closed) under the effective
+`ValidationPolicy`, persist a `script_validations` row, and store its ID
+on `jobs.script_validation_id`. External ShellCheck runs via the
+loopback-only `custos-validator` sidecar (127.0.0.1:8481). The rest
+lands with the workflow milestones.
 
 | Kind | Trigger | Handler outline |
 | --- | --- | --- |
