@@ -1,0 +1,209 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://custos.io/schemas/workflow/v1alpha1",
+  "title": "Custos Workflow",
+  "type": "object",
+  "required": ["apiVersion", "kind", "metadata", "spec"],
+  "additionalProperties": false,
+  "properties": {
+    "apiVersion": {"const": "custos.io/v1alpha1"},
+    "kind": {"const": "Workflow"},
+    "metadata": {
+      "type": "object",
+      "required": ["name"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {"type": "string"},
+        "labels": {"type": "object", "additionalProperties": {"type": "string"}}
+      }
+    },
+    "spec": {
+      "type": "object",
+      "required": ["tasks"],
+      "additionalProperties": false,
+      "properties": {
+        "parameters": {
+          "type": "object",
+          "additionalProperties": {"$ref": "#/$defs/parameter"}
+        },
+        "placement": {"$ref": "#/$defs/placement"},
+        "defaults": {"$ref": "#/$defs/defaults"},
+        "secrets": {
+          "type": "object",
+          "additionalProperties": {"$ref": "#/$defs/secretUse"}
+        },
+        "execution": {"$ref": "#/$defs/execution"},
+        "tasks": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/task"}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "parameter": {
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {"enum": ["string", "integer", "boolean"]},
+        "required": {"type": "boolean"},
+        "default": {},
+        "pattern": {"type": "string"},
+        "minimum": {"type": "integer"},
+        "maximum": {"type": "integer"},
+        "enum": {"type": "array"}
+      }
+    },
+    "placement": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cluster": {"type": "string"},
+        "requirements": {"type": "object"}
+      }
+    },
+    "defaults": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "account": {"type": ["string", "null"]},
+        "partition": {"type": "string"},
+        "qos": {"type": "string"},
+        "workingDirectory": {"type": "string"},
+        "env": {"type": "object", "additionalProperties": {"type": "string"}}
+      }
+    },
+    "secretUse": {
+      "type": "object",
+      "required": ["ref", "use"],
+      "additionalProperties": false,
+      "properties": {
+        "ref": {"type": "string"},
+        "use": {"enum": ["env"]},
+        "envName": {"type": "string"}
+      }
+    },
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "strategy": {"enum": ["auto", "engine", "native"]}
+      }
+    },
+    "fanOut": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "count": {"type": ["integer", "string"]},
+        "from": {"type": "string"}
+      }
+    },
+    "retry": {
+      "type": "object",
+      "required": ["attempts"],
+      "additionalProperties": false,
+      "properties": {
+        "attempts": {"type": "integer", "minimum": 0},
+        "on": {
+          "type": "array",
+          "items": {"enum": ["FAILED", "NODE_FAIL", "TIMEOUT"]}
+        }
+      }
+    },
+    "output": {
+      "type": "object",
+      "required": ["type", "path"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {"enum": ["file"]},
+        "path": {"type": "string"}
+      }
+    },
+    "taskResources": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cpu": {"type": "integer", "minimum": 0},
+        "memory": {"type": "string"},
+        "walltime": {"type": "string"},
+        "gpu": {"$ref": "#/$defs/gpuRequest"},
+        "nodes": {"type": "integer", "minimum": 0},
+        "tasks": {"type": "integer", "minimum": 0},
+        "tasksPerNode": {"type": "integer", "minimum": 0},
+        "cpusPerTask": {"type": "integer", "minimum": 0},
+        "memoryPerNode": {"type": "string"},
+        "licenses": {"type": "array", "items": {"type": "string"}},
+        "constraints": {"type": "string"},
+        "exclusive": {"type": "boolean"}
+      }
+    },
+    "gpuRequest": {
+      "type": "object",
+      "required": ["count"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {"type": "string"},
+        "count": {"type": "integer", "minimum": 1}
+      }
+    },
+    "arraySpec": {
+      "type": "object",
+      "required": ["start", "end"],
+      "additionalProperties": false,
+      "properties": {
+        "start": {"type": "integer", "minimum": 0},
+        "end": {"type": "integer", "minimum": 0},
+        "step": {"type": "integer", "minimum": 0},
+        "maxConcurrent": {"type": "integer", "minimum": 0}
+      }
+    },
+    "scriptRef": {
+      "type": "object",
+      "required": ["ref", "language"],
+      "additionalProperties": false,
+      "properties": {
+        "ref": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "language": {"enum": ["bash", "sh", "python", "yaml", "json"]}
+      }
+    },
+    "softwareRequirement": {
+      "type": "object",
+      "required": ["name", "version"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {"type": "string"},
+        "version": {"type": "string"}
+      }
+    },
+    "task": {
+      "type": "object",
+      "required": ["name"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {"type": "string"},
+        "type": {"enum": ["batch", "mpi", "gpu", "array", "shell", "stageIn", "stageOut", "interactive", "condition"]},
+        "dependsOn": {"type": "array", "items": {"type": "string"}},
+        "onDependencyFailure": {"enum": ["fail", "run"]},
+        "when": {"type": "string"},
+        "fanOut": {"$ref": "#/$defs/fanOut"},
+        "resources": {"$ref": "#/$defs/taskResources"},
+        "placement": {"$ref": "#/$defs/placement"},
+        "command": {"type": "array", "items": {"type": "string"}},
+        "script": {"$ref": "#/$defs/scriptRef"},
+        "args": {"type": "array", "items": {"type": "string"}},
+        "env": {"type": "object", "additionalProperties": {"type": "string"}},
+        "software": {"type": "array", "items": {"$ref": "#/$defs/softwareRequirement"}},
+        "outputs": {"type": "object", "additionalProperties": {"$ref": "#/$defs/output"}},
+        "retry": {"$ref": "#/$defs/retry"},
+        "array": {"$ref": "#/$defs/arraySpec"},
+        "partition": {"type": "string"},
+        "qos": {"type": "string"},
+        "workingDirectory": {"type": "string"},
+        "stdout": {"type": "string"},
+        "stderr": {"type": "string"}
+      }
+    }
+  }
+}

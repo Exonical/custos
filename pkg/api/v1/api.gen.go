@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"path"
@@ -708,6 +709,27 @@ func (e ReadyStatusStatus) Valid() bool {
 	}
 }
 
+// Defines values for ScriptUploadRequestLanguage.
+const (
+	ScriptUploadRequestLanguageBash   ScriptUploadRequestLanguage = "bash"
+	ScriptUploadRequestLanguagePython ScriptUploadRequestLanguage = "python"
+	ScriptUploadRequestLanguageSh     ScriptUploadRequestLanguage = "sh"
+)
+
+// Valid indicates whether the value is a known member of the ScriptUploadRequestLanguage enum.
+func (e ScriptUploadRequestLanguage) Valid() bool {
+	switch e {
+	case ScriptUploadRequestLanguageBash:
+		return true
+	case ScriptUploadRequestLanguagePython:
+		return true
+	case ScriptUploadRequestLanguageSh:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ScriptValidateRequestLanguage.
 const (
 	ScriptValidateRequestLanguageBash   ScriptValidateRequestLanguage = "bash"
@@ -894,6 +916,45 @@ func (e ValidationPolicyShellcheckShell) Valid() bool {
 	case ValidationPolicyShellcheckShellKsh:
 		return true
 	case ValidationPolicyShellcheckShellSh:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WorkflowState.
+const (
+	WorkflowStateActive   WorkflowState = "active"
+	WorkflowStateArchived WorkflowState = "archived"
+)
+
+// Valid indicates whether the value is a known member of the WorkflowState enum.
+func (e WorkflowState) Valid() bool {
+	switch e {
+	case WorkflowStateActive:
+		return true
+	case WorkflowStateArchived:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WorkflowVersionState.
+const (
+	Deprecated WorkflowVersionState = "deprecated"
+	Draft      WorkflowVersionState = "draft"
+	Published  WorkflowVersionState = "published"
+)
+
+// Valid indicates whether the value is a known member of the WorkflowVersionState enum.
+func (e WorkflowVersionState) Valid() bool {
+	switch e {
+	case Deprecated:
+		return true
+	case Draft:
+		return true
+	case Published:
 		return true
 	default:
 		return false
@@ -1602,6 +1663,15 @@ type RoleBindingList struct {
 	Items []PlatformRoleBinding `json:"items"`
 }
 
+// ScriptUploadRequest defines model for ScriptUploadRequest.
+type ScriptUploadRequest struct {
+	Language ScriptUploadRequestLanguage `json:"language"`
+	Script   string                      `json:"script"`
+}
+
+// ScriptUploadRequestLanguage defines model for ScriptUploadRequest.Language.
+type ScriptUploadRequestLanguage string
+
 // ScriptValidateRequest defines model for ScriptValidateRequest.
 type ScriptValidateRequest struct {
 	// Cluster Cluster name or uuid
@@ -1757,8 +1827,43 @@ type ValidationPolicyResponse struct {
 	Version int64            `json:"version"`
 }
 
+// Workflow defines model for Workflow.
+type Workflow struct {
+	CreatedAt                *time.Time          `json:"createdAt,omitempty"`
+	Description              *string             `json:"description,omitempty"`
+	Id                       openapi_types.UUID  `json:"id"`
+	LatestPublishedVersionId *openapi_types.UUID `json:"latestPublishedVersionId,omitempty"`
+	Name                     string              `json:"name"`
+	ProjectId                openapi_types.UUID  `json:"projectId"`
+	State                    WorkflowState       `json:"state"`
+	TenantId                 openapi_types.UUID  `json:"tenantId"`
+	UpdatedAt                *time.Time          `json:"updatedAt,omitempty"`
+	Version                  int64               `json:"version"`
+}
+
+// WorkflowState defines model for Workflow.State.
+type WorkflowState string
+
+// WorkflowVersion defines model for WorkflowVersion.
+type WorkflowVersion struct {
+	CreatedAt     *time.Time              `json:"createdAt,omitempty"`
+	Id            openapi_types.UUID      `json:"id"`
+	Layout        *map[string]interface{} `json:"layout,omitempty"`
+	Number        int                     `json:"number"`
+	PublishedAt   *time.Time              `json:"publishedAt,omitempty"`
+	SchemaVersion string                  `json:"schemaVersion"`
+	Spec          *map[string]interface{} `json:"spec,omitempty"`
+	SpecHash      string                  `json:"specHash"`
+	State         WorkflowVersionState    `json:"state"`
+	Version       int64                   `json:"version"`
+	WorkflowId    openapi_types.UUID      `json:"workflowId"`
+}
+
+// WorkflowVersionState defines model for WorkflowVersion.State.
+type WorkflowVersionState string
+
 // BindingRef defines model for BindingRef.
-type BindingRef = openapi_types.UUID
+type BindingRef = string
 
 // ClusterRef defines model for ClusterRef.
 type ClusterRef = string
@@ -1784,11 +1889,20 @@ type RoleRef string
 // RuleRef defines model for RuleRef.
 type RuleRef = openapi_types.UUID
 
+// TaskName defines model for TaskName.
+type TaskName = openapi_types.UUID
+
 // TenantSlug defines model for TenantSlug.
 type TenantSlug = string
 
 // UserRef defines model for UserRef.
 type UserRef = openapi_types.UUID
+
+// VersionId defines model for VersionId.
+type VersionId = openapi_types.UUID
+
+// WorkflowId defines model for WorkflowId.
+type WorkflowId = openapi_types.UUID
 
 // ListClustersParams defines parameters for ListClusters.
 type ListClustersParams struct {
@@ -1895,6 +2009,42 @@ type LookupUsersParams struct {
 	Email string `form:"email" json:"email"`
 }
 
+// ListWorkflowsParams defines parameters for ListWorkflows.
+type ListWorkflowsParams struct {
+	Project *openapi_types.UUID `form:"project,omitempty" json:"project,omitempty"`
+}
+
+// CreateWorkflowJSONBody defines parameters for CreateWorkflow.
+type CreateWorkflowJSONBody struct {
+	Description *string            `json:"description,omitempty"`
+	Name        string             `json:"name"`
+	Project     openapi_types.UUID `json:"project"`
+}
+
+// PatchWorkflowJSONBody defines parameters for PatchWorkflow.
+type PatchWorkflowJSONBody struct {
+	Description *string `json:"description,omitempty"`
+	Name        *string `json:"name,omitempty"`
+	Version     *int64  `json:"version,omitempty"`
+}
+
+// CreateWorkflowVersionJSONBody defines parameters for CreateWorkflowVersion.
+type CreateWorkflowVersionJSONBody = map[string]interface{}
+
+// ValidateWorkflowVersionBodyJSONBody defines parameters for ValidateWorkflowVersionBody.
+type ValidateWorkflowVersionBodyJSONBody = map[string]interface{}
+
+// UpdateWorkflowVersionJSONBody defines parameters for UpdateWorkflowVersion.
+type UpdateWorkflowVersionJSONBody = map[string]interface{}
+
+// UpdateWorkflowVersionParams defines parameters for UpdateWorkflowVersion.
+type UpdateWorkflowVersionParams struct {
+	XExpectedVersion *int64 `json:"X-Expected-Version,omitempty"`
+}
+
+// UpdateWorkflowLayoutJSONBody defines parameters for UpdateWorkflowLayout.
+type UpdateWorkflowLayoutJSONBody = map[string]interface{}
+
 // CreateClusterJSONRequestBody defines body for CreateCluster for application/json ContentType.
 type CreateClusterJSONRequestBody = ClusterCreate
 
@@ -1964,11 +2114,35 @@ type UpdateProjectMemberJSONRequestBody = ProjectMemberUpdate
 // SetProjectResourcePolicyJSONRequestBody defines body for SetProjectResourcePolicy for application/json ContentType.
 type SetProjectResourcePolicyJSONRequestBody = ResourcePolicyRequest
 
+// UploadScriptJSONRequestBody defines body for UploadScript for application/json ContentType.
+type UploadScriptJSONRequestBody = ScriptUploadRequest
+
 // ImportSbatchJSONRequestBody defines body for ImportSbatch for application/json ContentType.
 type ImportSbatchJSONRequestBody = ImportSbatchRequest
 
 // ValidateScriptJSONRequestBody defines body for ValidateScript for application/json ContentType.
 type ValidateScriptJSONRequestBody = ScriptValidateRequest
+
+// CreateWorkflowJSONRequestBody defines body for CreateWorkflow for application/json ContentType.
+type CreateWorkflowJSONRequestBody CreateWorkflowJSONBody
+
+// PatchWorkflowJSONRequestBody defines body for PatchWorkflow for application/json ContentType.
+type PatchWorkflowJSONRequestBody PatchWorkflowJSONBody
+
+// CreateWorkflowVersionJSONRequestBody defines body for CreateWorkflowVersion for application/json ContentType.
+type CreateWorkflowVersionJSONRequestBody = CreateWorkflowVersionJSONBody
+
+// ValidateWorkflowVersionBodyJSONRequestBody defines body for ValidateWorkflowVersionBody for application/json ContentType.
+type ValidateWorkflowVersionBodyJSONRequestBody = ValidateWorkflowVersionBodyJSONBody
+
+// UpdateWorkflowVersionJSONRequestBody defines body for UpdateWorkflowVersion for application/json ContentType.
+type UpdateWorkflowVersionJSONRequestBody = UpdateWorkflowVersionJSONBody
+
+// UpdateWorkflowLayoutJSONRequestBody defines body for UpdateWorkflowLayout for application/json ContentType.
+type UpdateWorkflowLayoutJSONRequestBody = UpdateWorkflowLayoutJSONBody
+
+// ImportWorkflowTaskSbatchJSONRequestBody defines body for ImportWorkflowTaskSbatch for application/json ContentType.
+type ImportWorkflowTaskSbatchJSONRequestBody = ImportSbatchRequest
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
@@ -2026,6 +2200,9 @@ type ServerInterface interface {
 	// GrantRoleBinding Grant a platform role
 	// (PUT /platform/role-bindings/{user}/{role})
 	GrantRoleBinding(w http.ResponseWriter, r *http.Request, user UserRef, role GrantRoleBindingParamsRole)
+	// GetWorkflowSchema Workflow document JSON Schema (unauthenticated)
+	// (GET /schemas/workflow/v1alpha1)
+	GetWorkflowSchema(w http.ResponseWriter, r *http.Request)
 	// ListTenants List tenants (platform)
 	// (GET /tenants)
 	ListTenants(w http.ResponseWriter, r *http.Request, params ListTenantsParams)
@@ -2182,6 +2359,9 @@ type ServerInterface interface {
 	// UnarchiveProject Reactivate an archived project (project.manage)
 	// (POST /tenants/{tenant}/projects/{project}/unarchive)
 	UnarchiveProject(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectRef)
+	// UploadScript Store a script for later reference (workflow.create; rate-limited)
+	// (POST /tenants/{tenant}/scripts)
+	UploadScript(w http.ResponseWriter, r *http.Request, tenant TenantSlug)
 	// ImportSbatch Convert legacy
 	// (POST /tenants/{tenant}/scripts/import-sbatch)
 	ImportSbatch(w http.ResponseWriter, r *http.Request, tenant TenantSlug)
@@ -2191,6 +2371,57 @@ type ServerInterface interface {
 	// LookupUsers Look up users by exact email (tenant.members.manage)
 	// (GET /tenants/{tenant}/users/lookup)
 	LookupUsers(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params LookupUsersParams)
+	// ListWorkflows List workflows (optional ?project=uuid filter)
+	// (GET /tenants/{tenant}/workflows)
+	ListWorkflows(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params ListWorkflowsParams)
+	// CreateWorkflow Create a workflow (workflow.create on the project)
+	// (POST /tenants/{tenant}/workflows)
+	CreateWorkflow(w http.ResponseWriter, r *http.Request, tenant TenantSlug)
+	// ArchiveWorkflow Archive a workflow
+	// (DELETE /tenants/{tenant}/workflows/{workflow})
+	ArchiveWorkflow(w http.ResponseWriter, r *http.Request, tenant TenantSlug, workflow WorkflowId)
+	// GetWorkflow Get a workflow
+	// (GET /tenants/{tenant}/workflows/{workflow})
+	GetWorkflow(w http.ResponseWriter, r *http.Request, tenant TenantSlug, workflow WorkflowId)
+	// PatchWorkflow Edit workflow metadata (optimistic version)
+	// (PATCH /tenants/{tenant}/workflows/{workflow})
+	PatchWorkflow(w http.ResponseWriter, r *http.Request, tenant TenantSlug, workflow WorkflowId)
+	// ListWorkflowVersions List versions (newest first)
+	// (GET /tenants/{tenant}/workflows/{workflow}/versions)
+	ListWorkflowVersions(w http.ResponseWriter, r *http.Request, tenant TenantSlug, workflow WorkflowId)
+	// CreateWorkflowVersion Create a draft version from a YAML/JSON document
+	// (POST /tenants/{tenant}/workflows/{workflow}/versions)
+	CreateWorkflowVersion(w http.ResponseWriter, r *http.Request, tenant TenantSlug, workflow WorkflowId)
+	// ValidateWorkflowVersionBody Run the full validation pipeline (steps 1-8) without persisting
+	// (POST /tenants/{tenant}/workflows/{workflow}/versions/validate)
+	ValidateWorkflowVersionBody(w http.ResponseWriter, r *http.Request, tenant TenantSlug, workflow WorkflowId)
+	// GetWorkflowVersion Get a version (Accept: application/yaml returns YAML)
+	// (GET /tenants/{tenant}/workflows/{workflow}/versions/{version})
+	GetWorkflowVersion(w http.ResponseWriter, r *http.Request, tenant TenantSlug, workflow WorkflowId, version VersionId)
+	// UpdateWorkflowVersion Replace a draft version's spec (409 VERSION_IMMUTABLE otherwise)
+	// (PUT /tenants/{tenant}/workflows/{workflow}/versions/{version})
+	UpdateWorkflowVersion(w http.ResponseWriter, r *http.Request, tenant TenantSlug, workflow WorkflowId, version VersionId, params UpdateWorkflowVersionParams)
+	// DeprecateWorkflowVersion Deprecate a published version (workflow.publish)
+	// (POST /tenants/{tenant}/workflows/{workflow}/versions/{version}/deprecate)
+	DeprecateWorkflowVersion(w http.ResponseWriter, r *http.Request, tenant TenantSlug, workflow WorkflowId, version VersionId)
+	// UpdateWorkflowLayout Store editor layout (draft and published versions)
+	// (PUT /tenants/{tenant}/workflows/{workflow}/versions/{version}/layout)
+	UpdateWorkflowLayout(w http.ResponseWriter, r *http.Request, tenant TenantSlug, workflow WorkflowId, version VersionId)
+	// PublishWorkflowVersion Publish a draft (workflow.publish; full validation + script gate)
+	// (POST /tenants/{tenant}/workflows/{workflow}/versions/{version}/publish)
+	PublishWorkflowVersion(w http.ResponseWriter, r *http.Request, tenant TenantSlug, workflow WorkflowId, version VersionId)
+	// ImportWorkflowTaskSbatch Convert legacy
+	// (POST /tenants/{tenant}/workflows/{workflow}/versions/{version}/tasks/{task}/import-sbatch)
+	ImportWorkflowTaskSbatch(w http.ResponseWriter, r *http.Request, tenant TenantSlug, workflow WorkflowId, version VersionId, task TaskName)
+	// PreviewWorkflowTaskSubmission Read-only submission preview for one task (workflow.read)
+	// (POST /tenants/{tenant}/workflows/{workflow}/versions/{version}/tasks/{task}/preview-submission)
+	PreviewWorkflowTaskSubmission(w http.ResponseWriter, r *http.Request, tenant TenantSlug, workflow WorkflowId, version VersionId, task TaskName)
+	// ValidateWorkflowTask Run the validation pipeline on one task's script
+	// (POST /tenants/{tenant}/workflows/{workflow}/versions/{version}/tasks/{task}/validate)
+	ValidateWorkflowTask(w http.ResponseWriter, r *http.Request, tenant TenantSlug, workflow WorkflowId, version VersionId, task TaskName)
+	// ListWorkflowVersionValidations ScriptValidations recorded against this version
+	// (GET /tenants/{tenant}/workflows/{workflow}/versions/{version}/validations)
+	ListWorkflowVersionValidations(w http.ResponseWriter, r *http.Request, tenant TenantSlug, workflow WorkflowId, version VersionId)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -2674,6 +2905,20 @@ func (siw *ServerInterfaceWrapper) GrantRoleBinding(w http.ResponseWriter, r *ht
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GrantRoleBinding(w, r, user, role)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetWorkflowSchema operation middleware
+func (siw *ServerInterfaceWrapper) GetWorkflowSchema(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetWorkflowSchema(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4051,7 +4296,7 @@ func (siw *ServerInterfaceWrapper) DeleteClusterBinding(w http.ResponseWriter, r
 	// ------------- Path parameter "binding" -------------
 	var binding BindingRef
 
-	err = runtime.BindStyledParameterWithOptions("simple", "binding", r.PathValue("binding"), &binding, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	err = runtime.BindStyledParameterWithOptions("simple", "binding", r.PathValue("binding"), &binding, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
 	if err != nil {
 		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "binding", Err: err})
 		return
@@ -4095,7 +4340,7 @@ func (siw *ServerInterfaceWrapper) GetClusterBinding(w http.ResponseWriter, r *h
 	// ------------- Path parameter "binding" -------------
 	var binding BindingRef
 
-	err = runtime.BindStyledParameterWithOptions("simple", "binding", r.PathValue("binding"), &binding, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	err = runtime.BindStyledParameterWithOptions("simple", "binding", r.PathValue("binding"), &binding, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
 	if err != nil {
 		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "binding", Err: err})
 		return
@@ -4139,7 +4384,7 @@ func (siw *ServerInterfaceWrapper) UpdateClusterBinding(w http.ResponseWriter, r
 	// ------------- Path parameter "binding" -------------
 	var binding BindingRef
 
-	err = runtime.BindStyledParameterWithOptions("simple", "binding", r.PathValue("binding"), &binding, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	err = runtime.BindStyledParameterWithOptions("simple", "binding", r.PathValue("binding"), &binding, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
 	if err != nil {
 		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "binding", Err: err})
 		return
@@ -4729,6 +4974,32 @@ func (siw *ServerInterfaceWrapper) UnarchiveProject(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// UploadScript operation middleware
+func (siw *ServerInterfaceWrapper) UploadScript(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UploadScript(w, r, tenant)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ImportSbatch operation middleware
 func (siw *ServerInterfaceWrapper) ImportSbatch(w http.ResponseWriter, r *http.Request) {
 
@@ -4814,6 +5085,731 @@ func (siw *ServerInterfaceWrapper) LookupUsers(w http.ResponseWriter, r *http.Re
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.LookupUsers(w, r, tenant, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListWorkflows operation middleware
+func (siw *ServerInterfaceWrapper) ListWorkflows(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListWorkflowsParams
+
+	// ------------- Optional query parameter "project" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "project", r.URL.Query(), &params.Project, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "project"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListWorkflows(w, r, tenant, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateWorkflow operation middleware
+func (siw *ServerInterfaceWrapper) CreateWorkflow(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateWorkflow(w, r, tenant)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ArchiveWorkflow operation middleware
+func (siw *ServerInterfaceWrapper) ArchiveWorkflow(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "workflow" -------------
+	var workflow WorkflowId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workflow", r.PathValue("workflow"), &workflow, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workflow", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ArchiveWorkflow(w, r, tenant, workflow)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetWorkflow operation middleware
+func (siw *ServerInterfaceWrapper) GetWorkflow(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "workflow" -------------
+	var workflow WorkflowId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workflow", r.PathValue("workflow"), &workflow, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workflow", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetWorkflow(w, r, tenant, workflow)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PatchWorkflow operation middleware
+func (siw *ServerInterfaceWrapper) PatchWorkflow(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "workflow" -------------
+	var workflow WorkflowId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workflow", r.PathValue("workflow"), &workflow, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workflow", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PatchWorkflow(w, r, tenant, workflow)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListWorkflowVersions operation middleware
+func (siw *ServerInterfaceWrapper) ListWorkflowVersions(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "workflow" -------------
+	var workflow WorkflowId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workflow", r.PathValue("workflow"), &workflow, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workflow", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListWorkflowVersions(w, r, tenant, workflow)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateWorkflowVersion operation middleware
+func (siw *ServerInterfaceWrapper) CreateWorkflowVersion(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "workflow" -------------
+	var workflow WorkflowId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workflow", r.PathValue("workflow"), &workflow, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workflow", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateWorkflowVersion(w, r, tenant, workflow)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ValidateWorkflowVersionBody operation middleware
+func (siw *ServerInterfaceWrapper) ValidateWorkflowVersionBody(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "workflow" -------------
+	var workflow WorkflowId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workflow", r.PathValue("workflow"), &workflow, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workflow", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ValidateWorkflowVersionBody(w, r, tenant, workflow)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetWorkflowVersion operation middleware
+func (siw *ServerInterfaceWrapper) GetWorkflowVersion(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "workflow" -------------
+	var workflow WorkflowId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workflow", r.PathValue("workflow"), &workflow, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workflow", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "version" -------------
+	var version VersionId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "version", r.PathValue("version"), &version, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "version", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetWorkflowVersion(w, r, tenant, workflow, version)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateWorkflowVersion operation middleware
+func (siw *ServerInterfaceWrapper) UpdateWorkflowVersion(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "workflow" -------------
+	var workflow WorkflowId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workflow", r.PathValue("workflow"), &workflow, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workflow", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "version" -------------
+	var version VersionId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "version", r.PathValue("version"), &version, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "version", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params UpdateWorkflowVersionParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "X-Expected-Version" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Expected-Version")]; found {
+		var XExpectedVersion int64
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-Expected-Version", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Expected-Version", valueList[0], &XExpectedVersion, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "integer", Format: "int64"})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-Expected-Version", Err: err})
+			return
+		}
+
+		params.XExpectedVersion = &XExpectedVersion
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateWorkflowVersion(w, r, tenant, workflow, version, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeprecateWorkflowVersion operation middleware
+func (siw *ServerInterfaceWrapper) DeprecateWorkflowVersion(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "workflow" -------------
+	var workflow WorkflowId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workflow", r.PathValue("workflow"), &workflow, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workflow", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "version" -------------
+	var version VersionId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "version", r.PathValue("version"), &version, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "version", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeprecateWorkflowVersion(w, r, tenant, workflow, version)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateWorkflowLayout operation middleware
+func (siw *ServerInterfaceWrapper) UpdateWorkflowLayout(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "workflow" -------------
+	var workflow WorkflowId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workflow", r.PathValue("workflow"), &workflow, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workflow", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "version" -------------
+	var version VersionId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "version", r.PathValue("version"), &version, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "version", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateWorkflowLayout(w, r, tenant, workflow, version)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PublishWorkflowVersion operation middleware
+func (siw *ServerInterfaceWrapper) PublishWorkflowVersion(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "workflow" -------------
+	var workflow WorkflowId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workflow", r.PathValue("workflow"), &workflow, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workflow", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "version" -------------
+	var version VersionId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "version", r.PathValue("version"), &version, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "version", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PublishWorkflowVersion(w, r, tenant, workflow, version)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ImportWorkflowTaskSbatch operation middleware
+func (siw *ServerInterfaceWrapper) ImportWorkflowTaskSbatch(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "workflow" -------------
+	var workflow WorkflowId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workflow", r.PathValue("workflow"), &workflow, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workflow", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "version" -------------
+	var version VersionId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "version", r.PathValue("version"), &version, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "version", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "task" -------------
+	var task TaskName
+
+	err = runtime.BindStyledParameterWithOptions("simple", "task", r.PathValue("task"), &task, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "task", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ImportWorkflowTaskSbatch(w, r, tenant, workflow, version, task)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PreviewWorkflowTaskSubmission operation middleware
+func (siw *ServerInterfaceWrapper) PreviewWorkflowTaskSubmission(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "workflow" -------------
+	var workflow WorkflowId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workflow", r.PathValue("workflow"), &workflow, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workflow", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "version" -------------
+	var version VersionId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "version", r.PathValue("version"), &version, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "version", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "task" -------------
+	var task TaskName
+
+	err = runtime.BindStyledParameterWithOptions("simple", "task", r.PathValue("task"), &task, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "task", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PreviewWorkflowTaskSubmission(w, r, tenant, workflow, version, task)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ValidateWorkflowTask operation middleware
+func (siw *ServerInterfaceWrapper) ValidateWorkflowTask(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "workflow" -------------
+	var workflow WorkflowId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workflow", r.PathValue("workflow"), &workflow, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workflow", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "version" -------------
+	var version VersionId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "version", r.PathValue("version"), &version, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "version", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "task" -------------
+	var task TaskName
+
+	err = runtime.BindStyledParameterWithOptions("simple", "task", r.PathValue("task"), &task, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "task", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ValidateWorkflowTask(w, r, tenant, workflow, version, task)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListWorkflowVersionValidations operation middleware
+func (siw *ServerInterfaceWrapper) ListWorkflowVersionValidations(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "workflow" -------------
+	var workflow WorkflowId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workflow", r.PathValue("workflow"), &workflow, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workflow", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "version" -------------
+	var version VersionId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "version", r.PathValue("version"), &version, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "version", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListWorkflowVersionValidations(w, r, tenant, workflow, version)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5006,6 +6002,25 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/tenants/{tenant}/projects/{project}/policies/resource", wrapper.SetProjectResourcePolicy)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/tenants/{tenant}/scripts/validate", wrapper.ValidateScript)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/tenants/{tenant}/scripts/import-sbatch", wrapper.ImportSbatch)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/tenants/{tenant}/scripts", wrapper.UploadScript)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/schemas/workflow/v1alpha1", wrapper.GetWorkflowSchema)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/tenants/{tenant}/workflows", wrapper.ListWorkflows)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/tenants/{tenant}/workflows", wrapper.CreateWorkflow)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/tenants/{tenant}/workflows/{workflow}", wrapper.ArchiveWorkflow)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/tenants/{tenant}/workflows/{workflow}", wrapper.GetWorkflow)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/tenants/{tenant}/workflows/{workflow}", wrapper.PatchWorkflow)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/tenants/{tenant}/workflows/{workflow}/versions", wrapper.ListWorkflowVersions)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/tenants/{tenant}/workflows/{workflow}/versions", wrapper.CreateWorkflowVersion)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/tenants/{tenant}/workflows/{workflow}/versions/validate", wrapper.ValidateWorkflowVersionBody)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/tenants/{tenant}/workflows/{workflow}/versions/{version}", wrapper.GetWorkflowVersion)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/tenants/{tenant}/workflows/{workflow}/versions/{version}", wrapper.UpdateWorkflowVersion)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/tenants/{tenant}/workflows/{workflow}/versions/{version}/layout", wrapper.UpdateWorkflowLayout)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/tenants/{tenant}/workflows/{workflow}/versions/{version}/publish", wrapper.PublishWorkflowVersion)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/tenants/{tenant}/workflows/{workflow}/versions/{version}/deprecate", wrapper.DeprecateWorkflowVersion)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/tenants/{tenant}/workflows/{workflow}/versions/{version}/validations", wrapper.ListWorkflowVersionValidations)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/tenants/{tenant}/workflows/{workflow}/versions/{version}/tasks/{task}/validate", wrapper.ValidateWorkflowTask)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/tenants/{tenant}/workflows/{workflow}/versions/{version}/tasks/{task}/import-sbatch", wrapper.ImportWorkflowTaskSbatch)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/tenants/{tenant}/workflows/{workflow}/versions/{version}/tasks/{task}/preview-submission", wrapper.PreviewWorkflowTaskSubmission)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/tenants/{tenant}/policies/validation", wrapper.GetTenantValidationPolicy)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/tenants/{tenant}/policies/validation", wrapper.SetTenantValidationPolicy)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/clusters/{cluster}/policies/validation", wrapper.GetClusterValidationPolicy)
@@ -6079,6 +7094,35 @@ func (response GrantRoleBinding422JSONResponse) VisitGrantRoleBindingResponse(w 
 	w.WriteHeader(422)
 	_, err := buf.WriteTo(w)
 	return err
+}
+
+type GetWorkflowSchemaRequestObject struct {
+}
+
+type GetWorkflowSchemaResponseObject interface {
+	VisitGetWorkflowSchemaResponse(w http.ResponseWriter) error
+}
+
+type GetWorkflowSchema200ApplicationSchemaPlusJSONResponse map[string]interface{}
+
+func (response GetWorkflowSchema200ApplicationSchemaPlusJSONResponse) VisitGetWorkflowSchemaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/schema+json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetWorkflowSchema304Response struct {
+}
+
+func (response GetWorkflowSchema304Response) VisitGetWorkflowSchemaResponse(w http.ResponseWriter) error {
+	w.WriteHeader(304)
+	return nil
 }
 
 type ListTenantsRequestObject struct {
@@ -9262,6 +10306,74 @@ func (response UnarchiveProject404JSONResponse) VisitUnarchiveProjectResponse(w 
 	return err
 }
 
+type UploadScriptRequestObject struct {
+	Tenant TenantSlug `json:"tenant"`
+	Body   *UploadScriptJSONRequestBody
+}
+
+type UploadScriptResponseObject interface {
+	VisitUploadScriptResponse(w http.ResponseWriter) error
+}
+
+type UploadScript200JSONResponse struct {
+	Digest *string `json:"digest,omitempty"`
+	Size   *int    `json:"size,omitempty"`
+}
+
+func (response UploadScript200JSONResponse) VisitUploadScriptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UploadScript401JSONResponse Error
+
+func (response UploadScript401JSONResponse) VisitUploadScriptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UploadScript403JSONResponse Error
+
+func (response UploadScript403JSONResponse) VisitUploadScriptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UploadScript429JSONResponse Error
+
+func (response UploadScript429JSONResponse) VisitUploadScriptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ImportSbatchRequestObject struct {
 	Tenant TenantSlug `json:"tenant"`
 	Body   *ImportSbatchJSONRequestBody
@@ -9457,6 +10569,611 @@ func (response LookupUsers404JSONResponse) VisitLookupUsersResponse(w http.Respo
 	return err
 }
 
+type ListWorkflowsRequestObject struct {
+	Tenant TenantSlug `json:"tenant"`
+	Params ListWorkflowsParams
+}
+
+type ListWorkflowsResponseObject interface {
+	VisitListWorkflowsResponse(w http.ResponseWriter) error
+}
+
+type ListWorkflows200JSONResponse struct {
+	Workflows *[]Workflow `json:"workflows,omitempty"`
+}
+
+func (response ListWorkflows200JSONResponse) VisitListWorkflowsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListWorkflows401JSONResponse Error
+
+func (response ListWorkflows401JSONResponse) VisitListWorkflowsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateWorkflowRequestObject struct {
+	Tenant TenantSlug `json:"tenant"`
+	Body   *CreateWorkflowJSONRequestBody
+}
+
+type CreateWorkflowResponseObject interface {
+	VisitCreateWorkflowResponse(w http.ResponseWriter) error
+}
+
+type CreateWorkflow201JSONResponse Workflow
+
+func (response CreateWorkflow201JSONResponse) VisitCreateWorkflowResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateWorkflow401JSONResponse Error
+
+func (response CreateWorkflow401JSONResponse) VisitCreateWorkflowResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateWorkflow403JSONResponse Error
+
+func (response CreateWorkflow403JSONResponse) VisitCreateWorkflowResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ArchiveWorkflowRequestObject struct {
+	Tenant   TenantSlug `json:"tenant"`
+	Workflow WorkflowId `json:"workflow"`
+}
+
+type ArchiveWorkflowResponseObject interface {
+	VisitArchiveWorkflowResponse(w http.ResponseWriter) error
+}
+
+type ArchiveWorkflow204Response struct {
+}
+
+func (response ArchiveWorkflow204Response) VisitArchiveWorkflowResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type GetWorkflowRequestObject struct {
+	Tenant   TenantSlug `json:"tenant"`
+	Workflow WorkflowId `json:"workflow"`
+}
+
+type GetWorkflowResponseObject interface {
+	VisitGetWorkflowResponse(w http.ResponseWriter) error
+}
+
+type GetWorkflow200JSONResponse Workflow
+
+func (response GetWorkflow200JSONResponse) VisitGetWorkflowResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetWorkflow404JSONResponse Error
+
+func (response GetWorkflow404JSONResponse) VisitGetWorkflowResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PatchWorkflowRequestObject struct {
+	Tenant   TenantSlug `json:"tenant"`
+	Workflow WorkflowId `json:"workflow"`
+	Body     *PatchWorkflowJSONRequestBody
+}
+
+type PatchWorkflowResponseObject interface {
+	VisitPatchWorkflowResponse(w http.ResponseWriter) error
+}
+
+type PatchWorkflow200JSONResponse Workflow
+
+func (response PatchWorkflow200JSONResponse) VisitPatchWorkflowResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PatchWorkflow409JSONResponse Error
+
+func (response PatchWorkflow409JSONResponse) VisitPatchWorkflowResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListWorkflowVersionsRequestObject struct {
+	Tenant   TenantSlug `json:"tenant"`
+	Workflow WorkflowId `json:"workflow"`
+}
+
+type ListWorkflowVersionsResponseObject interface {
+	VisitListWorkflowVersionsResponse(w http.ResponseWriter) error
+}
+
+type ListWorkflowVersions200JSONResponse struct {
+	Versions *[]WorkflowVersion `json:"versions,omitempty"`
+}
+
+func (response ListWorkflowVersions200JSONResponse) VisitListWorkflowVersionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateWorkflowVersionRequestObject struct {
+	Tenant   TenantSlug `json:"tenant"`
+	Workflow WorkflowId `json:"workflow"`
+	JSONBody *CreateWorkflowVersionJSONRequestBody
+	Body     io.Reader
+}
+
+type CreateWorkflowVersionResponseObject interface {
+	VisitCreateWorkflowVersionResponse(w http.ResponseWriter) error
+}
+
+type CreateWorkflowVersion201JSONResponse WorkflowVersion
+
+func (response CreateWorkflowVersion201JSONResponse) VisitCreateWorkflowVersionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateWorkflowVersion422JSONResponse Error
+
+func (response CreateWorkflowVersion422JSONResponse) VisitCreateWorkflowVersionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ValidateWorkflowVersionBodyRequestObject struct {
+	Tenant   TenantSlug `json:"tenant"`
+	Workflow WorkflowId `json:"workflow"`
+	JSONBody *ValidateWorkflowVersionBodyJSONRequestBody
+	Body     io.Reader
+}
+
+type ValidateWorkflowVersionBodyResponseObject interface {
+	VisitValidateWorkflowVersionBodyResponse(w http.ResponseWriter) error
+}
+
+type ValidateWorkflowVersionBody200JSONResponse struct {
+	Errors *[]struct {
+		Code    *string `json:"code,omitempty"`
+		Message *string `json:"message,omitempty"`
+		Path    *string `json:"path,omitempty"`
+	} `json:"errors,omitempty"`
+	Valid *bool `json:"valid,omitempty"`
+}
+
+func (response ValidateWorkflowVersionBody200JSONResponse) VisitValidateWorkflowVersionBodyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetWorkflowVersionRequestObject struct {
+	Tenant   TenantSlug `json:"tenant"`
+	Workflow WorkflowId `json:"workflow"`
+	Version  VersionId  `json:"version"`
+}
+
+type GetWorkflowVersionResponseObject interface {
+	VisitGetWorkflowVersionResponse(w http.ResponseWriter) error
+}
+
+type GetWorkflowVersion200JSONResponse WorkflowVersion
+
+func (response GetWorkflowVersion200JSONResponse) VisitGetWorkflowVersionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetWorkflowVersion200ApplicationyamlResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response GetWorkflowVersion200ApplicationyamlResponse) VisitGetWorkflowVersionResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "application/yaml")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type UpdateWorkflowVersionRequestObject struct {
+	Tenant   TenantSlug `json:"tenant"`
+	Workflow WorkflowId `json:"workflow"`
+	Version  VersionId  `json:"version"`
+	Params   UpdateWorkflowVersionParams
+	JSONBody *UpdateWorkflowVersionJSONRequestBody
+	Body     io.Reader
+}
+
+type UpdateWorkflowVersionResponseObject interface {
+	VisitUpdateWorkflowVersionResponse(w http.ResponseWriter) error
+}
+
+type UpdateWorkflowVersion200JSONResponse WorkflowVersion
+
+func (response UpdateWorkflowVersion200JSONResponse) VisitUpdateWorkflowVersionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateWorkflowVersion409JSONResponse Error
+
+func (response UpdateWorkflowVersion409JSONResponse) VisitUpdateWorkflowVersionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeprecateWorkflowVersionRequestObject struct {
+	Tenant   TenantSlug `json:"tenant"`
+	Workflow WorkflowId `json:"workflow"`
+	Version  VersionId  `json:"version"`
+}
+
+type DeprecateWorkflowVersionResponseObject interface {
+	VisitDeprecateWorkflowVersionResponse(w http.ResponseWriter) error
+}
+
+type DeprecateWorkflowVersion204Response struct {
+}
+
+func (response DeprecateWorkflowVersion204Response) VisitDeprecateWorkflowVersionResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeprecateWorkflowVersion409JSONResponse Error
+
+func (response DeprecateWorkflowVersion409JSONResponse) VisitDeprecateWorkflowVersionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateWorkflowLayoutRequestObject struct {
+	Tenant   TenantSlug `json:"tenant"`
+	Workflow WorkflowId `json:"workflow"`
+	Version  VersionId  `json:"version"`
+	Body     *UpdateWorkflowLayoutJSONRequestBody
+}
+
+type UpdateWorkflowLayoutResponseObject interface {
+	VisitUpdateWorkflowLayoutResponse(w http.ResponseWriter) error
+}
+
+type UpdateWorkflowLayout204Response struct {
+}
+
+func (response UpdateWorkflowLayout204Response) VisitUpdateWorkflowLayoutResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type PublishWorkflowVersionRequestObject struct {
+	Tenant   TenantSlug `json:"tenant"`
+	Workflow WorkflowId `json:"workflow"`
+	Version  VersionId  `json:"version"`
+}
+
+type PublishWorkflowVersionResponseObject interface {
+	VisitPublishWorkflowVersionResponse(w http.ResponseWriter) error
+}
+
+type PublishWorkflowVersion200JSONResponse WorkflowVersion
+
+func (response PublishWorkflowVersion200JSONResponse) VisitPublishWorkflowVersionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PublishWorkflowVersion409JSONResponse Error
+
+func (response PublishWorkflowVersion409JSONResponse) VisitPublishWorkflowVersionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PublishWorkflowVersion422JSONResponse Error
+
+func (response PublishWorkflowVersion422JSONResponse) VisitPublishWorkflowVersionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ImportWorkflowTaskSbatchRequestObject struct {
+	Tenant   TenantSlug `json:"tenant"`
+	Workflow WorkflowId `json:"workflow"`
+	Version  VersionId  `json:"version"`
+	Task     TaskName   `json:"task"`
+	Body     *ImportWorkflowTaskSbatchJSONRequestBody
+}
+
+type ImportWorkflowTaskSbatchResponseObject interface {
+	VisitImportWorkflowTaskSbatchResponse(w http.ResponseWriter) error
+}
+
+type ImportWorkflowTaskSbatch200JSONResponse ImportSbatchResponse
+
+func (response ImportWorkflowTaskSbatch200JSONResponse) VisitImportWorkflowTaskSbatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ImportWorkflowTaskSbatch403JSONResponse Error
+
+func (response ImportWorkflowTaskSbatch403JSONResponse) VisitImportWorkflowTaskSbatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PreviewWorkflowTaskSubmissionRequestObject struct {
+	Tenant   TenantSlug `json:"tenant"`
+	Workflow WorkflowId `json:"workflow"`
+	Version  VersionId  `json:"version"`
+	Task     TaskName   `json:"task"`
+}
+
+type PreviewWorkflowTaskSubmissionResponseObject interface {
+	VisitPreviewWorkflowTaskSubmissionResponse(w http.ResponseWriter) error
+}
+
+type PreviewWorkflowTaskSubmission200JSONResponse struct {
+	ExecutionSpec *map[string]interface{} `json:"executionSpec,omitempty"`
+	JobSubmission *map[string]interface{} `json:"jobSubmission,omitempty"`
+	Wrapper       *string                 `json:"wrapper,omitempty"`
+}
+
+func (response PreviewWorkflowTaskSubmission200JSONResponse) VisitPreviewWorkflowTaskSubmissionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PreviewWorkflowTaskSubmission422JSONResponse Error
+
+func (response PreviewWorkflowTaskSubmission422JSONResponse) VisitPreviewWorkflowTaskSubmissionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ValidateWorkflowTaskRequestObject struct {
+	Tenant   TenantSlug `json:"tenant"`
+	Workflow WorkflowId `json:"workflow"`
+	Version  VersionId  `json:"version"`
+	Task     TaskName   `json:"task"`
+}
+
+type ValidateWorkflowTaskResponseObject interface {
+	VisitValidateWorkflowTaskResponse(w http.ResponseWriter) error
+}
+
+type ValidateWorkflowTask200JSONResponse struct {
+	Diagnostics  *[]Diagnostic       `json:"diagnostics,omitempty"`
+	ToolVersions *map[string]string  `json:"toolVersions,omitempty"`
+	Valid        *bool               `json:"valid,omitempty"`
+	ValidationId *openapi_types.UUID `json:"validationId,omitempty"`
+}
+
+func (response ValidateWorkflowTask200JSONResponse) VisitValidateWorkflowTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListWorkflowVersionValidationsRequestObject struct {
+	Tenant   TenantSlug `json:"tenant"`
+	Workflow WorkflowId `json:"workflow"`
+	Version  VersionId  `json:"version"`
+}
+
+type ListWorkflowVersionValidationsResponseObject interface {
+	VisitListWorkflowVersionValidationsResponse(w http.ResponseWriter) error
+}
+
+type ListWorkflowVersionValidations200JSONResponse struct {
+	Validations *[]map[string]interface{} `json:"validations,omitempty"`
+}
+
+func (response ListWorkflowVersionValidations200JSONResponse) VisitListWorkflowVersionValidationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// ListClusters List clusters
@@ -9513,6 +11230,9 @@ type StrictServerInterface interface {
 	// GrantRoleBinding Grant a platform role
 	// (PUT /platform/role-bindings/{user}/{role})
 	GrantRoleBinding(ctx context.Context, request GrantRoleBindingRequestObject) (GrantRoleBindingResponseObject, error)
+	// GetWorkflowSchema Workflow document JSON Schema (unauthenticated)
+	// (GET /schemas/workflow/v1alpha1)
+	GetWorkflowSchema(ctx context.Context, request GetWorkflowSchemaRequestObject) (GetWorkflowSchemaResponseObject, error)
 	// ListTenants List tenants (platform)
 	// (GET /tenants)
 	ListTenants(ctx context.Context, request ListTenantsRequestObject) (ListTenantsResponseObject, error)
@@ -9669,6 +11389,9 @@ type StrictServerInterface interface {
 	// UnarchiveProject Reactivate an archived project (project.manage)
 	// (POST /tenants/{tenant}/projects/{project}/unarchive)
 	UnarchiveProject(ctx context.Context, request UnarchiveProjectRequestObject) (UnarchiveProjectResponseObject, error)
+	// UploadScript Store a script for later reference (workflow.create; rate-limited)
+	// (POST /tenants/{tenant}/scripts)
+	UploadScript(ctx context.Context, request UploadScriptRequestObject) (UploadScriptResponseObject, error)
 	// ImportSbatch Convert legacy
 	// (POST /tenants/{tenant}/scripts/import-sbatch)
 	ImportSbatch(ctx context.Context, request ImportSbatchRequestObject) (ImportSbatchResponseObject, error)
@@ -9678,6 +11401,57 @@ type StrictServerInterface interface {
 	// LookupUsers Look up users by exact email (tenant.members.manage)
 	// (GET /tenants/{tenant}/users/lookup)
 	LookupUsers(ctx context.Context, request LookupUsersRequestObject) (LookupUsersResponseObject, error)
+	// ListWorkflows List workflows (optional ?project=uuid filter)
+	// (GET /tenants/{tenant}/workflows)
+	ListWorkflows(ctx context.Context, request ListWorkflowsRequestObject) (ListWorkflowsResponseObject, error)
+	// CreateWorkflow Create a workflow (workflow.create on the project)
+	// (POST /tenants/{tenant}/workflows)
+	CreateWorkflow(ctx context.Context, request CreateWorkflowRequestObject) (CreateWorkflowResponseObject, error)
+	// ArchiveWorkflow Archive a workflow
+	// (DELETE /tenants/{tenant}/workflows/{workflow})
+	ArchiveWorkflow(ctx context.Context, request ArchiveWorkflowRequestObject) (ArchiveWorkflowResponseObject, error)
+	// GetWorkflow Get a workflow
+	// (GET /tenants/{tenant}/workflows/{workflow})
+	GetWorkflow(ctx context.Context, request GetWorkflowRequestObject) (GetWorkflowResponseObject, error)
+	// PatchWorkflow Edit workflow metadata (optimistic version)
+	// (PATCH /tenants/{tenant}/workflows/{workflow})
+	PatchWorkflow(ctx context.Context, request PatchWorkflowRequestObject) (PatchWorkflowResponseObject, error)
+	// ListWorkflowVersions List versions (newest first)
+	// (GET /tenants/{tenant}/workflows/{workflow}/versions)
+	ListWorkflowVersions(ctx context.Context, request ListWorkflowVersionsRequestObject) (ListWorkflowVersionsResponseObject, error)
+	// CreateWorkflowVersion Create a draft version from a YAML/JSON document
+	// (POST /tenants/{tenant}/workflows/{workflow}/versions)
+	CreateWorkflowVersion(ctx context.Context, request CreateWorkflowVersionRequestObject) (CreateWorkflowVersionResponseObject, error)
+	// ValidateWorkflowVersionBody Run the full validation pipeline (steps 1-8) without persisting
+	// (POST /tenants/{tenant}/workflows/{workflow}/versions/validate)
+	ValidateWorkflowVersionBody(ctx context.Context, request ValidateWorkflowVersionBodyRequestObject) (ValidateWorkflowVersionBodyResponseObject, error)
+	// GetWorkflowVersion Get a version (Accept: application/yaml returns YAML)
+	// (GET /tenants/{tenant}/workflows/{workflow}/versions/{version})
+	GetWorkflowVersion(ctx context.Context, request GetWorkflowVersionRequestObject) (GetWorkflowVersionResponseObject, error)
+	// UpdateWorkflowVersion Replace a draft version's spec (409 VERSION_IMMUTABLE otherwise)
+	// (PUT /tenants/{tenant}/workflows/{workflow}/versions/{version})
+	UpdateWorkflowVersion(ctx context.Context, request UpdateWorkflowVersionRequestObject) (UpdateWorkflowVersionResponseObject, error)
+	// DeprecateWorkflowVersion Deprecate a published version (workflow.publish)
+	// (POST /tenants/{tenant}/workflows/{workflow}/versions/{version}/deprecate)
+	DeprecateWorkflowVersion(ctx context.Context, request DeprecateWorkflowVersionRequestObject) (DeprecateWorkflowVersionResponseObject, error)
+	// UpdateWorkflowLayout Store editor layout (draft and published versions)
+	// (PUT /tenants/{tenant}/workflows/{workflow}/versions/{version}/layout)
+	UpdateWorkflowLayout(ctx context.Context, request UpdateWorkflowLayoutRequestObject) (UpdateWorkflowLayoutResponseObject, error)
+	// PublishWorkflowVersion Publish a draft (workflow.publish; full validation + script gate)
+	// (POST /tenants/{tenant}/workflows/{workflow}/versions/{version}/publish)
+	PublishWorkflowVersion(ctx context.Context, request PublishWorkflowVersionRequestObject) (PublishWorkflowVersionResponseObject, error)
+	// ImportWorkflowTaskSbatch Convert legacy
+	// (POST /tenants/{tenant}/workflows/{workflow}/versions/{version}/tasks/{task}/import-sbatch)
+	ImportWorkflowTaskSbatch(ctx context.Context, request ImportWorkflowTaskSbatchRequestObject) (ImportWorkflowTaskSbatchResponseObject, error)
+	// PreviewWorkflowTaskSubmission Read-only submission preview for one task (workflow.read)
+	// (POST /tenants/{tenant}/workflows/{workflow}/versions/{version}/tasks/{task}/preview-submission)
+	PreviewWorkflowTaskSubmission(ctx context.Context, request PreviewWorkflowTaskSubmissionRequestObject) (PreviewWorkflowTaskSubmissionResponseObject, error)
+	// ValidateWorkflowTask Run the validation pipeline on one task's script
+	// (POST /tenants/{tenant}/workflows/{workflow}/versions/{version}/tasks/{task}/validate)
+	ValidateWorkflowTask(ctx context.Context, request ValidateWorkflowTaskRequestObject) (ValidateWorkflowTaskResponseObject, error)
+	// ListWorkflowVersionValidations ScriptValidations recorded against this version
+	// (GET /tenants/{tenant}/workflows/{workflow}/versions/{version}/validations)
+	ListWorkflowVersionValidations(ctx context.Context, request ListWorkflowVersionValidationsRequestObject) (ListWorkflowVersionValidationsResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -10201,6 +11975,30 @@ func (sh *strictHandler) GrantRoleBinding(w http.ResponseWriter, r *http.Request
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GrantRoleBindingResponseObject); ok {
 		if err := validResponse.VisitGrantRoleBindingResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetWorkflowSchema operation middleware
+func (sh *strictHandler) GetWorkflowSchema(w http.ResponseWriter, r *http.Request) {
+	var request GetWorkflowSchemaRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetWorkflowSchema(ctx, request.(GetWorkflowSchemaRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetWorkflowSchema")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetWorkflowSchemaResponseObject); ok {
+		if err := validResponse.VisitGetWorkflowSchemaResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -11742,6 +13540,39 @@ func (sh *strictHandler) UnarchiveProject(w http.ResponseWriter, r *http.Request
 	}
 }
 
+// UploadScript operation middleware
+func (sh *strictHandler) UploadScript(w http.ResponseWriter, r *http.Request, tenant TenantSlug) {
+	var request UploadScriptRequestObject
+
+	request.Tenant = tenant
+
+	var body UploadScriptJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UploadScript(ctx, request.(UploadScriptRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UploadScript")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UploadScriptResponseObject); ok {
+		if err := validResponse.VisitUploadScriptResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ImportSbatch operation middleware
 func (sh *strictHandler) ImportSbatch(w http.ResponseWriter, r *http.Request, tenant TenantSlug) {
 	var request ImportSbatchRequestObject
@@ -11835,154 +13666,722 @@ func (sh *strictHandler) LookupUsers(w http.ResponseWriter, r *http.Request, ten
 	}
 }
 
+// ListWorkflows operation middleware
+func (sh *strictHandler) ListWorkflows(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params ListWorkflowsParams) {
+	var request ListWorkflowsRequestObject
+
+	request.Tenant = tenant
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListWorkflows(ctx, request.(ListWorkflowsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListWorkflows")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListWorkflowsResponseObject); ok {
+		if err := validResponse.VisitListWorkflowsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateWorkflow operation middleware
+func (sh *strictHandler) CreateWorkflow(w http.ResponseWriter, r *http.Request, tenant TenantSlug) {
+	var request CreateWorkflowRequestObject
+
+	request.Tenant = tenant
+
+	var body CreateWorkflowJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateWorkflow(ctx, request.(CreateWorkflowRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateWorkflow")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateWorkflowResponseObject); ok {
+		if err := validResponse.VisitCreateWorkflowResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ArchiveWorkflow operation middleware
+func (sh *strictHandler) ArchiveWorkflow(w http.ResponseWriter, r *http.Request, tenant TenantSlug, workflow WorkflowId) {
+	var request ArchiveWorkflowRequestObject
+
+	request.Tenant = tenant
+	request.Workflow = workflow
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ArchiveWorkflow(ctx, request.(ArchiveWorkflowRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ArchiveWorkflow")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ArchiveWorkflowResponseObject); ok {
+		if err := validResponse.VisitArchiveWorkflowResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetWorkflow operation middleware
+func (sh *strictHandler) GetWorkflow(w http.ResponseWriter, r *http.Request, tenant TenantSlug, workflow WorkflowId) {
+	var request GetWorkflowRequestObject
+
+	request.Tenant = tenant
+	request.Workflow = workflow
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetWorkflow(ctx, request.(GetWorkflowRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetWorkflow")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetWorkflowResponseObject); ok {
+		if err := validResponse.VisitGetWorkflowResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PatchWorkflow operation middleware
+func (sh *strictHandler) PatchWorkflow(w http.ResponseWriter, r *http.Request, tenant TenantSlug, workflow WorkflowId) {
+	var request PatchWorkflowRequestObject
+
+	request.Tenant = tenant
+	request.Workflow = workflow
+
+	var body PatchWorkflowJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PatchWorkflow(ctx, request.(PatchWorkflowRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PatchWorkflow")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PatchWorkflowResponseObject); ok {
+		if err := validResponse.VisitPatchWorkflowResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListWorkflowVersions operation middleware
+func (sh *strictHandler) ListWorkflowVersions(w http.ResponseWriter, r *http.Request, tenant TenantSlug, workflow WorkflowId) {
+	var request ListWorkflowVersionsRequestObject
+
+	request.Tenant = tenant
+	request.Workflow = workflow
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListWorkflowVersions(ctx, request.(ListWorkflowVersionsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListWorkflowVersions")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListWorkflowVersionsResponseObject); ok {
+		if err := validResponse.VisitListWorkflowVersionsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateWorkflowVersion operation middleware
+func (sh *strictHandler) CreateWorkflowVersion(w http.ResponseWriter, r *http.Request, tenant TenantSlug, workflow WorkflowId) {
+	var request CreateWorkflowVersionRequestObject
+
+	request.Tenant = tenant
+	request.Workflow = workflow
+	if strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
+
+		var body CreateWorkflowVersionJSONRequestBody
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+			return
+		}
+		request.JSONBody = &body
+
+	}
+	if strings.HasPrefix(r.Header.Get("Content-Type"), "application/yaml") {
+		request.Body = r.Body
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateWorkflowVersion(ctx, request.(CreateWorkflowVersionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateWorkflowVersion")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateWorkflowVersionResponseObject); ok {
+		if err := validResponse.VisitCreateWorkflowVersionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ValidateWorkflowVersionBody operation middleware
+func (sh *strictHandler) ValidateWorkflowVersionBody(w http.ResponseWriter, r *http.Request, tenant TenantSlug, workflow WorkflowId) {
+	var request ValidateWorkflowVersionBodyRequestObject
+
+	request.Tenant = tenant
+	request.Workflow = workflow
+	if strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
+
+		var body ValidateWorkflowVersionBodyJSONRequestBody
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+			return
+		}
+		request.JSONBody = &body
+
+	}
+	if strings.HasPrefix(r.Header.Get("Content-Type"), "application/yaml") {
+		request.Body = r.Body
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ValidateWorkflowVersionBody(ctx, request.(ValidateWorkflowVersionBodyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ValidateWorkflowVersionBody")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ValidateWorkflowVersionBodyResponseObject); ok {
+		if err := validResponse.VisitValidateWorkflowVersionBodyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetWorkflowVersion operation middleware
+func (sh *strictHandler) GetWorkflowVersion(w http.ResponseWriter, r *http.Request, tenant TenantSlug, workflow WorkflowId, version VersionId) {
+	var request GetWorkflowVersionRequestObject
+
+	request.Tenant = tenant
+	request.Workflow = workflow
+	request.Version = version
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetWorkflowVersion(ctx, request.(GetWorkflowVersionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetWorkflowVersion")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetWorkflowVersionResponseObject); ok {
+		if err := validResponse.VisitGetWorkflowVersionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateWorkflowVersion operation middleware
+func (sh *strictHandler) UpdateWorkflowVersion(w http.ResponseWriter, r *http.Request, tenant TenantSlug, workflow WorkflowId, version VersionId, params UpdateWorkflowVersionParams) {
+	var request UpdateWorkflowVersionRequestObject
+
+	request.Tenant = tenant
+	request.Workflow = workflow
+	request.Version = version
+	request.Params = params
+	if strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
+
+		var body UpdateWorkflowVersionJSONRequestBody
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+			return
+		}
+		request.JSONBody = &body
+
+	}
+	if strings.HasPrefix(r.Header.Get("Content-Type"), "application/yaml") {
+		request.Body = r.Body
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateWorkflowVersion(ctx, request.(UpdateWorkflowVersionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateWorkflowVersion")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateWorkflowVersionResponseObject); ok {
+		if err := validResponse.VisitUpdateWorkflowVersionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeprecateWorkflowVersion operation middleware
+func (sh *strictHandler) DeprecateWorkflowVersion(w http.ResponseWriter, r *http.Request, tenant TenantSlug, workflow WorkflowId, version VersionId) {
+	var request DeprecateWorkflowVersionRequestObject
+
+	request.Tenant = tenant
+	request.Workflow = workflow
+	request.Version = version
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeprecateWorkflowVersion(ctx, request.(DeprecateWorkflowVersionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeprecateWorkflowVersion")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeprecateWorkflowVersionResponseObject); ok {
+		if err := validResponse.VisitDeprecateWorkflowVersionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateWorkflowLayout operation middleware
+func (sh *strictHandler) UpdateWorkflowLayout(w http.ResponseWriter, r *http.Request, tenant TenantSlug, workflow WorkflowId, version VersionId) {
+	var request UpdateWorkflowLayoutRequestObject
+
+	request.Tenant = tenant
+	request.Workflow = workflow
+	request.Version = version
+
+	var body UpdateWorkflowLayoutJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateWorkflowLayout(ctx, request.(UpdateWorkflowLayoutRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateWorkflowLayout")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateWorkflowLayoutResponseObject); ok {
+		if err := validResponse.VisitUpdateWorkflowLayoutResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PublishWorkflowVersion operation middleware
+func (sh *strictHandler) PublishWorkflowVersion(w http.ResponseWriter, r *http.Request, tenant TenantSlug, workflow WorkflowId, version VersionId) {
+	var request PublishWorkflowVersionRequestObject
+
+	request.Tenant = tenant
+	request.Workflow = workflow
+	request.Version = version
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PublishWorkflowVersion(ctx, request.(PublishWorkflowVersionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PublishWorkflowVersion")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PublishWorkflowVersionResponseObject); ok {
+		if err := validResponse.VisitPublishWorkflowVersionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ImportWorkflowTaskSbatch operation middleware
+func (sh *strictHandler) ImportWorkflowTaskSbatch(w http.ResponseWriter, r *http.Request, tenant TenantSlug, workflow WorkflowId, version VersionId, task TaskName) {
+	var request ImportWorkflowTaskSbatchRequestObject
+
+	request.Tenant = tenant
+	request.Workflow = workflow
+	request.Version = version
+	request.Task = task
+
+	var body ImportWorkflowTaskSbatchJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ImportWorkflowTaskSbatch(ctx, request.(ImportWorkflowTaskSbatchRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ImportWorkflowTaskSbatch")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ImportWorkflowTaskSbatchResponseObject); ok {
+		if err := validResponse.VisitImportWorkflowTaskSbatchResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PreviewWorkflowTaskSubmission operation middleware
+func (sh *strictHandler) PreviewWorkflowTaskSubmission(w http.ResponseWriter, r *http.Request, tenant TenantSlug, workflow WorkflowId, version VersionId, task TaskName) {
+	var request PreviewWorkflowTaskSubmissionRequestObject
+
+	request.Tenant = tenant
+	request.Workflow = workflow
+	request.Version = version
+	request.Task = task
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PreviewWorkflowTaskSubmission(ctx, request.(PreviewWorkflowTaskSubmissionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PreviewWorkflowTaskSubmission")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PreviewWorkflowTaskSubmissionResponseObject); ok {
+		if err := validResponse.VisitPreviewWorkflowTaskSubmissionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ValidateWorkflowTask operation middleware
+func (sh *strictHandler) ValidateWorkflowTask(w http.ResponseWriter, r *http.Request, tenant TenantSlug, workflow WorkflowId, version VersionId, task TaskName) {
+	var request ValidateWorkflowTaskRequestObject
+
+	request.Tenant = tenant
+	request.Workflow = workflow
+	request.Version = version
+	request.Task = task
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ValidateWorkflowTask(ctx, request.(ValidateWorkflowTaskRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ValidateWorkflowTask")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ValidateWorkflowTaskResponseObject); ok {
+		if err := validResponse.VisitValidateWorkflowTaskResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListWorkflowVersionValidations operation middleware
+func (sh *strictHandler) ListWorkflowVersionValidations(w http.ResponseWriter, r *http.Request, tenant TenantSlug, workflow WorkflowId, version VersionId) {
+	var request ListWorkflowVersionValidationsRequestObject
+
+	request.Tenant = tenant
+	request.Workflow = workflow
+	request.Version = version
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListWorkflowVersionValidations(ctx, request.(ListWorkflowVersionValidationsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListWorkflowVersionValidations")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListWorkflowVersionValidationsResponseObject); ok {
+		if err := validResponse.VisitListWorkflowVersionValidationsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // Base64 encoded, compressed with deflate, json marshaled OpenAPI spec.
 // Stored as a slice of fixed-width chunks rather than one concatenated
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"7H3ZciM5kuCvwKLHrCRb6sisrJ5tpe2DSqmqVraU0uro3p4qLRuMcJJIRQSiAASVnLQ028f5gP2J/q3+",
-	"kjEccRJx8VZRT6IYYMDh8Bvujq+OS4OIhhAK7px8dSLMcAACmPrvRxJ6JBzdwlD+R0LnxImwGDs9J8QB",
-	"OCfOQA9weg6D32LCwHNOBIuh53B3DAGWPxtSFmDhnDhxTDyn54hpJH/KBZO//Pat55z5MRfAzDQecJeR",
-	"SBAq5zPPkJwQUYbkSw6dng0YVw+tBcYyecw4ZbMTX0f4txjQE0w5COSqUWjIaIAwihhMCI058gkXiAGP",
-	"aMghBeu3GNg0B5eeoR6MnxmNIysG1BO1brl++c6K9Y/kwI6rv/AgiKiA0J0e/AWm6TaPAXvAsneXx+Xf",
-	"GuAvlxCOxNg5efP2f/acgITp/7btviQBEelMJWT56mH+9R4McewL5+SH456ciwRx4Jy8PT5WM+n/snlI",
-	"KGAETE10w+hncIUVq+YZ4n48aqCrSA/tiNlb6kM14zDqQ+0LIZTr+sWJfCwkBx1gLyCh08t9EXtEUOY8",
-	"2nB8G9fOHjfM3syz9xDiUNz58WgWt/pZG9QKNbIjZh94Kissr4w5sIXW9i0ZrETgKedkFAYQKoqNGI2A",
-	"CQLqmRE4feK1eG/PcRlgAV4fi8JwDws4ECQA228M8avp/o3JRTt/OMpE9pGB9CgD80PyC7kOGjMX8uQU",
-	"4DDGvtNzcCyohXR6ZkvarimOvI5r+pbfm1/yOMzPncKeQ0EBg4Wps3XQgWLVbz3HgpGZDcS+T5/B60eY",
-	"CSKJV31LBATcQnrpJJgxPM3tTh+7Lo1D0Y8YDMkXO9XWAHhJuIW6UjDSD+0IwAZoCF9E3001XRj7Ph74",
-	"kDBH/Rbp+etxfBNbVrAI8dowdjYG9+kWeOxbJvOx0k79wtal2iARD5ZN5QKLmOeZhD45PWeIie88NuFG",
-	"vTV9Ry8PhQ1hZz4mgZTNNmGCSWAFcB65AaHcXy/3vgGlPuBQPlSGQgWHN5BGz2kpGAIs3HF/gv3YjnWp",
-	"ADty26olU8+ZAONKhX21mRMFniiLK719xXUnq8y2I5uimzBL6eZM/aiGeiIsBLDQOXH+7y/44D9PD/6j",
-	"/2g+HB/8qX94cnTw+PW49+btv3/7t6USThMF5KzEH968bbASbfSRcKfGemoPmX8lMrBQZvYzZU9Dnz4f",
-	"4FiMqTYGOGDmjpVlMCHwrD5UG1AKugs98ZsyIc4osOqNr93KZUj99GVrFPrpnA+KZmeXsDrZs71E0UV2",
-	"JCPtyNU+7KypEpF+bopk3ZPjw+PDdz84PfPpnRXwAebQj5lvVy+4P4hDz4d+BBUKCEd4QHwiYekkT12f",
-	"QCj6LjDRZzBsouY7cBkod03+VrrUbizIBPpSF8cMKjT7XHY14ZGPp/1Kq6ClkCMehIKIaT+gXsHQ5sAm",
-	"RNmvJIiAcRpKXrFtjo+56ANjmkvtj/k0dDutr3JdBq6+cpOqzKHCSrAr90AZ4iOGPaXF4pABdseKWRUy",
-	"NcfblifoE4Sdd3/J2lsyOCeKhqeFtSnLUy0J+35fiw3ebPZpcaVtvwIp5XitV+DZMqmUdiKPpwKwyYbM",
-	"bzkogWIiect3gZLf/0Y7/nB9znO2NitgySizgm4WUUvoTQip7WK5H7Mg8SqtQK3Bus3B3Cu66UXwbHju",
-	"2eiqiOoi6SzDRM4T+nKMq/wbZ2m4g8WUf9FDxIGJl8uJa+CqZvpvT8s1lFuzV1V+1tLMsGLEdCxExNHD",
-	"7SWiQ6SAZMCF9x5NQAjwEB5hEnKBxBjQ3d3tT8gj2EcR9Yk7PXR6cxl1C9hmLaynhc2i5N0lh/b44E+P",
-	"5u/B49c3vT++tfuxjXbOfHbJcs2ItVgQNVS+RCm5VgdUzXgXBwFm06rjh4Mhdkk4QtKze49cGgrJQiik",
-	"KDlBkV8OyShmWP4Q7SV476EUkz2UMhLCDFAIE2CIgYhZCB4SFJm93j90eiU0Lha6b2SxEQPel992lPYt",
-	"pXzlvCH1oM8z3GPPU1oA+zeF5c+a4DMbOa+m01J8VgWsyolpb/wntrrN6mlDzEtkSPPGxc2We+CiKuhe",
-	"UoezWp4xyvquUQIW37Y+Zk+f7PbBqginhBr6VIeXqvDXRiM1W67UV6WVM3SXkzgECQgXxJXC3o0Zk/Sm",
-	"5XvOblpZnKAu1PeB4FFIJWyWcH4Vx7jUj4OKEAeE3ln940sSgv3hkIDvWWe0H2j2HL/yXQFwjkdV4acJ",
-	"sBJyLz79dO30nL+d3n66+PSz03POb2+vb52ec3N9eXH29/5fL64vT+8vrj85Pefu/Ozh9uI+/6WVztKD",
-	"7/r9SQ+Z3cSiMuBlq7Bt3XkSrSvuGti/TjazSJp3QqobFGB3TEI4YIA99YV6CZK/ObR7XwITvyj3itNV",
-	"byUDzNvIPf2GdLwNA2XJWrfn8tXAk+BH/dRmH6qRXxqvUW6DUKVNWTZjrjhSbuPmjxVXx2Sr0zSIF20k",
-	"S2Ohs9DENsqhLZfPMV94R21nlVfetEE2X/L04D8SdzL9iA776nTU7lTanLdKUJdhyakXrdGxUvNdQTAA",
-	"dup5s9BLrd2O5EpTJj9smHRpONOv42OyIeypmZciejqduM8hR+be0hSw7B05Hs8ttRJVVfZzW2ZeQGLV",
-	"mWV/BuyL8V2aFFQEzpos1GgGml/ZprsIIsrE3UBmD9xqRWnLbQpHsVGvybwDzMcS5WO7AaRQ2Kxv0zen",
-	"P2kGUmc7WzYuNWjbs2vOCLbFKtS84BVe1+jlVRJIfcS6KlLNQJN1/mmGGgbPjAgBFufjTn1Gz0SMkQw0",
-	"II8wUHEIJI1nxCDysQseGkzRd39Av7gxF5Q/omTVJ+jX+Pj4e5cyMiIh9tV/8J2V84UHrOo816OxPYgu",
-	"cyJIOOp7hDVTSoaG/KJze9QrEICNjD7SwUaSaJPfDKatpoDQ6zgBfFGZCjTs8whcs5QiMfAxfvvDH0/0",
-	"jo7hi/oAyCMj4EJG/WVonwRBrN2C8+SNdxG49imJKAdW8s6efCx9VuzbB7REt8o+YCCdZ+J3xEo1H3Y7",
-	"DU0or88y+ThDWxrXfY3Ptuh3KiVnPy9yK85nP9NBeQkkFH98Z40r6J+kcUlbxJJ1peuZKOfdw49XF/f3",
-	"2ov+3w/nD+cfnJ5z+/DJONZn11c3l+f36tufTi8u1Yez009n5/LjY9UU/UrHsefweBAQ0RXyNbgv2Cee",
-	"Cuxb2VHL5r+mg5AYY4Gwp9eCxJhw9JkOnF4zdAs4StVH7DmR1XNKweUZfihT/ywRz+t1faSDZRjlUvCv",
-	"zxD/SAd3iipnwcZsNN/hePvCNIs6mbQ4J5mBIFtPIkfLdVarsG+Ka7w1j5ChNLSXpFFKPXeYPOaIj3EE",
-	"+4eOBfrMEi1uxYB604pDgW7GbrVFq6Z4rIQpCTMX1/wh1chZnZ8/RVxQBh7SI09QB32yetMsX/iY7KVt",
-	"2VcWoz1IHdb27Jw5uSb+Xmaa5IS1P0eWf8RI6JII+01Q3KQDcybFPMsxpYCNq5rbV86WlHeWS0jqFbbC",
-	"vn2VkZltToxeOGpUl02vcVIVSngxRQRNC1xeQGkOjtzK8PTcVJW3v8oUZo9gNVpJ2R4tw1jaSPCyKPxm",
-	"VlDpys1DTqZmeCGiqdlU9f7UaK7mrJvEWlrGpqUvuwWXMm+BrIvym2ZtWCEYGcTCZrApL/MwfQUKIRYM",
-	"+yj7jdVGq9xeWXewSHWv2YQcyPl3WpdvtKIsn69MWp+rIjLAxJ5WQTiPK9IRJPUsWo2vfGS1PNsMS9CO",
-	"Bv5snl7SXqAhDH+TN7WKGK7Glgr8d2T5Ggw/kdDLY9jkMiYpJY+dzlFd2jkdrnpvyhw7i2UFux2xNHnp",
-	"Czh9BiFIOLKHtyuFdXWGnbSRyKSiGmgNJ9FF+V86hDYhlHTN8wZGzA4veiC9lM0oISG//hrQl6L1GE3e",
-	"uiY7peCrdTf7jZuYiW/zv3a9cl8Y+95q285nyJcgt9eArBPyFXtmM171cqRh17ODtSJ0ngP4dfo+hXjz",
-	"kpyfmX1eomDZiCtkDQfNrGdhOtyIn1QgAKMo8r5TIzsvPWmjVuHVa/6Z4beAvWlV5oYrm8d0yKLP9Zqx",
-	"bY69aUyhugBPMNEU2TZBpJdA+WhdnebPG1X1VZkroovCZvbEkXKOS2weFl+EPt5df9IBfLTHAZBHXX6k",
-	"f3mQnaIdBp49vt/eOjOQtVlbVYoJDIc6g6KyoduBcgLQz+f3HGGfU1Oso47XNaWjf/3XP5FhBJS+cLaY",
-	"LoMuQ+niq+/VJh/lvN6liFGLMz1/ZKJwZgqVBNjpxKziwIwwmvZcm//grP4kqedEUzFWlv8UB1JHfy5m",
-	"O7dNAarMtZIadSieMQOb5K9Kpp4rQ6u8N1UMNPCp+3RqB3b5+VuLZ2Ok/HmT8qClavoSRtid6vw0natm",
-	"rxtSg+/G4Pv3mD9x+6A6FA2JL4CBdx5OTnW5dRedbqNRQan/Vy0R+GLUrmS1bUnl5Ec1Lt2cbMFFCiiB",
-	"NrsVVjJMq3IsZ8lDYBC6IKsmMeJqJFL9ktCe1jnqKy41zXtTaSmlthoyW175BFN7vY/EnVZqTzBFJOTE",
-	"A/WiIfHtNRWqgWRFotKEeMDyAkS+pVmhp780b7chS9epLsctWjQIRCMIB5iq4i8eYXeloSKFHElWRLUO",
-	"TiNHPOaRSr5TlpQPQj9XH7clnrS0CJLe/aoAUrJRDV3SWm3IXBX0HYNKejXLsFn0m9bo7+kJqxybOSN1",
-	"ldHRjMYfe6tKYZcNci8pfVpOFUr2tip3qDWqZ17V4dyhpYRb3nmCTRZo8Goi/1lGoaoR/JF6Fi317u1b",
-	"JHOT0JAyNONpIRx6KPXWUNL77ETpsFCu3zdFghBOwJfeTuTHXD3OFLhqTX74azjblmDpVl5D2eMMvrev",
-	"VjDbtZsK77k8IjFZqtzkNRqpDWW0j/bud6rXwRn1bKfI16E/RSEND84e7u6v71QxKkd7cDg6RFwCpqIU",
-	"+yjAUzQAlLxNrrt9eKtsSncLjg0pGxDPg/CMBgEOPb7gz+/a1yXbEEonwBjxoK4ut5If+GJzL1zr3Ka+",
-	"N9t2RZlVHrWnPz9VJWo2cl6LsFadoCq/rrY5wPmXCFyZ7a37AghkRr5Hx0hbcipbojG5f55Az+y6qzz2",
-	"pSx8BWtQhOvGkoLuJBAmvgCYATuNxTj776dk8o9/u09udlDiTD3NgBkLEen++yQc0tn9uop9QQ5MEO9O",
-	"ZrqgERbwjKfoCP355kw1+WHUlw1+QjhEZzScQCh/zFEE7NdQiWwckcPAO1EeYg/xED9B38Vcuofge7yH",
-	"bn86Q99///2f0MP9GRIkAC5wEPHer6G5CyTCshxLqeoJwYjqi0K0Ycp76OHh4sPk35HuljEkwLhWw4II",
-	"Xy7zTJV5odObixx+T5zjwzeHx4krhiPinDjfq6+0B6mwe2Ria+qfESg20TmLhIYXnnPiSIPvLBnUK1zn",
-	"8oudgrIhR+YqlG+9xpH6Co9vjyo0pghXgfT2+FhLulAkwbso8omr4Dv6bGpIsqsYWrSxkQvSRGEPJqob",
-	"WPbSlk7ysG7/UKLx3fGbpcGibDkbFA+hTA+VG+1KX89M/P3qJ77VzMqRoYhDBljdD5P8H+AQj+CwwKeK",
-	"BvIc+suj3MK0mZOiHpTSmIp8cwuRaaf1rHDdDnCRGLvL3H49lcZA8UqPbzO092bZk9fRHYMR4cqA2UVq",
-	"S6lLAvCn1QNQODrAviT2KYIvhAuugXj7dvVAXITKzkcQehEloUB7uhUjhAS8fXWiETLg1J+oEs60lVFH",
-	"Jrw1lIVwgm71+1T2H301n75VaoGfQWTc2VEHZHdxrUO81222bnXzKsxL7PZujexGBRrSOPQ6kvDPIPLU",
-	"qywYdzxLpzrotjRSXZkW0nC200JrZRETY955FbQhnliT9jOHcKpfqU9csUGVtywlpzmqWcUdmeCS9oRt",
-	"xugHPeD3oO9MHO29CuXKMgnkjjEJZe1pxF95fPv1nqHFFmStAiwE+FEWOm5hzc1EebaV2ivDWzbplo41",
-	"OVhoL+mYi57HEKI45CB6SXQOHW/cv38hFpiUIobg0GQWyUnMZF8ZaLGF8O5WSHjLt9WqQslrttq6kL4e",
-	"YXoL7JKAN8mWWr4jLLKe7Cp9c1etum5hAtU9rC2XIxr60/1KfZR0NG4RV8761fOFxEDvZcWjS9e1WjY0",
-	"G6EP33fQYNN9sl+OmswHvJP0cJyj7wZ2OfqqP3zTh1U+CJhlnYdQv3EZHkozJ+Tu5baww7vZU7Uc1TII",
-	"6GQ3owmbIlyakt0GNFACRNbzHhGOcg3u0R6jz1zdfCLd0QOtr2WGSzdn33BA5hehIaMBwmbtlQbo6SYZ",
-	"Z/kWavG67FZ2aT3DxqqM9JVjXzl2yRx7WuZXlbOfcGulUuTiwKVhCG4Sz7CH7OSNMsn5bjZ8yyN3uWtw",
-	"bBuTrgNJNCCmRsosQeCKUCJgXBobKqyn0oP3XyN6228gyl1HCU1PJL8JmrugT/PCWLUMP/JNXaLVgdJt",
-	"xS/JBJwV0mqhebkt4MCoC5xroUEmSX5Izh6eQCgHRIwOJKQCjyQzOnqJzmN+veoUvmHBqiR3lSvO1/za",
-	"fDLfR4mORR6o1PvQJcDR9V/QXlKui8hQ+ceIJvVDug5XJV9rPv3h+Pu1wWyBWMl5CQ0JR+VNk68jzbsW",
-	"QF2E+WqldHllDX/djwGltUDgobRPou6ZHnNgiHi9LDikytN7KkE+1yxxfXL0inAu7xSkDBFzMqaFR3Kj",
-	"VDfZMgZUkMsZArRcMZmAhwn01r271oNMn/CFdrCc4WndMDnf6c2FLBOPpRFapsZ72Tq5PKiHMFcZl3ph",
-	"yYYeyQ09GOjK5PrgU66Ema9UnpQqsG1CNE+OKIF+p8K3BgNJAJey7CvVCE1lsMwTi4msuK2jmqOvUk58",
-	"O/oqv60NxNzChD5BboM7m5wP3Nibze6knKbCNLX4dHI0Ygo+b4cJaX12oaGATfhwlzhH57r9kNSCQrsP",
-	"nU8BJM0gnL5QMU5lQOVnhkOxvRwwkuCBh/aIB0FE5Sbsv7LDGthBbmuZF9aZXySJtusJN1PB+jLhS0XR",
-	"5jDr3ox50TUSuaprm7WmnspyFdgBJvopKembx+xIo2fFpIia6geN3BUVPxR6A6y59uE+CfLNxlIUPJ5B",
-	"1o6R1JqMA3n+MG9GgN6fNE5bIOacWKw4tCx5upg98XzTrH8kDTn+odxvCH+LIQaOsAxojhkNacyRHkPD",
-	"X8O9kirbP0T32csYfZbxDAYCE+n4Yy6hpsGACxrC+19D2W6CF27cjzl4uo6ulP6pFpByYzdhXn9Y+tZy",
-	"OYhZIMKuC9FunLx8ogU1qwzW9Vkm9xs7azk1ZUYJ4UsvV30Gr7ORrm/PMdSfcIlcSVU4biUEfbwGJZFx",
-	"+Q5kaZaJE+1RbUar8zmVHq/zs7DvA9ufq4omd0ReV0SzLIJZlTGzmRKaajrV8Hi7S6vrT3SkTB98zmvf",
-	"pDUj+XPoslFz5PqYBAcsNv12a7IZMQlu1bBFmKb30qrqzaqr6+oxCZBE31Y4jpthjDlSCCXRBTiKpKGg",
-	"ia+xfN7sxDbK7BS4TdXfJ7ipcUMllndWbq87OMd15d9TSJ9DpK6Amdc5nWWVZkF+9FX+qT3c0X7gcpiq",
-	"RWw77hTbltI0cx12hGIp02pk7mI6hbAKiunVlMptnASO1yMIpau1W0JwUZJK+hLY6KmhRcEmiGqFen1T",
-	"HQ1qyDnxyF5JekMFaLnUZuWnvVBLI9daoLWl0aKrmjmTmbe32roicwbAO42O+qPBgyRMlWR5ayQS2ewz",
-	"pFnIVxIIGcUaIfs7E/I2vKAzDXVKYr5Bz0vzUDXhlkOTDbGULi2nChyy6qDKepP/DTvVZZgbfL9yx4a4",
-	"I2uXlY/Hx6b0DLzkqT5WJKHhg/mC8nbBOW3NRkdRckVvB6Vzk/3m98FcxRuYbZm2yQDE1GXIvIeSttFo",
-	"MFXyK6vW/U4VQsk7WfoZdl/ZcYvYca6E4HQrER3Ocl4Fx2WXFFey1s96yA7F/tWKq1hNPXwN+XdNGUOG",
-	"0hqC/Qq72xjoV4BtJsivcVIT4E+cv9eT2ZWpDtlOt8b9nyvAPzL7Wi2Xj76qvy3i+YvzTbPkVXO0D+Zr",
-	"QbmL0Xy1aZsg0/scVc6bPJCeJhjyrD5A2DTNHa9ewsqTgx2Trlb67e74pdRTe1ywARJakWmwmXOCSsJN",
-	"zgheiXebTgnmis63NxOOTK13sztn7mxfG+e9RAdQ46jeDcyK63fMI1xYSyjXcJRHYrVreOp5uR35XagL",
-	"vZRTz+vgTJYKT3QAC3veq3W9nsNXVftJdJeiUhyxa9coz0NYt+1Q/aK6i3hTzF9fxS+bFG6CcXrtq6Nb",
-	"eZKG1Lek6+LaiL2n6aIniT6naOaVuJoeErozfQXrKO8zHbQ5dPkoh21ZdLj3dabtWBDgAw5yqLSLP9OB",
-	"tsq4OShRd3LKkb/FwKbJDc4n2TXW5eYv2WWNX6vuHImJ1/B2Nz0Dzt7fcHPvSg2fj3RQZfB8pIOd69b7",
-	"mQ70oVBa/NLZxJFMZHTFwbO8YH+v9NKKmtNWtvx6zPitMs2vUkFYRahXu2qTL+OUpo0tvgRrYkWm9TxW",
-	"9ZKp0u4r6m4tmRJ/LcdY6ZJ1TqSyc3Id6FTS5FyWeoE56uV1a8N8LTb5PHa2kpxb0mJrrY5lhY29zm5X",
-	"xlAo97pauCI0tf1LlNwQnt8Aja5KKWwmPl+vF5Ig/S7qhZfHb5tI8Z/zqhtscPsd16+pUFnp3WoMOI2Z",
-	"C81Jy7dm5Jy3W60rub8IZt3NUsnI9B4gCCIxRbq1a+5atf1XP6LtVWpGx7AyZvVf5fvWXqW2GkpbvmIp",
-	"E9lGblFrT+mvd6jNcdF//vKwBro2/buaZG27eyw1+S58m+C65O3rNZZbJXpt19vZha8VCvObAE91s/8B",
-	"IC4YcdX9JmMcIpgAm6Jywch3Cauhf/2//48w8imVHvgzIwJ0FzupU8FD796+RTfXlxdnf+9/ur7v393f",
-	"Xpzdn9/autbdrY4VXi/WfFUKxf7BO3FDuWFR03+tyNfZNUYGPQsry2pJ1KAuGZXCov744yYZtEPnH2bN",
-	"lYVg+vFWnNS9kJOPhNTQHvZ9NKQs+UYpy+yqEf4+KRpLf0HFGNgz4dDYBdnsyzZqLQPaZmpbErzUkLKr",
-	"ANst5WQIUC99zU2VsWnnStQJyvoUVM4vkPc3xWzuwhqDPrRXxON7TUqUoQG4NMjwrON/Taro6Kv5VFvb",
-	"vwxGb1Y0ZpbVFx43s6cHAhN/B3RNsuDF6iJmaFMpmUzp5KLi+43nMxsitpXpoM0c0tQQeXJCk2zWDuqg",
-	"dd+wYmOzDVZwYOaOyaRzJ/O0emOG3zU+36tL3lAAbCT7xwp3jIYEfI+310JHBrTq62NP9YCdU0m5PXtV",
-	"Sg35LRpVdYQ68Km84TOIBdbtJeS1FjweBIRLbulCsSa60O4iQ5NGm7vL8PdAvsVVVbnx5vGuuPGLUnHe",
-	"j09DWAmRzZpaZROrtvl0frtevqFVXM+DuhZ//U2rCzitIf8ddv13yOw6TVhVBd+EvBY34eEkFgFfCBd8",
-	"fbGIs8uHu/vzW3U8dXp3d/Hzp/MPPXRzent/cX9x/Ul/f3l5/Tf5NWXo9Ozs+uHTff/m9vyni/8zf8fv",
-	"guSaVcXJgCDmQp7KJelL5iBuAU189NV8atU7fEMysXm0gal9ymsiaXanTYntQtc5u43XUut+fe/xF0pC",
-	"xxvQgjsTYVuUNJOu5RV0WWX+1fczfzmEuk3W4jr5JAnSmQ3fUUb53ScwrNUmy/VGb7DJGJgcB+ASKVww",
-	"TELRJSrSWGe9hgrrbqLntR77tR77pYaHVEF2VoSdfE0ZkjWD8mlNUOhOhj0lP24VO154EERUQOhOD/4C",
-	"05WZAx/pQCNg3TaARLgtpS1Zt0BMpp5NdefjiMGE0JjngtSKVs1FxauESDJlcuOximaUQHh3fLx6drmS",
-	"E4ajo6TutUQeygTGvhRr0mii3nTXWjqoTRE7EVsr772+H1y3PcfII8MhMMk/kgzQ3sWH86ub6/vzT2d/",
-	"719d3F2d3p/9eX/pFl6W6KPAViLKloykPuczSOVxrGfYCXkQEux31ARafCGs7I29jBbeo1lEaeHW0Y47",
-	"+vqZDmoThNauPGYllDRkUgsowmKcGUCfFXRFyb5FxlCVzN2ZEIlc7GLhkc90MA9JH7k4dMGvTjY4U893",
-	"jbpXblFotPpaACamxQ4S+pr0pZyW8PTcSQALSNhZzZjCH6Vl3PwG7r09fjuXRjmCL+DG8h0HPAK3QcGc",
-	"J4Pv5NhXbVNFIuZ9uti7qv/3kNH/hBAVcPqqaVqVI5JAZg3JW2ik3SakU5TSMVJ03JoV2rRDM6S4nq5o",
-	"K46YrSGFrlMrtddQU/dQk6HZOROQTj2vsFG/myzvpCHPJnKPZki/gexHunXbTmYgaSxsSybSOo6Y5BHS",
-	"/fmn00/3/avzqx/PbyWz3l5fnvcvPv319PLiw1zd44riIHeCVEDw+zSrp9Sla7+zkmzdg25T8uW1cd0y",
-	"wrybbZ91enffP/1wdfFp3lZ07diidRHU1hPxyvXpBmunWuvTWEH5yp5bzJ5JC7kifyat5Gr4tK2W6tR2",
-	"LuW4pXUD255akNcudZuqw5XBiYS+5+5TtxWk+drW7rWD0cbds3mbBDWxoF4bwml7eh8m4HdQNXHYWCT7",
-	"kAzZvTJZV5AJvGqMFiSrUKUSQsO0uriqYraKPDVE/IgEEWXigA8SpyahyzKfi5iFPOGTiMq8jYRR+JFi",
-	"ogBCgSI/1qMYyFZ7AkKk34P2PMJAbTLySQhcZ0m5Mutnin51/oB+cWMuKH9EGibwTn519g/Ru+Pv0cXV",
-	"zfXtff/Dxd3pj5fnH7SNIWeB4dC80zDrGMvzMp8+X8IIu9M7ta4L9cL/NcQ+B1tfP/1cj93Gpkh5+Dak",
-	"AosgVCtAPc7QCPZ3SQU+U/Y09OmzafCjLnvQ2PAIl+dOSexwDR7XDbCDtFdYPmuJSch8eaqD4IsL4HVu",
-	"JnFGwwkwqf0kgzWIFzMz1EiW2IiVHJARiUDKCJ0ZZuXzPaOD//Vf/0yz4pVU+If57x/y5HxEJhDuqx4B",
-	"ETBOuNBz6WyuLPXrEMmzVSOoBlMBHGEGxoxDnBqJJmUgeMgjI+BCnqXLACkDlbVmBJlO5qIMCcyfbLLG",
-	"TAoahG2UNgXkwIbkTRmIVh18GfDYFzssczQEb9YAgaQ4I0F4wjharPwPBOEEfBrB70LcJSSIcLJM7KEx",
-	"ddFeCffv1WQHarLqTM2YSy72KX2Ko+r0AfX4gS8hb8BWVwIBJn5tqss6EynlMvWCqw7+FSJQIE0PWfSk",
-	"9IFcAoIv2BX+FO25mMMBCTmEnEgt8dqkuzk3gNInFEfqXiouNZdCpkGs0a6WqKqagk0SYoyZ75w4Rzgi",
-	"R5M3zrfHb/89AA==",
+	"7H3pchs3uuiroHpOVaSa1mLHmXMi19QtRVYyykiWrhbnzEl0GbAbJGF1NzoAmjLH5ar78zzAfYnzWvMk",
+	"t7D1RvTKTTL1yzIJYvnw7Rs+Ox4JYxKhiDPn6LMTQwpDxBGV//sBRz6OxtdoJP6HI+fIiSGfOK4TwRA5",
+	"R85QDXBch6I/EkyR7xxxmiDXYd4EhVD8jM9iMZRxKkZ++eI6J0HCOKJ6Wh8xj+KYYyLm198BsQAgFCQJ",
+	"9vcd17a4p4Z2XTyhjND5hS9j+EeCwAOaMcSBJ0eBESUhgCCmaIpJwkCAGQcUsZhEDKXb+iNBdJbbl1qh",
+	"fhs/UZLEVgjIb+S5xfnFnBXnH4uBHU9/5qMwJhxF3mzv72iWXusEQR/RbO7yuPysIfx0jqIxnzhHr17/",
+	"h+uEOEr/71rWPMch5ulKJWAF8sv89D4awSTgztF3h65YC4dJ6By9PjyUK6n/ZevgiKMxonKhK0o+Io9b",
+	"oaq/AyxIxg14FauhHSF7TQJUTSiUBKh2QhSJc/3qxAHkI0LDPeiHOHLc3AeJjzmhzr0NxtdJ7epJw+pi",
+	"AcidI0eAxbEtcAvZw3s5m3UFDtnDoiugCEb8JkjG87envmtzeVyO7Hh3dyzlRpYpE4bogmf7gCjDJDrz",
+	"K5aYqu8XXOUXQh9GAXmsXOZRD1honS9msBQRx4zhcRSiSFJ4TEmMKMdIfqcZ9AD7LeZ1HY8iyJE/gLww",
+	"3Icc7XEcIttvNLOQy/0bFVfo/OkgE2kHeqcH2TbfmV+Ic5CEeihPfiGMEhg4rgMTTiyk5moEa3umJPY7",
+	"nulL/m5+zcMwv3a69xwIChAsLJ2dgwwla/viOhaIzF0gDALyiPxBDCnHghTlp5ijkFkIKV0EUgpnudsZ",
+	"QM8jScQHMUUj/MlOgzUbPMfMgl3pNtI/2iGAbaMR+sQHXqoZREkQwGGADHHUX5Favx7GV4nlBIsgrw1i",
+	"JxPkPVwjlgSWxQIopfmgcHWp9DQswnKpjEOesDyREMHqRxAHzn0TbOSs6Rxufhc2gJ0EEIdCltmYCcSh",
+	"dYN9+AaKxP36ufmGhAQIRuJLqVhVUHgDarhOS8YQQu5NBlMYJHaoC4WhI7WtmjO5qZiyIFCZJsrsSl1f",
+	"8dzmlNl1uDlJ2IWZpXhzIn9Ugz0x5BzRyDly/s+vcO+fx3v/NbjXfxzufT/YPzrYu/986L56/e9f/m2p",
+	"iNOEATmt+rtXrxu0aht+GOpUUE/1R/1fAQzIpVlitIA9mPAJUaoNQ5B6E6nnTDF6lH9UK5xyd2dq4Vdl",
+	"RJwTYNUXX3uVy+D66WRrZPrpmncSZ+ePsDre83SRogvvMCPtwFU2/7yqEuNBbglz7unh/uH+m+8cV//1",
+	"xrrxIWRokNDALl7gYJhEfoAGMaoQQDCGQxxgsZdO/NQLMIr4wEOUDygaNWHzDfIokuat+C2JGPISjqdo",
+	"IGRxQlGFZO+lV2MWB3A2qNQKWjI57KOIYz4bhMQvKNoM0SmW+isOY0QZiQSt2C4ngIwPEKWKSu1fs1nk",
+	"dTpf5bn0vgbS6KtShwongZ64A6mIjyn0pRRLIoqgN5HEKoGpKN52PE4eUNT59pcsvQWBMyxxeFY4m9Q8",
+	"5ZFgEAwU22DNap9iV0r3K6BSjtbcAs2WUaV0E3k4FTZrLqS/5iAZivZ0Lt8EMr//g3T84fqM5+xs1o2Z",
+	"UfoE3TSilrvXLre2h2VBQkNjVVo3tQbtNrdnt2imF7dng7Nrw6siqIuoswwVOY/oy1Gu8jPO43AHjSk/",
+	"0V3MEOXPlxLXQFXN+N8el2swt+auquyspalhRf/vhPOYgbvrc0BGQG6SIsb9t2CKOEc+gGOII8YBnyBw",
+	"c3P9I/AxDEBMAuzN9h23l1K3gG7WQntaWC0yc5cM2sO97+/1v3v3n1+5f3ltt2Mb9Zx+esly1Yi1aBA1",
+	"WL5ELrlWA1SueJOEIaSzqmDK3gh6OBoDYdm9BR6JuCAhEBFgIk7iwxEeJxSKH4IdA3cXpJB0QUpIAFIE",
+	"IjRFFFDEExohH3AC9F3v7jtuCYyLue4bSWxMERuITzty+5ZcvnLdiPhowDLYQ9+XUgAGV4Xjz6vgcxfZ",
+	"V9IpLj4vAlZlxLRX/o2ubtN62iDzEglSz7i42nKLGK9yupfE4byUp5TQgaeFgMW2rffZkwe7frAqxCmB",
+	"hjzUwaXK/bVRT80TF+qrksoZuMtJLxyHmHHsCWbvJZQKfFP8Pac3rcxPUOfqe4fhOCJibxZ3fhXFeCRI",
+	"wgoXB4r8k/qvz3GE7F+OMAp864r2gKbrBJVzhYgxOK5yP00RLQH37P2Pl47r/HJ8/f7s/U+O65xeX19e",
+	"O65zdXl+dvKPwYezy/Pj27PL947r3Jye3F2f3eY/tOJZGviuv580yOwZjUpvLzuF7epOjbeueGvI/rG5",
+	"zCJq3nAhbkAIvQmO0B5F0JcfyEmA+M2+3friEAdFvldcrvoqKYKsDd9TM6TjbRAoc9a6OxdTI2acH/VL",
+	"63uoBn5pvAK5bYcyzcxyGb38SLmL6+8rrvbJVqdpYD/eSJbGQrFQoxvlwJbL5+jn3pHXWWWVN12QzZY8",
+	"3vsvY06mf4L9gYyO2o1Km/FWudVlaHJyojUaVnK9CxQOET32/fndC6ndDuVKS5ofNiy6NJip6dgEbwh6",
+	"cuWlsJ5OEfcefKT3laYby+bI0XjuqJWgqtKf2xLzAhyrTi37G4IBn9ykSUHFzVmThRrVQP0r23JnYUwo",
+	"vxmK7IFrJShtuU3RONHi1aw7hGwiQD6xK0AShM3yNp05/UnzJlV2uOXiUoW2PbnmlGCbr0Kui/zCdI1W",
+	"XiWC1HusqzzVFCm0zn+bgYaiR4o5Rxbj40b+DR4xnwDhaAA+pkj6IYBQngFFcQA95IPhDHzzJ/CrlzBO",
+	"2D0wpz4CvyWHh996hOIxjmAg/4e+sVI+9xGtiuf6JLE70UVOBI7GAx/TZkzJwJA/dO6O3AIC2NDoZzLc",
+	"SBKt+c1w1moJFPkdF0CfZKYCiQYsRp4+ShEZ2AS+/u4vR+pGJ+iT/AMBH48R48LrL1z7OAwTZRacmhlv",
+	"YuTZl8S87FjJG3via2GzwsA+oCW4ZfYBRcJ4xkFHqFTTYbdoqMG8Ac344xxuKVgPFDzbgt+p5JyDPMut",
+	"iM9+JMPyEXDE//LG6ldQP0n9kjaPJe2K13Nezpu7Hy7Obm+VFf2/707vTt85rnN9914b1ieXF1fnp7fy",
+	"0x+Pz87lHyfH709OxZ/3VUsMKg1H12HJMMS8687XYL7AAPvSsW8lR8WbP6SDAJ9ADqCvzgL4BDPwkQwd",
+	"t3l3CxhK1SH2HMtynZJzeY4eytg/j8R9ra6fyXAZSrlg/OtTxH8mwxuJlfPbhnTcLzjevpDPIk6mLeIk",
+	"czvIzmP4aLkubRX6TfGM1/oroDEN7Jg0SiHn9s3XDLAJjNHuvmPZfaaJFq9iSPxZRVCgm7JbrdHKJe4r",
+	"92TczMUzv0slclYXGcwA44QiH6iRR6CDPFm9apYvFDV3aTv2hUVpD1ODtT05Z0au9r+XicZEWAc9svxj",
+	"iiMPxzBo2sVVOjCnUvQ5ji6dbDxVb1s5O1LeWC4ByS1chf36Kj0zTzkxemGvUV02vYJJlSvh2RQRNB1w",
+	"eQ6lHhT5JN3TvbEqr3+VMczuwWrUkrI7WoaytBHnZZH5zZ2g0pTrg066AnohpKm5VDl/qjRXU9aV0ZaW",
+	"cWnpZNfII9RfIOuiPNO8Dss5xcOE2xQ2aWXup1OACCWcwgBkv7HqaJXXK+oOFqnu1ZeQ23J+TuvxtVQU",
+	"7QYqk9Z7VUSGENvTKjBjSUU6gsCeRbsXSBtZHs+2whKko95/to5r2jE0uOGv8qpWEcLV0JKO/44kXwPh",
+	"Bxz5eQjrXEaTUnLfKY7qkc7pcNV3U6bYeSjLvdsBS8ykzyD6jDjH0dju3q5k1tUZdkJHwtOKaqA1RKKL",
+	"/L8UhNYulPTMfR0j+oYXDUgv5TJKQMifv2brS5F6lJhZ16SnFGy17mq/NhMz9q3/r0yv3Adav7fqtv0U",
+	"+dLO7TUg69z5ii2zOat6Odywa+xgrQDtE4Bfp+1T8DcvyfiZu+clMpaNmEJWd9DceRbGw43YSQUE0IIi",
+	"bzs1kvPSkzZqBV695J8bfo2gP6vK3PBE85gOWfS5XjO2y7E3jSlUF8ApxAoj2yaIuGaX99bTKfq8klVf",
+	"lbkiqihs7k4cweeYgOZ+cSLw883le+XABzsMIeATjx2oX+5lUbT90Lf799trZ3pnbc5WlWKCRiOVQVHZ",
+	"AG9PGgHgp9NbBmDAiC7WkeF1hengX//9P0ATAkgnnC+my3aXgXTx07u1yUc5q3cpbNRiTPf3TKiY6V0c",
+	"EOj3TFVynXjGJySyUMSyc5YKEV5Uud9O8b2K8B6mJO0Q1z/M1xJyrjODYeC4zkdWAcf6hKVKKLsOIyP+",
+	"CCmyyamq1O+l3E0VuQ8D4j0c2ze7/GyzxXNHUm5ylXIMS433ORpDb6ay6VRmnb3KSQ6+maAgEM0pmX1Q",
+	"HYhGOOCIIv80mh6r4vAuGogNRzkhge71yBbDdilZbEcqp2rKcenlZAcuYkBpa/NXYUXDtIbIEvkeIYoi",
+	"D4kaTwiYHAlkdyewoySk/IgJufhW14UKGSOHzBeDPqCZvTpJwE6J4Ac0Azhi2EdyohEO7BUgsuVlRVrV",
+	"FPuI5hmImKVZ/Uh/qWe3AUtV1S7HiFvUZUViFA0hkaVqLIbeSh1bEjgCrbBsBJ36uVjCYpkqKPW+AHH1",
+	"vfzzqXi/lubvUrdf5e4yF9XQ063VhfSq9+/oAlOnWYaGpWZao3WqFqwyw3r6FSt9uRmO37urSrgXzYnP",
+	"CXlYTs1MNluV8dYa1HNTdYiStORwy4t+2HiB2l5NnCLLf5QVjT8Q3yKl3rx+DUQmFRgRCubsQgAjH6S2",
+	"JTCd2o6kDIvE+QNd0oiiKQqEbRYHCZNfZwJcNp7f/y2ab6KwdC2voUhzDt5Pr7Ixu7WrClu/PMKoLFVG",
+	"/RqV1Iai33t7rz7ZmeGE+LaY92UUzEBEor2Tu5vbyxtZOsvADtof7wMmNiZ9KrsghDMwRMDMJs7d3hlX",
+	"VqW7ufJGhA6x76PohIQhjHy24M9v2ldR2wBKpohS7KO6KuJKemCLrb1wZXabauTs2iVmVlnUvvr7oSqt",
+	"tJHyWjjh6hhVebraVgann2Lkidx01cWAAz3yLTgESpOTuR2NpQh93FLz566y2Jdy8JWcwTweUGnBHK8/",
+	"Jh+IW+NXyTDAbIL8wisKnZvjNpXbnLXbU8/AvvKtnnVK+DvuZwZ1RY9c2cVZrurizJ+3k9og0IdsJwvj",
+	"UWs8mRUTxbNdRYkMV1prvGKDWDVbakQrRbMf6potxciz7k188TfBY1vZ2T6FI+7kdi2N6ZgiD/JmA6RF",
+	"CdZj4fmQboEzOSQ3QQr4nI1dAFTu9HVoJQWqlwjJdiN+r/2eCFJEjxM+yf73o9nvz7/cmtWkmiW/zQ4w",
+	"4TxWr5jgaETm5chFEnC8p0MhNyJfEIwhR49wBg7A365OZKs0SgLRJi1C++CERFMUiR8zECP6WyRVSRjj",
+	"/dA/kp4rF7AIPqCBB5lwW6HAZy64/vEEfPvtt9+Du9sTIHCNcRjGzP0t0i9QxVAUtUoTYoohIOp5KmUw",
+	"Mxfc3Z29m/47UD2HRhhRpswDjrlAVudEFsuC46uzHHyPnMP9V/uHxkUEY+wcOd/Kj5RnS0L3QPv85X/G",
+	"SNKGyvzWzNcRhuiJGeQWHg371S7ZsiEH+gGuL27jSPVw1Jd76bKXAlVu6fXhodLAIm6CCnEcYE/u7+Cj",
+	"rsTLHrRp0QxMHEghhT3IId/92kkb44mUh919AcY3h6+WthdpY9p2cReJJHtx0ZLU9cLfrn7ha0XhDGiM",
+	"2KcIylfJzP9DGMEx2i/QqcSBPIX+ei+uMG2JJ7EHpDgm44fMgmTKmXZSeOQNMW6M8GVev1pKQaD4MNKX",
+	"Odx7tezF6/COojFm0rDaRmxLsUts4PvVb6AQ0oSBQPYZQJ8w40xt4vXr1W/iLJL+B4AiPyY44mBHNbRF",
+	"EUb+roy0RhQxEkxlIXzaEK4jEV5rzALQgFv+PuX9B5/1X18qpcBPiGfU2VEGZC9AroO91122ahj2wsxL",
+	"5PZmjeRGOBiRJPI7ovBPiOexV2ow3mQeT1UwYGmoujIppPbZTgqtlUS0Obr1ImhDNLEm6actM9n1OcAe",
+	"36DIW5aQUxTVLOIOtNNbeehsyug7NeBrkHfqJP5bGWISxWbAm0AciQr+mL3Q+NOXexoXW6C1dPxixA6y",
+	"kFYLbW7O+/xUsb3S7W7jbulYnckKdkzfcfA4QRFIIoa4a6IG4HDj9v0z0cAEF9EIB6bzQDY+k13lcLUg",
+	"3s0KEW/5ulpViGvNWlsX1FcjdIeWbWLwOmVd8XcAefayhUyC31atrpubQPZgbEvlgETBbLdSHpm+8C38",
+	"ytmrH2whNuA+L3906dFry4VmI1RS0BYqbOq1gecjJvMOb1NkA3P43UAuB5/VH19UsCpAHM2Tzl2kZlyG",
+	"hdJMCSrL8kakkVrI4c18VC2HtRSFZLqd3oRNIS5J0W4DEshsIns5BGAGcs+EgB1KHpl8P0qYo3tKXovM",
+	"u27GvqaAzC4CI0pCAPXZKxXQ400SzvI11IzUrpKWemk9wSayGP+FYl8odskUe1ymV1lLZKi1UigyvueR",
+	"KEKe8WfYXXbiXS4T382GP3HPXe4xMdvFpOcAAgyAypEiexkxiSgxokwoG9KtJxNvdl88ek9fQRS3DgxO",
+	"TwW9cZJ75lTRwkQ+vHAQ6OpuqwGlHmc4x1PkrBBXC09A2BwOlHiIMcU08NTkh+T04SmKxICYkqHYKYdj",
+	"QYyOOqJznz+vjMI3HFg2NljlifOdE2w2WRAAI2OBj2RJUORhxMDl38GOaXoA8Ejax4CYukbVzUAWhSg6",
+	"/e7w27Xt2bJjyefFbnA0Ll+amA4331qI6jzMFyvFywur++t2gkBao4h8kHabVS9PJAxRgH03cw7JJh+u",
+	"LNzJtZxdHx+9wIyJl1kJBVhHxhTzMO/ydeMtEwQKfDkDgOIrOhNw3+zeeneXapB+bWGhGyxneFovTKx3",
+	"fHUmmm0kQgktY+OtaEBfHuQCyGTGpTqYudADcaF7Q9Xfod75lGsEwVbKT0p9LGxMNI+OwOx+q9y3GgLG",
+	"gUto9pFsJykzWPr4YmIrbOuw5uCz4BNfDj6LT2sdMddoSh5Q7oI7q5x3TOubzeakWKZCNbXYdGI0oHJ/",
+	"/hYj0vr0Qo0Bm7DhzmEOz1UTNyEFuTIfOkcBBM4AmE4oCafSofIThRF/uhQwFttDPtjBPgpjIi5h94Uc",
+	"1kAO4lrLtLDO/CKBtF0j3FQ668uILwSFWdZUvRxMX8EgnsBXdQqwKZK6USfqpGKoBf/cU6NSr6ftY5Lu",
+	"U7VVUTuRl/GtjWROoDeRD3uIYSCJvAmMxmhe7BbAZo6Zqmb5tcBOUqQBHTBsEx281WOeddFJrr2G7bLk",
+	"t6L+B20BV/rR1G730eNSd2Qxy6SmnEQBd0XVJIUmMGsuJrk1XtN555Tcj6+BtWUotSZtSwR0+qZYqPtJ",
+	"Hd8FZM6xxYoocMl1AOkDy/dy/N10Xvpd+jNQ9EeCEsQAFB7iCSURSRhQY0j0W7RT0g1298FtNhklj8JB",
+	"RBGHWHhSIBO7JuGQcRKht79Foq+QCguohl8UJQz5qjCxlE8rD5BSYzdmXh99fm15s0ofEEDPQ/F2hLLe",
+	"k4LeIi2A9al6txsLXh3rui2D+MJtIP9GfmerRz3qprHfUIk4SZV6txKEPlyDkMiofAvSXsvICXaIsktk",
+	"wFPWG6iENxgEiO72KkvK5RzUVSUtC2FWpcxspiapGk/VfvztxdX1Z44SqiLJffWbtAgnH9gvKzUHXgBx",
+	"uEcT3Qa+Jj0U4vBaDluEaNzn1qZAn7q6UQHEIRDgexKG42YIo0dOpkC6EMaxUBQU8jX2I9A38RR5drq5",
+	"TTU0MLCpMUMFlLeWb6/b28lUKeVDRB4jIF8m62uczpNKMyM/+Cz+qY2WKTtwOUTVIliQdAoWCG6amQ5b",
+	"grGEKjHSuzpRAqwCY9ya2sONo8DhehihMLW2iwkuilKm0YMNnxp6PmwCqVYo1zfVIqIGnY1F9oLSG6ro",
+	"y+WKSzvtmWoauV4NrTWNFm3qdEymb7O6dXnm9AZvFDjqQ4N7xk1l0uYVELHo6hyRzOUrEASPEwWQ3a1x",
+	"eWtaUKmbKscz3/HouVmoCnHLrskGX0qXHl4FClm1U2W91RSanOpS9jW8X6hjQ9SR9R/L++MTXcuHfPOt",
+	"CiviSNNBP6e8nXHOWpPRQWxeju8gdK6y33wdxJUeqDJ12QwAVL7Rz1xg3gcAw5nkX1n58zeyskw8vjXI",
+	"oPtCjk+IHHtlWKdXCchonvIqKC57O7+StH5SQ7bI9y9PXEVq8ssXl3/XlDGgMa3B2S+h+xQd/XJjm3Hy",
+	"K5jUOPiN8fcSmV2Z6BD9iWvM/14O/rG+12q+fPBZ/tvCn7843TRzXrlGe2e+YpTb6M2Xl7YJNL3NYWXf",
+	"5IE0mqDRszqAsGmcO1w9hxWRgy3jrlb87W74pdhTGy7YAAqtSDXYTJygEnFNjOAFeZ9SlKCXd769mnCg",
+	"i+ebzbkLPXBdlPccDUAFo3ozMOtWsGUW4cJSQpqG4zwQq03DY9/P3chXIS7UUY59v4MxWSo8UQ4s6Psv",
+	"2vV6gq+ymBartk8lP2LXNly+D6DqgyIbcHVn8bo7Qn1bBNH1cROE47YvN29lSWpUfyJtLNeG7K7CC1cg",
+	"fU7Q9OW4Ch8M3ulGjXWY95EM2wRdfhbDnph32J2rqSZhCPcYEkOFXvyRDJVWxnSgRD6+LEb+kSA6M+9w",
+	"HpXeUrS+Evy56hGXBPsNs3tpDDibv+kZyFUqPj+TYZXC8zMZbl37449kqIJCafFLZxVHEJGWFXuP2Edg",
+	"pzRpRc1pK11+PWr8k1LNL1JGWIWoF9uqky8jStNGF1+CNrEi1bqPVr1krLTbiqr9TSbEX8oxVnpklRMp",
+	"9ZxcSz+ZNNlLUy8QRz2/bq2Yr0Un76NnS875RHqWrdWwrNCx19k+TCsK5eZhC1eEprp/CZMb3PMbwNFV",
+	"CYXN+Ofr5YJx0m+jXHh+9LaJFP+ebwdBDdtvmJqmQmSlj9VRxEhCPdSctHytR/Z8Lmxdyf3FbdY91WVG",
+	"pg8roTDmM6A6u+Xeqdt9sSPavk2nZQwtQ1b9K23f2rfpVoNpyxcsZSTbyLN07TH95VE63Xuz72tsDXit",
+	"+3c18dp2D4Mq9F34ecZ18duXd0GfFOu1vRdoZ77WXejfhHCmXk8YIsA4xZ58MGYCI4CmiM5AuWDkG0Nq",
+	"4F//9/8BCAJChAX+SDFHqoudkKnIB29evwZXl+dnJ/8YvL+8HdzcXp+d3J5e27rW3ayOFF5eKn0RCsWG",
+	"zFvx5LsmUd1/rUjX2btQGjwLC8tqTtQgLikRzKI+/HFlBm1R/EOfubIQTH39JCJ1zyTyYVAN7MAgACNC",
+	"zSdSWGZvt7C3pmgs/QXhE0QfMUONXZD1vTxFqaW3tpnaFgOXGlT25Ma2SzhpBFRHX3NTZajbuWIZQVmf",
+	"gMrZBeJBrIT2LqzR4AM7RTi+VahEKBgij4QZnJX/r0kUHXzWf9XW9i+D0JsFjV5l9YXHzeTpIw5xsAWy",
+	"xhx4sbqIOdyUQiYTOjmv+G5jfGZDyLYyGbSZIE0NkpsIjbmsLZRB636yxkZmG6zggNSb4GnnTuZp9cYc",
+	"vSt4vlXPs4SIjhGQNA5GGAU+ay+FDvTWqt/jPVYDtk4k5e7sRSg15LcoUNUh6jAg4snUMOFQtZcQz1qw",
+	"ZBhiJqilC8Zq70K7lyF1Gm3uccivAX2Lp6oy4/XX22LGL4rFeTs+dWEZJJtXtcoqVm3z6fx1PX9Fq3ie",
+	"u5ghytfftLoA0xr032LTf4vUrmNDqtL5xsU7w4aGjS8CfcKMs/X5Ik7O725uT69leOr45ubsp/en71xw",
+	"dXx9e3Z7dvlefX5+fvmL+JhQcHxycnn3/nZwdX3649l/9u/4XeBc86LYDAgTxkVUzqQv6UDcApL44LP+",
+	"q1Xv8A3xxObRek/tU14Np9meNiW2F3J7dhuvxdbd+t7jzxSFDjcgBbfGw7Yoapqu5RV4WaX+1fczfz6I",
+	"+pS0xXXSiXHS6QvfUkL56hMY1qqT5XqjN+hkFOkcB8QEUBinEEe8i1eksc56DRXW3VjPSz32Sz32c3UP",
+	"yYLsrAjbfEwoEDWD4tsap9CNcHsKenxS5HjmozAmHEXebO/vaLYydeBnMlQAWLcOIABuS2kz5+aAitSz",
+	"mep8HFM0xSRhOSe1xFX9UPEqdySI0rx4LL0ZpS28OTxcPblciAWj8YGpey2hh1SBYSDYmlCaiD/btpYO",
+	"8lL4VvjWynev3gdXbc8h8PFohKigH4EGYOfs3enF1eXt6fuTfwwuzm4ujm9P/ra7dA0vS/SR25YsypaM",
+	"JP/OZ5CKcKyvyQn4KMIw6CgJFPsCUOobOxkuvAXzgFLMraMed/D5IxnWJgitXXjMcyihyKQaUAz5JFOA",
+	"PsrdFTn7E1KGqnju1rhIxGEXc498JMM+KH3gwchDQXWywYn8ftuwe+UahQJroBigUS22ENHXJC/Fspil",
+	"cSeOaIijzmJGF/5IKePlL3Dn9eHrXhLlAH1CXiLm2GMx8hoEzKkZfCPGvkibKhTR86li76r+3yNK/oki",
+	"UIDpi6RpVY6IQ5E1JF6hEXobF0ZRisdA4nFrUmjTDk2j4nq6oq3YY7aGFLpOrdReXE3dXU0aZ3smIB37",
+	"fuGivposb9OQZxO5R3Oo34D2Y9W6bSszkBQUnkom0jpCTCKEdHv6/vj97eDi9OKH02tBrNeX56eDs/cf",
+	"js/P3vXqHldkB7kIUgHAb9OsnlKXrt3OQrJ1D7pN8ZeXxnXLcPNutn3W8c3t4Pjdxdn7vq3o2pFF6yKo",
+	"J4/EK5enG6ydai1PE7nLF/J8wuRpWsgV6dO0kquh07ZSqlPbuZTiltYN7OnUgrx0qdtUHa5wThj87t2n",
+	"7kmg5ktbu5cORhs3z/o2CWoiQXU2ANP29AGaoqCDqEmixiLZOzNk+8pkPY6n6EVitEBZCSqZEBql1cVV",
+	"FbNV6Kl2xPKYWEp44ETQtSAM9TEYzjhS9bYU8YRGDGDOAJvA19/9Bfh4jBh3weMEexPwSOjDKCCPgEP2",
+	"wABFMrFDKHIM/K6m26do9Lutyd5dHBDoq3yLp9ihSO1M7XKF8iimAiwcq18r8FoSTF2H4X+i3Bc44mis",
+	"3wVojCjJS/b15cmrFbNtk9wymFrobvR6DTbRFaJ7aTevfF4RFZQdiLgLQJ88hPzO7R7krQJo6FZk/gWQ",
+	"I5qjw53Sud/KZffkstVpRmpCdoDDmFC+x4bGE2JnIdeaTWjhGhOR7GWkKzuQkjdEEQdxkKhRFIn+nBxF",
+	"Zu87PqZISgYQ4AgxlVrpiVTBGfjN+RP41UsYJ+weqD0h/+g3Z3cfvDn8FpxdXF1e3w7end0c/3B++k4Z",
+	"JmIVNBrpObWEn0ARZA/I4zkaQ292I891Jif86wgGDNn4lPpejX2KfCq/vw3pzcUtVGvNapzGERhsMf+R",
+	"L8QoaPiYiWC1/1WwpBMSTREVKrMgsAb2oldGNZwl0Wwlt8kYx0jwCJVOaqXzHa24/+u//yctpZFc4Xf9",
+	"v99Fus0YT1G0K6VhjCjDjKu1lODP8kX3we2cckSRtv0AI5qjCR6YyVgPRiKqknJiychUBiihUl2y8Rq9",
+	"KHrqWpHZ54b4TXkTrdp+U8SSgG+9zvNqDTsQGKc5CDOEo9jKnwGKpigg8dehgRkUzJQw6IMJ8XrqXQkT",
+	"VBwQ8pDE1TlH8us7toRkI1sxGgohDmrz49aZfS2OqQ5clS0kAQFCoXqISkkpD8QRAPoEPR7MwI4HGdrD",
+	"EUMRw0JKvHT2b04oIuQBJLF8zI4JySWBqQGrpWvLUIwhhPokul/SUStA6Tj1sa0vybNo1heAgDkKWdPN",
+	"GoA4mXkPKYWzdvZ+Cs5NonrnDLYUSmCHyGlhAP6Xvry/5upoG/tnpcDbkAJV8unk4WRx7CgstXxh8LYF",
+	"uub59a85hJdz31sxZn3pbxkuWyoN5IX5ma6y1fpZrwZOZpo5pQOQKB/waOTQB5/Nn7VZXLp741KIrDl0",
+	"YZY581umZR33652a9aR8zLHeqgSBJ3H4w7VQqDB+S9T5Zn3P6eZW7l51lr/JimyuK/Hxpm5zo9JFv3RV",
+	"kC444n9547gtYwzrM/jr8NM04inh6DoeLuAwQObFsI4IeurjTOEBIeLQhxwqxSfEjGPPTNyFbR/o37RT",
+	"tj+Ywc+HiRVxP3/aTlq1Pnk/5dqArY+Ka3YMdiL0iBgHI0wZLyi0FlcKVo7JFF184iUyoLKTh9YMhoGs",
+	"Vi9B0AVvwAX+AYTw0+4+kC7VnBOEcRQz8GrvzVtRmk/hiIvltHNTulijRKbK/lVM8OdXrnBtkgh7MJDF",
+	"VCqaqILDE8gm+/KhtZur0xOTvg48SClGDIgyvD3o+xQxESFS5dPM5gctqvHmtp4Fdy6jj+uU78g6PtXk",
+	"N6KZp/RQraAr1MiY3ZqKI0TdI5gWH2lBPtjRyPPrvawR028DIjHLbl89unBCUYAZAgj+cXxxfiC75hui",
+	"68OOraEOu+u/dCUS/14Qf3FZIXGjKCmKAzzi2xWlEDEGx/bvBEuzHWZOjJQFjetIlMj9dkhIgGDUUgaV",
+	"4xpvFfILgsAMqERdGfKSy3RNPUqU4ThKgsAaetsxUuM/dqWMIAk3MTRz/q4U8ln/VdvGZHMSoXm03tO6",
+	"TLWMZfcgtHkLz7A9KfExZyUp38v8MnPuHMsOEkdgTlsxCWaCy1ZnPSsN/5ncvfFBTxD0ZWWQdkL/597p",
+	"p1i+RLuXncDij640wb4m1rygTmJMPimx19+FNGswQChg0ghE+m57WoNZ/UtBCfmGKRV7583h9+DD6fWN",
+	"6Dh6dnFxdysynQoPQS7CcQ98FFPk1aon78yQZ8uCLa7C9FAbaGWLmYzOxckwwGyCujdE11sHMJsj47ip",
+	"M0R/tyiGBHBGFGtuwaHP1eCnjBnL4aMt+OKbiozrfrmeyMdcZnkKAIMdxSxkAlMZBdiiN65nbMjNSvVA",
+	"ldsJgZdQ2dpPNYEsp1LJHFVlq6mp9sSZZdwesgewE+omkoqpEpkIqnXRVPdks8ibUBKRhAWz3X1wGQGW",
+	"eB5iOlNMk4B5bTNj1gJOeTfKN0ymyzI+SKE30L8eYF96QYQaw0ko1KBgZnNUXKlfvuilbcT2VRlJN8Z1",
+	"YV51WPMzs4QKU2lPIrwaAnwMxxFhHHtMOzg6cgcN2VR/mOP/b+dsuT+bxceQL6xAiMOIn0H28KU6a9yW",
+	"V23Q5hayhyXkWK9WsW/aCGQP72GIXlK951K930rOm7qXBQ2GxMcjvM7A+1kx4VrmNZVSh1eR7tyLiGQ7",
+	"afS4l7VyrpbEPyQ48JX0s7WNc8EjhXGMaJqjGPkgQgmnMACmuzZjRjyLaZQ0hpyjMOZ/lT7/IEBUlHWl",
+	"mZS7++DKpE1HhIvsO1d1ns4+sIpMdbIC4WeH/FqIf3l+y/xVWpRQV/QzvClgydwIff+tHJUWF3yGHxor",
+	"1yc3jwudl1GPGkp/j0TBDLC5Q0hkJ5FB9lRi6gr85ZFyd9+/wKUXSpivjUy1pNYB33fpb2wueE5I8CEX",
+	"Q4a+j1Xe4VVh5Tm3/xyFVTrz9VfpXbdJ5evu/TfOd93/f0cjoitxe7en99/m+CdRSjLfmNT+BWklW6ZT",
+	"1sKH3M++UnOrlOxQhFOK/g2Bpm74xFyQT0zo6qQomfsMUOQR6iMfwDHEEePqoc1p3kZkiE7NvSU0cI6c",
+	"Axjjg+kr58v9l/8/AA==",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

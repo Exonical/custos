@@ -108,6 +108,14 @@ type cacheEntry struct {
 	expires time.Time
 }
 
+// InputHash fingerprints the run-relevant input context — language,
+// resources, environment, software and the cluster snapshot — so a
+// persisted ScriptValidation can be matched against the exact context
+// that produced it (policy participates separately via PolicyVersion).
+func InputHash(in validation.Input) uint64 {
+	return configHash(in)
+}
+
 func configHash(in validation.Input) uint64 {
 	// Canonical JSON: encoding/json sorts map keys.
 	b, _ := json.Marshal(struct {
@@ -262,6 +270,7 @@ func (p *Pipeline) Run(ctx context.Context, tenantID uuid.UUID,
 		Diagnostics:       diags,
 		ToolVersions:      tools,
 		PolicyVersion:     req.PolicyVersion,
+		InputHash:         configHash(req.In),
 		ValidatedAt:       now,
 		ExpiresAt:         now.Add(p.ttl()),
 	}

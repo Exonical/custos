@@ -160,14 +160,25 @@ PUT    /api/v1/clusters/{cluster}/policies/validation          platform admin; o
 GET    /api/v1/tenants/{tenant}/projects/{project}/policies/resource   policy.read; includes `effective` (tenant ∩ project)
 PUT    /api/v1/tenants/{tenant}/projects/{project}/policies/resource   policy.manage at tenant level
 ...    /api/v1/tenants/{tenant}/secret-references
-...    /api/v1/tenants/{tenant}/workflows
-...    /api/v1/tenants/{tenant}/workflows/{workflow}/versions
-POST   /api/v1/tenants/{tenant}/workflows/{workflow}/versions/validate
-POST   /api/v1/tenants/{tenant}/workflows/{workflow}/versions/{version}/publish
+GET    /api/v1/schemas/workflow/v1alpha1                       unauthenticated JSON Schema; ETag-cached
+POST   /api/v1/tenants/{tenant}/workflows                      workflow.create on the project
+GET    /api/v1/tenants/{tenant}/workflows                      workflow.read; `?project=<uuid>` filter
+GET    /api/v1/tenants/{tenant}/workflows/{workflow}
+PATCH  /api/v1/tenants/{tenant}/workflows/{workflow}           workflow.create; optimistic `version`
+DELETE /api/v1/tenants/{tenant}/workflows/{workflow}           workflow.create; archives the record
+POST   /api/v1/tenants/{tenant}/workflows/{workflow}/versions  workflow.create; YAML/JSON body (4 MiB); 422 SPEC_INVALID with path-addressed details
+GET    /api/v1/tenants/{tenant}/workflows/{workflow}/versions
+POST   /api/v1/tenants/{tenant}/workflows/{workflow}/versions/validate   workflow.read; full steps 1-8, persists nothing
+GET    /api/v1/tenants/{tenant}/workflows/{workflow}/versions/{version}  `Accept: application/yaml` returns YAML
+PUT    /api/v1/tenants/{tenant}/workflows/{workflow}/versions/{version}  replaces a draft spec; 409 VERSION_IMMUTABLE otherwise
+PUT    /api/v1/tenants/{tenant}/workflows/{workflow}/versions/{version}/layout   editor layout; draft and published only
+POST   /api/v1/tenants/{tenant}/workflows/{workflow}/versions/{version}/publish  workflow.publish; steps 1-8 + current valid ScriptValidation per script task; immutable on success
+POST   /api/v1/tenants/{tenant}/workflows/{workflow}/versions/{version}/deprecate  workflow.publish
 POST   /api/v1/tenants/{tenant}/workflows/{workflow}/versions/{version}/tasks/{task}/validate
 POST   /api/v1/tenants/{tenant}/workflows/{workflow}/versions/{version}/tasks/{task}/import-sbatch
 POST   /api/v1/tenants/{tenant}/workflows/{workflow}/versions/{version}/tasks/{task}/preview-submission
 GET    /api/v1/tenants/{tenant}/workflows/{workflow}/versions/{version}/validations
+POST   /api/v1/tenants/{tenant}/scripts                        workflow.create; stores bytes, returns `{digest, size}`; rate-limited
 POST   /api/v1/tenants/{tenant}/scripts/validate                workflow.create; ad-hoc editor validation (see script-validation.md); rate-limited 30/min per principal
 POST   /api/v1/tenants/{tenant}/scripts/import-sbatch           workflow.create; ad-hoc legacy import proposal; 403 IMPORT_DISABLED unless the effective policy allows it; rate-limited
 GET    /api/v1/tenants/{tenant}/workflow-executions/{execution}/tasks/{task}/execution-spec

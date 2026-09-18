@@ -46,6 +46,8 @@ import (
 	"github.com/Exonical/custos/internal/validation/sbatchscan"
 	"github.com/Exonical/custos/internal/validation/shellcheck"
 	"github.com/Exonical/custos/internal/validation/shsyntax"
+	wfpg "github.com/Exonical/custos/internal/workflows/postgres"
+	wfsvc "github.com/Exonical/custos/internal/workflows/service"
 )
 
 func cmdServe(parent context.Context, configPath string, lookupEnv config.LookupEnv, stderr io.Writer) int {
@@ -194,6 +196,20 @@ func cmdServe(parent context.Context, configPath string, lookupEnv config.Lookup
 		Audit:       recorder,
 	})
 
+	wfSvc := wfsvc.New(wfsvc.Deps{
+		Repo:        wfpg.New(pool),
+		Projects:    projectSvc,
+		Policies:    policySvc,
+		Clusters:    clusterRepo,
+		Pipeline:    pipe,
+		VPolicy:     vpolSvc,
+		Validations: vstore,
+		Scripts:     scriptpg.New(pool),
+		Metrics:     vMetrics,
+		AZ:          authz.RBAC{},
+		Audit:       recorder,
+	})
+
 	mux := http.NewServeMux()
 	api.Mount(mux, api.Deps{
 		Health:         reg,
@@ -218,6 +234,7 @@ func cmdServe(parent context.Context, configPath string, lookupEnv config.Lookup
 		VStore:         vstore,
 		VMetrics:       vMetrics,
 		VLimiter:       httpx.NewPrincipalRateLimiter(30, 10, 0),
+		Workflows:      wfSvc,
 		AZ:             authz.RBAC{},
 	})
 

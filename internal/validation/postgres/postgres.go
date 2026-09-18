@@ -170,12 +170,13 @@ func (s *ValidationStore) Put(ctx context.Context, scope tenants.Scope,
 			INSERT INTO script_validations
 			  (id, tenant_id, workflow_version_id, task_name, script_digest,
 			   language, valid, diagnostics, tool_versions, policy_version,
-			   validated_at, expires_at)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+			   input_hash, validated_at, expires_at)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
 			ON CONFLICT (id) DO NOTHING`,
 			sv.ID, sv.TenantID, sv.WorkflowVersionID, sv.TaskName,
 			sv.ScriptDigest[:], string(sv.Language), sv.Valid, diags, tools,
-			sv.PolicyVersion, sv.ValidatedAt, sv.ExpiresAt)
+			sv.PolicyVersion, int64(sv.InputHash), // #nosec G115 -- bigint round-trips the uint64 bit pattern
+			sv.ValidatedAt, sv.ExpiresAt)
 		return db.MapError(err)
 	})
 }
@@ -184,14 +185,16 @@ func scanSV(row pgx.Row) (validation.ScriptValidation, error) {
 	var sv validation.ScriptValidation
 	var diags, tools, digest []byte
 	var lang string
+	var inputHash int64
 	err := row.Scan(&sv.ID, &sv.TenantID, &sv.WorkflowVersionID,
 		&sv.TaskName, &digest, &lang, &sv.Valid, &diags,
-		&tools, &sv.PolicyVersion, &sv.ValidatedAt, &sv.ExpiresAt)
+		&tools, &sv.PolicyVersion, &inputHash, &sv.ValidatedAt, &sv.ExpiresAt)
 	if err != nil {
 		return validation.ScriptValidation{}, err
 	}
 	copy(sv.ScriptDigest[:], digest)
 	sv.Language = validation.Language(lang)
+	sv.InputHash = uint64(inputHash) // #nosec G115 -- bigint round-trips the uint64 bit pattern
 	if err := json.Unmarshal(diags, &sv.Diagnostics); err != nil {
 		return validation.ScriptValidation{}, err
 	}
@@ -203,13 +206,13 @@ func scanSV(row pgx.Row) (validation.ScriptValidation, error) {
 
 const svCols = `id, tenant_id, workflow_version_id, task_name, script_digest,
 	language, valid, diagnostics, tool_versions, policy_version,
-	validated_at, expires_at`
+	input_hash, validated_at, expires_at`
 
 // Latest returns the newest ScriptValidation for (digest,
-// policyVersion), or NotFound.
+// policyVersion, inputHash), or NotFound.
 func (s *ValidationStore) Latest(ctx context.Context, scope tenants.Scope,
 	tenantID uuid.UUID, digest validation.Digest,
-	policyVersion int64) (validation.ScriptValidation, error) {
+	policyVersion int64, inputHash uint64) (validation.ScriptValidation, error) {
 	var sv validation.ScriptValidation
 	err := db.WithTx(ctx, s.pool, func(tx pgx.Tx) error {
 		if err := applyScope(ctx, tx, scope); err != nil {
@@ -219,8 +222,9 @@ func (s *ValidationStore) Latest(ctx context.Context, scope tenants.Scope,
 		sv, err = scanSV(tx.QueryRow(ctx, `
 			SELECT `+svCols+` FROM script_validations
 			WHERE tenant_id=$1 AND script_digest=$2 AND policy_version=$3
+			  AND input_hash=$4
 			ORDER BY validated_at DESC, id DESC LIMIT 1`,
-			tenantID, digest[:], policyVersion))
+			tenantID, digest[:], policyVersion, int64(inputHash))) // #nosec G115 -- bigint round-trips the uint64 bit pattern
 		return err
 	})
 	if errors.Is(err, pgx.ErrNoRows) {

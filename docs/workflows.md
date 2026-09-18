@@ -19,10 +19,19 @@ The UI layout (node positions, collapsed groups, colors) is stored in
 
 ## Specification (`custos.io/v1alpha1`)
 
-Authoritative definition: Go types in `pkg/workflowspec` with a generated
-JSON Schema (`pkg/workflowspec/schema/v1alpha1.json`) consumed by the UI and
-CLI. YAML is accepted at the API and converted to canonical JSON
+Authoritative definition: Go types in `internal/workflowspec` with a
+hand-written JSON Schema (`internal/workflowspec/schema/v1alpha1.json`,
+coverage-tested against the Go types) consumed by the UI and CLI and
+served unauthenticated at `GET /api/v1/schemas/workflow/v1alpha1`.
+YAML is accepted at the API and converted to canonical JSON
 (sorted keys) before hashing and storage.
+
+**v1 limitations (fail closed, all verified by validation):**
+`placement.requirements` and `fanOut.from` are rejected as reserved;
+`spec.secrets` is rejected with `SECRETS_NOT_AVAILABLE` until the
+SecretReference store ships (M6); `software` requirements are accepted
+but left unresolved until the software-environment catalog lands (M7);
+`stageIn`/`stageOut`/`interactive` task types are reserved.
 
 ```yaml
 apiVersion: custos.io/v1alpha1
@@ -104,7 +113,7 @@ spec:
 | `mpi` | sbatch with `nodes/ntasks-per-node`; command executed via `srun` | Custos emits `srun --ntasks=... <argv>` |
 | `gpu` | sbatch with `--gres=gpu[:type]:N` | requires cluster GRES capability |
 | `array` | sbatch `--array` | one `TaskExecution`, one `Job`; array task states aggregated |
-| `shell` | Custos wrapper executing the payload as an unrestricted shell script | privileged; requires the `workflow.shell` permission **and** `allowShellTasks: true` in the effective ValidationPolicy; command absent, `script` present |
+| `shell` | Custos wrapper executing the payload as an unrestricted shell script | privileged; gated by `workflow.publish` plus `allowShellTasks: true` in the effective ValidationPolicy — there is deliberately no `workflow.shell` permission; command absent, `script` present |
 | `stageIn` / `stageOut` | sbatch on a data-mover partition (or future control-plane mover) | v1alpha1 reserves the type; implementation Milestone 7+ |
 | `interactive` | reserved (`salloc`/`srun --pty` or Jupyter) | model reserved; not executed before Milestone 8+ |
 | `condition` | no Slurm job; engine evaluates expression | for `when` on downstream tasks |
@@ -127,7 +136,7 @@ lookups in `parameters`, `run`, `task`, `item`, `array`, `tasks.<name>.*`,
 secret), plus comparison/boolean operators and integer arithmetic for `when`
 and `fanOut.count`. No function calls, no loops, no string-to-code. All
 substitutions happen into argv elements or env values, never into shell
-text. Implementation: hand-written lexer/parser in `pkg/workflowspec/expr`
+text. Implementation: hand-written lexer/parser in `internal/workflowspec/expr`
 (~500 lines) rather than pulling in a general template engine; the small
 grammar is a security feature.
 
@@ -155,7 +164,9 @@ Order:
    capabilities when placement is explicit (partition exists, GRES type
    exists, within partition limits).
 7. Secrets: every `secrets.*.ref` resolves to a `SecretReference` in the
-   same tenant that the caller may `secret.reference.use`.
+   same tenant that the caller may `secret.reference.use`. Until the
+   SecretReference store ships (M6) any `spec.secrets` entry fails
+   closed with `SECRETS_NOT_AVAILABLE`.
 8. Placement: named cluster is bound to the project; requirements
    expressible.
 

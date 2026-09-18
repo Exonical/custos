@@ -13,11 +13,11 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/Exonical/custos/internal/validation"
 	"github.com/Exonical/custos/internal/validation/sbatchscan"
 	"github.com/Exonical/custos/internal/workflowspec"
+	"github.com/Exonical/custos/internal/workflowspec/units"
 )
 
 // Proposal is the import result: nothing is saved; the caller decides.
@@ -106,62 +106,6 @@ func parseArray(v string) (*workflowspec.ArraySpec, bool) {
 		a.MaxConcurrent, _ = strconv.Atoi(m[4])
 	}
 	return a, true
-}
-
-// parseSlurmTime parses Slurm walltime forms: M, M:S, H:M:S, D-H,
-// D-H:M, D-H:M:S.
-func parseSlurmTime(v string) (time.Duration, bool) {
-	var days, hours, mins, secs int64
-	hasDays := strings.Contains(v, "-")
-	if hasDays {
-		d, rest, _ := strings.Cut(v, "-")
-		var err error
-		if days, err = strconv.ParseInt(d, 10, 64); err != nil {
-			return 0, false
-		}
-		v = rest
-	}
-	parts := strings.Split(v, ":")
-	n := len(parts)
-	if n > 3 {
-		return 0, false
-	}
-	vals := make([]int64, n)
-	for i, p := range parts {
-		if p == "" {
-			return 0, false
-		}
-		x, err := strconv.ParseInt(p, 10, 64)
-		if err != nil {
-			return 0, false
-		}
-		vals[i] = x
-	}
-	switch {
-	case hasDays:
-		// D-H, D-H:M, D-H:M:S — after the dash the first part is hours.
-		switch n {
-		case 1:
-			hours = vals[0]
-		case 2:
-			hours, mins = vals[0], vals[1]
-		case 3:
-			hours, mins, secs = vals[0], vals[1], vals[2]
-		}
-	case n == 1: // M
-		mins = vals[0]
-	case n == 2: // M:S
-		mins, secs = vals[0], vals[1]
-	default: // H:M:S
-		hours, mins, secs = vals[0], vals[1], vals[2]
-	}
-	if secs >= 60 || (n >= 2 && mins >= 60) || (hasDays && hours >= 24) {
-		return 0, false
-	}
-	return time.Duration(days)*24*time.Hour +
-		time.Duration(hours)*time.Hour +
-		time.Duration(mins)*time.Minute +
-		time.Duration(secs)*time.Second, true
 }
 
 var gresRe = regexp.MustCompile(`(?i)^gpu(?::([^:,]+))?(?::(\d+))?$`)
@@ -259,7 +203,7 @@ func apply(p *Proposal, line int, po sbatchscan.ParsedOption,
 			p.Resources.GPU = &g
 		}
 	case "time":
-		d, ok := parseSlurmTime(po.Value)
+		d, ok := units.ParseSlurmTime(po.Value)
 		if !ok {
 			return []validation.Diagnostic{unmappableDiag(line, po)}
 		}

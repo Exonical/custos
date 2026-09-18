@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Exonical/custos/internal/workflowspec"
+	"github.com/Exonical/custos/internal/workflowspec/units"
 )
 
 func TestDocExample(t *testing.T) {
@@ -62,13 +63,13 @@ func TestTimeFormats(t *testing.T) {
 		"1-02:03:04": 24*time.Hour + 2*time.Hour + 3*time.Minute + 4*time.Second,
 	}
 	for v, want := range cases {
-		d, ok := parseSlurmTime(v)
+		d, ok := units.ParseSlurmTime(v)
 		if !ok || d != want {
 			t.Errorf("%s: got %v (ok=%v), want %v", v, d, ok, want)
 		}
 	}
 	for _, bad := range []string{"", "x", "1:90", "1-99:99"} {
-		if _, ok := parseSlurmTime(bad); ok {
+		if _, ok := units.ParseSlurmTime(bad); ok {
 			t.Errorf("%s should not parse", bad)
 		}
 	}

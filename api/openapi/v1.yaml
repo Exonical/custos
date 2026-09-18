@@ -1629,6 +1629,484 @@ paths:
           description: Per-principal validation rate limit exceeded.
           content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
 
+  /tenants/{tenant}/scripts:
+    post:
+      summary: Store a script for later reference (workflow.create; rate-limited)
+      operationId: uploadScript
+      description: >
+        Stores the script bytes and returns its sha256 digest, which
+        workflow tasks reference as `script.ref`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScriptUploadRequest"
+      responses:
+        "200":
+          description: Stored digest and size.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  digest: {type: string}
+                  size: {type: integer}
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "403":
+          description: Requires workflow.create.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "429":
+          description: Per-principal validation rate limit exceeded.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+
+  /schemas/workflow/v1alpha1:
+    get:
+      summary: Workflow document JSON Schema (unauthenticated)
+      operationId: getWorkflowSchema
+      security: []
+      responses:
+        "200":
+          description: The custos.io/v1alpha1 JSON Schema.
+          content:
+            application/schema+json:
+              schema: {type: object}
+        "304":
+          description: Cached schema unchanged.
+
+  /tenants/{tenant}/workflows:
+    post:
+      summary: Create a workflow (workflow.create on the project)
+      operationId: createWorkflow
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [project, name]
+              properties:
+                project: {type: string, format: uuid}
+                name: {type: string}
+                description: {type: string}
+      responses:
+        "201":
+          description: Created workflow.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Workflow"
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "403":
+          description: Requires workflow.create.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+    get:
+      summary: List workflows (optional ?project=uuid filter)
+      operationId: listWorkflows
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+        - name: project
+          in: query
+          schema: {type: string, format: uuid}
+      responses:
+        "200":
+          description: Workflows.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  workflows:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Workflow"
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+
+  /tenants/{tenant}/workflows/{workflow}:
+    get:
+      summary: Get a workflow
+      operationId: getWorkflow
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+        - $ref: "#/components/parameters/WorkflowId"
+      responses:
+        "200":
+          description: The workflow.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Workflow"
+        "404":
+          description: Unknown workflow.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+    patch:
+      summary: Edit workflow metadata (optimistic version)
+      operationId: patchWorkflow
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+        - $ref: "#/components/parameters/WorkflowId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: {type: string}
+                description: {type: string}
+                version: {type: integer, format: int64}
+      responses:
+        "200":
+          description: Updated workflow.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Workflow"
+        "409":
+          description: Stale version.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+    delete:
+      summary: Archive a workflow
+      operationId: archiveWorkflow
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+        - $ref: "#/components/parameters/WorkflowId"
+      responses:
+        "204":
+          description: Archived.
+
+  /tenants/{tenant}/workflows/{workflow}/versions:
+    post:
+      summary: Create a draft version from a YAML/JSON document
+      operationId: createWorkflowVersion
+      description: >
+        Body is the workflow document (application/yaml or
+        application/json, 4 MiB max). Runs validation steps 1-4; a
+        draft is stored with number = max+1, canonical spec and
+        sha256 hash. 422 SPEC_INVALID carries path-addressed details.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+        - $ref: "#/components/parameters/WorkflowId"
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema: {type: string}
+          application/json:
+            schema: {type: object}
+      responses:
+        "201":
+          description: Created draft version.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowVersion"
+        "422":
+          description: Spec validation failed (details[] list every error).
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+    get:
+      summary: List versions (newest first)
+      operationId: listWorkflowVersions
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+        - $ref: "#/components/parameters/WorkflowId"
+      responses:
+        "200":
+          description: Versions.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  versions:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/WorkflowVersion"
+
+  /tenants/{tenant}/workflows/{workflow}/versions/validate:
+    post:
+      summary: Run the full validation pipeline (steps 1-8) without persisting
+      operationId: validateWorkflowVersionBody
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+        - $ref: "#/components/parameters/WorkflowId"
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema: {type: string}
+          application/json:
+            schema: {type: object}
+      responses:
+        "200":
+          description: Validation result; errors[] is empty when valid.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  valid: {type: boolean}
+                  errors:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        path: {type: string}
+                        code: {type: string}
+                        message: {type: string}
+
+  /tenants/{tenant}/workflows/{workflow}/versions/{version}:
+    get:
+      summary: "Get a version (Accept: application/yaml returns YAML)"
+      operationId: getWorkflowVersion
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+        - $ref: "#/components/parameters/WorkflowId"
+        - $ref: "#/components/parameters/VersionId"
+      responses:
+        "200":
+          description: The version with its canonical spec.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowVersion"
+            application/yaml:
+              schema: {type: string}
+    put:
+      summary: Replace a draft version's spec (409 VERSION_IMMUTABLE otherwise)
+      operationId: updateWorkflowVersion
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+        - $ref: "#/components/parameters/WorkflowId"
+        - $ref: "#/components/parameters/VersionId"
+        - name: X-Expected-Version
+          in: header
+          schema: {type: integer, format: int64}
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema: {type: string}
+          application/json:
+            schema: {type: object}
+      responses:
+        "200":
+          description: Updated draft.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowVersion"
+        "409":
+          description: Version immutable or stale expected version.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+
+  /tenants/{tenant}/workflows/{workflow}/versions/{version}/layout:
+    put:
+      summary: Store editor layout (draft and published versions)
+      operationId: updateWorkflowLayout
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+        - $ref: "#/components/parameters/WorkflowId"
+        - $ref: "#/components/parameters/VersionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {type: object}
+      responses:
+        "204":
+          description: Stored.
+
+  /tenants/{tenant}/workflows/{workflow}/versions/{version}/publish:
+    post:
+      summary: Publish a draft (workflow.publish; full validation + script gate)
+      operationId: publishWorkflowVersion
+      description: >
+        Runs steps 1-8 plus a current valid ScriptValidation for every
+        script-bearing task (missing/stale ones run the pipeline
+        synchronously). On success the version becomes immutable and
+        the workflow's latest_published_version_id is set atomically.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+        - $ref: "#/components/parameters/WorkflowId"
+        - $ref: "#/components/parameters/VersionId"
+      responses:
+        "200":
+          description: Published version.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowVersion"
+        "422":
+          description: Validation or per-task script diagnostics failed.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "409":
+          description: Version is not a draft.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+
+  /tenants/{tenant}/workflows/{workflow}/versions/{version}/deprecate:
+    post:
+      summary: Deprecate a published version (workflow.publish)
+      operationId: deprecateWorkflowVersion
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+        - $ref: "#/components/parameters/WorkflowId"
+        - $ref: "#/components/parameters/VersionId"
+      responses:
+        "204":
+          description: Deprecated.
+        "409":
+          description: Version is not published.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+
+  /tenants/{tenant}/workflows/{workflow}/versions/{version}/validations:
+    get:
+      summary: ScriptValidations recorded against this version
+      operationId: listWorkflowVersionValidations
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+        - $ref: "#/components/parameters/WorkflowId"
+        - $ref: "#/components/parameters/VersionId"
+      responses:
+        "200":
+          description: Validations, newest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  validations:
+                    type: array
+                    items:
+                      type: object
+
+  /tenants/{tenant}/workflows/{workflow}/versions/{version}/tasks/{task}/validate:
+    post:
+      summary: Run the validation pipeline on one task's script
+      operationId: validateWorkflowTask
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+        - $ref: "#/components/parameters/WorkflowId"
+        - $ref: "#/components/parameters/VersionId"
+        - $ref: "#/components/parameters/TaskName"
+      responses:
+        "200":
+          description: Validation result persisted for (version, task).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  valid: {type: boolean}
+                  validationId: {type: string, format: uuid}
+                  diagnostics:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Diagnostic"
+                  toolVersions:
+                    type: object
+                    additionalProperties: {type: string}
+
+  /tenants/{tenant}/workflows/{workflow}/versions/{version}/tasks/{task}/import-sbatch:
+    post:
+      summary: Convert legacy #SBATCH directives for one task (proposal only)
+      operationId: importWorkflowTaskSbatch
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+        - $ref: "#/components/parameters/WorkflowId"
+        - $ref: "#/components/parameters/VersionId"
+        - $ref: "#/components/parameters/TaskName"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ImportSbatchRequest"
+      responses:
+        "200":
+          description: Import proposal; the draft is not modified.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportSbatchResponse"
+        "403":
+          description: Import disabled by effective policy.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+
+  /tenants/{tenant}/workflows/{workflow}/versions/{version}/tasks/{task}/preview-submission:
+    post:
+      summary: Read-only submission preview for one task (workflow.read)
+      operationId: previewWorkflowTaskSubmission
+      description: >
+        Builds the frozen ExecutionSpec, wrapper script and neutral
+        JobSubmission for the task (attempt=1, caller as principal).
+        Persists nothing, submits nothing.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+        - $ref: "#/components/parameters/WorkflowId"
+        - $ref: "#/components/parameters/VersionId"
+        - $ref: "#/components/parameters/TaskName"
+      responses:
+        "200":
+          description: Submission preview.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  executionSpec: {type: object}
+                  wrapper: {type: string}
+                  jobSubmission: {type: object}
+        "422":
+          description: Admission denied.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+
   /tenants/{tenant}/policies/validation:
     get:
       summary: Get the tenant validation policy (policy.read)
@@ -3124,6 +3602,44 @@ components:
               type: array
               items: {type: string}
 
+    Workflow:
+      type: object
+      required: [id, tenantId, projectId, name, state, version]
+      properties:
+        id: {type: string, format: uuid}
+        tenantId: {type: string, format: uuid}
+        projectId: {type: string, format: uuid}
+        name: {type: string}
+        description: {type: string}
+        state: {type: string, enum: [active, archived]}
+        latestPublishedVersionId: {type: string, format: uuid, nullable: true}
+        version: {type: integer, format: int64}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+
+    WorkflowVersion:
+      type: object
+      required: [id, workflowId, number, state, schemaVersion, specHash, version]
+      properties:
+        id: {type: string, format: uuid}
+        workflowId: {type: string, format: uuid}
+        number: {type: integer}
+        state: {type: string, enum: [draft, published, deprecated]}
+        schemaVersion: {type: string}
+        specHash: {type: string}
+        layout: {type: object}
+        spec: {type: object}
+        version: {type: integer, format: int64}
+        createdAt: {type: string, format: date-time}
+        publishedAt: {type: string, format: date-time, nullable: true}
+
+    ScriptUploadRequest:
+      type: object
+      required: [language, script]
+      properties:
+        language: {type: string, enum: [bash, sh, python]}
+        script: {type: string}
+
     ImportSbatchRequest:
       type: object
       required: [language, script]
@@ -3246,6 +3762,26 @@ components:
         type: string
     BindingRef:
       name: binding
+      in: path
+      required: true
+      schema:
+        type: string
+    WorkflowId:
+      name: workflow
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    VersionId:
+      name: version
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    TaskName:
+      name: task
       in: path
       required: true
       schema:

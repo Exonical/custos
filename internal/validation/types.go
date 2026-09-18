@@ -157,8 +157,13 @@ type ScriptValidation struct {
 	Diagnostics       []Diagnostic
 	ToolVersions      map[string]string
 	PolicyVersion     int64 // ValidationPolicy fingerprint applied
-	ValidatedAt       time.Time
-	ExpiresAt         time.Time // default 30d; re-validate after
+	// InputHash is pipeline.InputHash of the validation input snapshot
+	// (language, resources, env, software, cluster): a result is only
+	// current for the exact context it was produced under, so a draft
+	// edit that changes a task's env or resources invalidates it.
+	InputHash   uint64
+	ValidatedAt time.Time
+	ExpiresAt   time.Time // default 30d; re-validate after
 }
 
 // Digest is a sha256 over exact stored bytes.

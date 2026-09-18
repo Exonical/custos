@@ -34,6 +34,7 @@ import (
 	"github.com/Exonical/custos/internal/users"
 	"github.com/Exonical/custos/internal/validation/pipeline"
 	vpolicy "github.com/Exonical/custos/internal/validation/policy"
+	wfsvc "github.com/Exonical/custos/internal/workflows/service"
 )
 
 // specJSON is computed once at init from the spec embedded in the
@@ -79,6 +80,7 @@ type Deps struct {
 	VStore         ValidationStore               // persists ScriptValidations
 	VMetrics       *pipeline.Metrics             // may be nil
 	VLimiter       *httpx.PrincipalRateLimiter   // may be nil (no limit)
+	Workflows      *wfsvc.Service                // enables workflow routes
 	AZ             authz.Authorizer              // required for validate routes
 }
 
@@ -88,6 +90,7 @@ type Deps struct {
 // documented JSON.
 func Mount(mux *http.ServeMux, deps Deps) {
 	mux.Handle("GET /api/v1/openapi.json", openapiHandler())
+	mux.Handle("GET /api/v1/schemas/workflow/v1alpha1", schemaHandler())
 	mux.Handle("GET /health/live", deps.Health.LiveHandler())
 	mux.Handle("GET /health/ready",
 		deps.Health.ReadyHandler(deps.ReadyBudget, deps.Logger))
@@ -178,6 +181,8 @@ func Mount(mux *http.ServeMux, deps Deps) {
 				return h
 			}
 			base := "/api/v1/tenants/{tenant}/scripts"
+			mux.Handle("POST "+base,
+				tr(guard(http.HandlerFunc(sh.upload))))
 			mux.Handle("POST "+base+"/validate",
 				tr(guard(http.HandlerFunc(sh.validate))))
 			mux.Handle("POST "+base+"/import-sbatch",
@@ -190,6 +195,32 @@ func Mount(mux *http.ServeMux, deps Deps) {
 				bearer(http.HandlerFunc(sh.getClusterPolicy)))
 			mux.Handle("PUT /api/v1/clusters/{cluster}/policies/validation",
 				bearer(http.HandlerFunc(sh.putClusterPolicy)))
+		}
+
+		if deps.Workflows != nil {
+			wh := &workflowHandlers{svc: deps.Workflows}
+			tenantMW := tenants.Require(deps.TenantRepo, deps.Logger, deps.Audit)
+			tr := func(h http.Handler) http.Handler { return bearer(tenantMW(h)) }
+			base := "/api/v1/tenants/{tenant}/workflows"
+			mux.Handle("POST "+base, tr(http.HandlerFunc(wh.create)))
+			mux.Handle("GET "+base, tr(http.HandlerFunc(wh.list)))
+			mux.Handle("GET "+base+"/{workflow}", tr(http.HandlerFunc(wh.get)))
+			mux.Handle("PATCH "+base+"/{workflow}", tr(http.HandlerFunc(wh.patch)))
+			mux.Handle("DELETE "+base+"/{workflow}", tr(http.HandlerFunc(wh.archive)))
+			vb := base + "/{workflow}/versions"
+			mux.Handle("POST "+vb, tr(http.HandlerFunc(wh.createVersion)))
+			mux.Handle("GET "+vb, tr(http.HandlerFunc(wh.listVersions)))
+			mux.Handle("POST "+vb+"/validate", tr(http.HandlerFunc(wh.validateVersion)))
+			mux.Handle("GET "+vb+"/{version}", tr(http.HandlerFunc(wh.getVersion)))
+			mux.Handle("PUT "+vb+"/{version}", tr(http.HandlerFunc(wh.updateDraft)))
+			mux.Handle("PUT "+vb+"/{version}/layout", tr(http.HandlerFunc(wh.updateLayout)))
+			mux.Handle("POST "+vb+"/{version}/publish", tr(http.HandlerFunc(wh.publish)))
+			mux.Handle("POST "+vb+"/{version}/deprecate", tr(http.HandlerFunc(wh.deprecate)))
+			mux.Handle("GET "+vb+"/{version}/validations", tr(http.HandlerFunc(wh.listValidations)))
+			tb := vb + "/{version}/tasks/{task}"
+			mux.Handle("POST "+tb+"/validate", tr(http.HandlerFunc(wh.taskValidate)))
+			mux.Handle("POST "+tb+"/import-sbatch", tr(http.HandlerFunc(wh.taskImportSbatch)))
+			mux.Handle("POST "+tb+"/preview-submission", tr(http.HandlerFunc(wh.preview)))
 		}
 
 		if deps.Users != nil {

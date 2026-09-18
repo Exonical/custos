@@ -216,6 +216,7 @@ func svFixture(tid uuid.UUID, body string) validation.ScriptValidation {
 		},
 		ToolVersions:  map[string]string{"shsyntax": "v3.14.1"},
 		PolicyVersion: 7,
+		InputHash:     0x9e3779b97f4a7c15,
 		ValidatedAt:   time.Now().UTC(),
 		ExpiresAt:     time.Now().UTC().Add(24 * time.Hour),
 	}
@@ -232,9 +233,12 @@ func TestValidationStore(t *testing.T) {
 	if err := store.Put(ctx, ps, sv); err != nil {
 		t.Fatal(err)
 	}
-	got, err := store.Latest(ctx, ps, tid, sv.ScriptDigest, 7)
+	got, err := store.Latest(ctx, ps, tid, sv.ScriptDigest, 7, sv.InputHash)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if got.InputHash != sv.InputHash {
+		t.Fatalf("input hash roundtrip: %d != %d", got.InputHash, sv.InputHash)
 	}
 	if got.ID != sv.ID || !got.Valid ||
 		got.Diagnostics[0].Code != "CUSTOS010" ||
@@ -242,14 +246,38 @@ func TestValidationStore(t *testing.T) {
 		t.Fatalf("roundtrip: %+v", got)
 	}
 
-	// different policy fingerprint -> not found
-	if _, err := store.Latest(ctx, ps, tid, sv.ScriptDigest, 8); !apperr.Is(err, apperr.NotFound) {
+	// different policy fingerprint or input context -> not found
+	if _, err := store.Latest(ctx, ps, tid, sv.ScriptDigest, 8, sv.InputHash); !apperr.Is(err, apperr.NotFound) {
 		t.Fatalf("currency: %v", err)
 	}
+	if _, err := store.Latest(ctx, ps, tid, sv.ScriptDigest, 7, sv.InputHash+1); !apperr.Is(err, apperr.NotFound) {
+		t.Fatalf("input-hash currency: %v", err)
+	}
 
-	// workflow-version listing
-	sv2 := svFixture(tid, "echo bye")
+	// workflow-version listing (script_validations.workflow_version_id
+	// is a real FK, so seed the parent rows)
+	uid := mkUser(t, pool, "sv-u")
+	pid := uuid.Must(uuid.NewV7())
+	wid := uuid.Must(uuid.NewV7())
 	wfv := uuid.Must(uuid.NewV7())
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO projects (id, tenant_id, slug, name, state, version)
+		VALUES ($1,$2,'sv-p','P','active',1)`, pid, tid); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO workflows (id, tenant_id, project_id, name, created_by)
+		VALUES ($1,$2,$3,'sv-wf',$4)`, wid, tid, pid, uid); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO workflow_versions
+		(id, workflow_id, tenant_id, number, schema_version, spec, spec_hash, created_by)
+		VALUES ($1,$2,$3,1,'custos.io/v1alpha1','{}',$4,$5)`,
+		wfv, wid, tid, make([]byte, 32), uid); err != nil {
+		t.Fatal(err)
+	}
+	sv2 := svFixture(tid, "echo bye")
 	sv2.WorkflowVersionID = &wfv
 	if err := store.Put(ctx, ps, sv2); err != nil {
 		t.Fatal(err)
