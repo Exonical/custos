@@ -171,10 +171,13 @@ func TestPreflight(t *testing.T) {
 func TestGrantAppRole(t *testing.T) {
 	pool := dbtest.Pool(t)
 	ctx := context.Background()
-	if _, err := pool.Exec(ctx, "CREATE ROLE t_app NOLOGIN"); err != nil {
+	// Roles are global to the shared test server; use a unique name so
+	// reruns and concurrent binaries don't collide.
+	role := "t_app_" + strings.ReplaceAll(uuid.NewString(), "-", "")[:12]
+	if _, err := pool.Exec(ctx, "CREATE ROLE "+role+" NOLOGIN"); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.GrantAppRole(ctx, pool, "t_app"); err != nil {
+	if err := db.GrantAppRole(ctx, pool, role); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.GrantAppRole(ctx, pool, "bad;role"); err == nil {
@@ -188,7 +191,7 @@ func TestGrantAppRole(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer conn.Release()
-	if _, err := conn.Exec(ctx, "SET ROLE t_app"); err != nil {
+	if _, err := conn.Exec(ctx, "SET ROLE "+role); err != nil {
 		t.Fatal(err)
 	}
 	// Insert allowed on audit_events (parent grant propagates to the

@@ -22,8 +22,17 @@ design-level behaviour** — the docs are the contract.
 - This dev machine has **no Docker, no make, no local PostgreSQL**, but
   **Podman 6.0.2 is installed** (`podman compose` delegates to
   docker-compose). Tests that need a database use
-  `CUSTOS_TEST_DATABASE_URL` when set, else an embedded-postgres fallback
-  (slice B). CI runs a `postgres:16` service.
+  `CUSTOS_TEST_DATABASE_URL` — start the throwaway stack first (there is
+  no embedded fallback; without the URL, DB tests skip, and
+  `CUSTOS_TEST_REQUIRE_DB=1` makes them fail). CI runs a `postgres:18`
+  service.
+
+  ```sh
+  bash scripts/testdb.sh up     # postgres:18 on 127.0.0.1:5433, tmpfs
+  export CUSTOS_TEST_DATABASE_URL="$(bash scripts/testdb.sh url)"
+  # PowerShell: $env:CUSTOS_TEST_DATABASE_URL = (bash scripts/testdb.sh url)
+  ```
+
 - Compose smoke recipe:
 
   ```sh
@@ -35,9 +44,8 @@ design-level behaviour** — the docs are the contract.
 
 - `Makefile` targets exist for CI/Linux; run the underlying commands
   directly on Windows.
-- DB tests each start an embedded PostgreSQL per package binary; on
-  constrained machines bound parallelism with `go test -p 2 ./...`
-  rather than serializing tests.
+- DB tests clone a per-binary migrated template database on the shared
+  test server — plain `go test ./...` at default parallelism is fine.
 - `go test -race` needs cgo/gcc and cannot run on this machine; CI runs it.
 - golangci-lint must be built with go1.27: `go install
   github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2` (the

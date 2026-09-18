@@ -44,9 +44,11 @@ later milestone plugs into these seams.
      `migrations/`. Migration `0001_init.sql`: `schema_migrations` (goose's),
      `work_items`, `idempotency_keys`, `audit_events` (partitioned parent +
      first partitions) — infrastructure tables only.
-   - Test helper: `CUSTOS_TEST_DATABASE_URL` when set (CI service
-     container), else `embedded-postgres` PostgreSQL 16; one database per
-     test package, migrations applied, `TRUNCATE` between tests.
+   - Test helper: `CUSTOS_TEST_DATABASE_URL` only — a Podman
+     `postgres:18` compose stack locally (`scripts/testdb.sh`), the CI
+     service container in CI; a per-binary migrated template database is
+     cloned per test package, `TRUNCATE` between tests. Preflight
+     requires PostgreSQL ≥ 16.
 
 6. **`internal/platform/httpx`**
    - Middleware: recover (→ `INTERNAL` envelope, logs panic with request id),
@@ -146,7 +148,7 @@ later milestone plugs into these seams.
 | `go.opentelemetry.io/otel/*`, `otelhttp`, Prometheus exporter | traces + metrics | required by spec |
 | `github.com/prometheus/client_golang` (via exporter) | `/metrics` | required by spec |
 | `github.com/oapi-codegen/oapi-codegen/v2` (go.mod `tool` directive), `oapi-codegen/runtime` | types/server from OpenAPI | hand-maintaining DTOs drifts from the contract |
-| `github.com/fergusstrange/embedded-postgres` | real PG in tests without Docker; CI uses `CUSTOS_TEST_DATABASE_URL` against a service container instead | mocks can't test SQL/RLS |
+| `docker.io/library/postgres:18` (test compose / CI service) | real PG in tests via `CUSTOS_TEST_DATABASE_URL`; Podman locally, service container in CI | mocks can't test SQL/RLS |
 | `golang.org/x/sync/errgroup` | structured lifecycle | std-lib has no errgroup |
 | `github.com/google/uuid` | UUIDv7 | std-lib lacks UUID; small, ubiquitous |
 | `gopkg.in/yaml.v3` (or `goccy/go-yaml`) | config + later workflow YAML | std-lib has no YAML |

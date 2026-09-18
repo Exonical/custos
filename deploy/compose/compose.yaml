@@ -37,7 +37,7 @@ x-custos-hardening: &custos-hardening
 
 services:
   postgres:
-    image: postgres:16
+    image: postgres:18
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD_FILE: /run/secrets/postgres-superuser-password
@@ -71,7 +71,7 @@ services:
       - pg-server-key
     volumes:
       - ./initdb:/docker-entrypoint-initdb.d:ro
-      - pgdata:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql
       - pgcerts:/certs
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]

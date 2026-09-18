@@ -67,7 +67,7 @@ Then:
 - OpenAPI document: `http://localhost:8080/api/v1/openapi.json`
 - Metrics: `http://localhost:9090/metrics`
 
-The compose stack runs a hardened PostgreSQL 16 (SCRAM-only auth, TLS —
+The compose stack runs a hardened PostgreSQL 18 (SCRAM-only auth, TLS —
 see [ADR-013](docs/adr/ADR-013-postgresql-hardening-baseline.md)), a
 one-shot `migrate` job as the `custos_migrate` role, `serve`, and a
 `worker`, both connecting as the least-privilege `custos_app` role with

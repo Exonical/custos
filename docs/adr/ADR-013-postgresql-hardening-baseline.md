@@ -20,8 +20,8 @@ stacks that run weaker settings also produce false confidence.
   relaxable only in `dev_mode`) makes startup fail unless
   `password_encryption = scram-sha-256` and — when readable — the
   connecting role's `pg_authid` entry is a `SCRAM-SHA-256$` hash. Test
-  stacks (embedded-postgres, CI service) are hardened to the same
-  baseline rather than exempted.
+  stacks (the Podman postgres:18 test compose, the CI service) are
+  hardened to the same baseline rather than exempted.
 - **TLS verify-full outside development.** `database.ssl_mode` is
   applied in `db.Open`; TLS query parameters in the URL are rejected so
   the configured mode cannot be silently downgraded. Optional CA and
@@ -52,9 +52,10 @@ stacks that run weaker settings also produce false confidence.
 - **pg_hba/managed-PG enforcement outside the app** — operationally
   necessary but unverifiable from code; preflight makes the invariant
   executable and tested.
-- **Exempting test stacks** — rejected; the embedded-postgres harness
-  rewrites `pg_hba.conf` to scram and rehashes the role password so
-  `go test` exercises the same path production takes.
+- **Exempting test stacks** — rejected; the test compose and CI service
+  boot with `--auth-local=scram-sha-256` /
+  `--auth-host=scram-sha-256` so `go test` exercises the same path
+  production takes.
 
 ## Consequences
 

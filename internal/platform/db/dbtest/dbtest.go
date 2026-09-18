@@ -1,11 +1,13 @@
-// Package dbtest provides a real PostgreSQL pool per test: it uses
-// CUSTOS_TEST_DATABASE_URL when set (CI service container), else an
-// embedded PostgreSQL 16 started once per test binary and hardened to
-// the scram baseline (ADR-013). One migrated template database is
-// created per binary; each test clones it with CREATE DATABASE TEMPLATE
-// and drops its copy on cleanup, so tests may run t.Parallel() and no
-// TRUNCATE is needed. All pools go through db.Open so Preflight runs in
-// every DB test.
+// Package dbtest provides a real PostgreSQL pool per test against the
+// server named by CUSTOS_TEST_DATABASE_URL (the Podman test stack from
+// scripts/testdb.sh locally, the CI service in CI; ADR-013). One
+// migrated template database is created per test binary; each test
+// clones it with CREATE DATABASE TEMPLATE and drops its copy on
+// cleanup, so tests may run t.Parallel() and no TRUNCATE is needed.
+// All pools go through db.Open so Preflight runs in every DB test.
+//
+// With the env var unset, Pool/URL/AppPoolOn t.Skip (unless
+// CUSTOS_TEST_REQUIRE_DB=1, which fails fast for CI).
 package dbtest
 
 import (
@@ -15,15 +17,11 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"net"
 	"os"
-	"path/filepath"
-	"regexp"
 	"sync"
 	"testing"
 	"time"
 
-	embeddedpostgres "github.com/fergusstrange/embedded-postgres"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -36,26 +34,39 @@ import (
 // least-privilege path.
 const appRoleName = "custos_test_app"
 
+// appRolePassword is fixed because roles are global to the shared test
+// server: every test binary connecting concurrently must agree on one
+// password. The role exists only on throwaway test servers.
+const appRolePassword = "custos-test-app-pw" // #nosec G101 -- throwaway test-server role, not a production credential
+
+const noDBMsg = `CUSTOS_TEST_DATABASE_URL is not set: database tests are skipped.
+Start the test stack and export the URL first:
+
+    bash scripts/testdb.sh up
+    export CUSTOS_TEST_DATABASE_URL="$(bash scripts/testdb.sh url)"
+    # PowerShell: $env:CUSTOS_TEST_DATABASE_URL = (bash scripts/testdb.sh url)
+`
+
 var (
 	startOnce sync.Once
-	embedErr  error
-	embedDB   *embeddedpostgres.EmbeddedPostgres
+	prepErr   error
 	adminDSN  string
-	appPass   string
-	tempDir   string
-	dataDir   string
 	tmplName  string
 )
 
 var discard = slog.New(slog.NewTextHandler(io.Discard, nil))
 
-// Main runs m.Run() and tears down the embedded server and template
-// database. Packages using Pool, AppPool or URL must call it:
+// Main runs m.Run() and tears down the template database. Packages
+// using Pool, AppPool or URL must call it:
 //
 //	func TestMain(m *testing.M) { os.Exit(dbtest.Main(m)) }
 func Main(m *testing.M) int {
+	if _, ok := os.LookupEnv("CUSTOS_TEST_DATABASE_URL"); !ok &&
+		os.Getenv("CUSTOS_TEST_REQUIRE_DB") != "1" {
+		fmt.Fprint(os.Stderr, "dbtest: "+noDBMsg)
+	}
 	code := m.Run()
-	if adminDSN != "" {
+	if adminDSN != "" && tmplName != "" {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
 		if ap, err := pgxpool.New(ctx, adminDSN); err == nil {
@@ -64,83 +75,42 @@ func Main(m *testing.M) int {
 			ap.Close()
 		}
 	}
-	if embedDB != nil {
-		_ = embedDB.Stop()
-	}
-	if tempDir != "" {
-		_ = os.RemoveAll(tempDir)
-	}
 	return code
+}
+
+// requireDB returns false (after Skip or Fatal) when no test database
+// is configured.
+func requireDB(tb testing.TB) bool {
+	tb.Helper()
+	if _, ok := os.LookupEnv("CUSTOS_TEST_DATABASE_URL"); !ok {
+		if os.Getenv("CUSTOS_TEST_REQUIRE_DB") == "1" {
+			tb.Fatal("CUSTOS_TEST_REQUIRE_DB=1 but " + noDBMsg)
+		}
+		tb.Skip("CUSTOS_TEST_DATABASE_URL is not set: database test skipped")
+		return false
+	}
+	return true
 }
 
 func adminURL(tb testing.TB) string {
 	tb.Helper()
-	if u, ok := os.LookupEnv("CUSTOS_TEST_DATABASE_URL"); ok {
-		adminDSN = u
-		startOnce.Do(func() { embedErr = prepareTemplate() })
-		if embedErr != nil {
-			tb.Fatalf("prepare template db: %v", embedErr)
-		}
-		return adminDSN
+	if !requireDB(tb) {
+		return ""
 	}
-	startOnce.Do(func() {
-		ln, err := net.Listen("tcp", "127.0.0.1:0")
-		if err != nil {
-			embedErr = err
-			return
-		}
-		p := ln.Addr().(*net.TCPAddr).Port
-		if p <= 0 || p > 65535 {
-			embedErr = fmt.Errorf("listener port %d out of range", p)
-			return
-		}
-		port := uint32(p)
-		_ = ln.Close()
-
-		tempDir, err = os.MkdirTemp("", "custos-pgtest-")
-		if err != nil {
-			embedErr = err
-			return
-		}
-		dataDir = filepath.Join(tempDir, "data")
-		// The downloaded .txz is cached once across test binaries;
-		// binaries are extracted per-process because embedded-postgres'
-		// presence check stats "bin/pg_ctl" without ".exe" on Windows and
-		// would re-extract over a running server's locked files.
-		cache := filepath.Join(mustUserCache(), "custos", "embedded-postgres")
-		cfg := embeddedpostgres.DefaultConfig().
-			Version(embeddedpostgres.V16).
-			Port(port).
-			RuntimePath(filepath.Join(tempDir, "runtime")).
-			DataPath(dataDir).
-			CachePath(cache).
-			BinariesPath(filepath.Join(tempDir, "binaries")).
-			Logger(io.Discard)
-		embedDB = embeddedpostgres.NewDatabase(cfg)
-		// Serialize the first tarball download across concurrent
-		// `go test` package binaries with a lock file.
-		if err := withLock(cache+".lock", embedDB.Start); err != nil {
-			embedErr = err
-			return
-		}
-		adminDSN = fmt.Sprintf(
-			"postgres://postgres:postgres@127.0.0.1:%d/postgres?sslmode=disable", port)
-		if err := hardenScram(adminDSN); err != nil {
-			embedErr = err
-			return
-		}
-		embedErr = prepareTemplate()
-	})
-	if embedErr != nil {
-		tb.Fatalf("start embedded postgres: %v", embedErr)
+	adminDSN = os.Getenv("CUSTOS_TEST_DATABASE_URL")
+	startOnce.Do(func() { prepErr = prepareTemplate() })
+	if prepErr != nil {
+		tb.Fatalf("prepare template db: %v", prepErr)
 	}
 	return adminDSN
 }
 
-// prepareTemplate creates the custos_test_app role (scram password) and
-// one fully migrated template database. CREATE DATABASE ... TEMPLATE
-// requires no connections to the template, so the migrate pool is
-// closed before this returns.
+// prepareTemplate preflights the server (PostgreSQL >= 16 and the
+// scram-sha-256 baseline, via db.Preflight), creates the
+// custos_test_app role (scram password) and one fully migrated
+// template database. CREATE DATABASE ... TEMPLATE requires no
+// connections to the template, so the migrate pool is closed before
+// this returns.
 func prepareTemplate() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
@@ -149,20 +119,37 @@ func prepareTemplate() error {
 		return err
 	}
 	defer admin.Close()
+	if err := db.Preflight(ctx, admin, testConfig(adminDSN), true); err != nil {
+		return fmt.Errorf("test database server failed preflight "+
+			"(want PostgreSQL >= 16 with password_encryption=scram-sha-256; "+
+			"see scripts/testdb.sh): %w", err)
+	}
 
-	var pw [24]byte
+	var pw [4]byte
 	if _, err := rand.Read(pw[:]); err != nil {
 		return err
 	}
-	appPass = hex.EncodeToString(pw[:])
+	// Serialize role create/alter across concurrent test binaries:
+	// CREATE ROLE has no IF NOT EXISTS, and racing writers on pg_authid
+	// fail with "tuple concurrently updated".
 	if _, err := admin.Exec(ctx,
+		"SELECT pg_advisory_lock(hashtext('custos dbtest role'))"); err != nil {
+		return fmt.Errorf("role lock: %w", err)
+	}
+	_, roleErr := admin.Exec(ctx,
 		"SET password_encryption='scram-sha-256'; "+
-			"CREATE ROLE "+appRoleName+" LOGIN PASSWORD '"+appPass+"'"); err != nil {
-		// Role may already exist on a shared CI server.
-		if _, err2 := admin.Exec(ctx,
-			"ALTER ROLE "+appRoleName+" PASSWORD '"+appPass+"'"); err2 != nil {
-			return fmt.Errorf("create app role: %w (alter: %v)", err, err2)
-		}
+			"CREATE ROLE "+appRoleName+" LOGIN PASSWORD '"+appRolePassword+"'")
+	if roleErr != nil {
+		// Role may already exist on a shared server.
+		_, roleErr = admin.Exec(ctx,
+			"ALTER ROLE "+appRoleName+" PASSWORD '"+appRolePassword+"'")
+	}
+	if _, err := admin.Exec(ctx,
+		"SELECT pg_advisory_unlock(hashtext('custos dbtest role'))"); err != nil && roleErr == nil {
+		roleErr = err
+	}
+	if roleErr != nil {
+		return fmt.Errorf("create app role: %w", roleErr)
 	}
 
 	tmplName = "custos_tmpl_" + hex.EncodeToString(pw[:4])
@@ -184,79 +171,6 @@ func prepareTemplate() error {
 	_, err = db.Migrate(ctx, mp, db.Up, io.Discard)
 	mp.Close()
 	return err
-}
-
-var hbaAuthRE = regexp.MustCompile(`\b(password|md5|trust|scram-sha-256)\b`)
-
-// hardenScram enforces the scram baseline on the embedded server:
-// embedded-postgres runs initdb with `-A password`, so we flip
-// password_encryption, re-hash the role password, rewrite pg_hba.conf,
-// and reload.
-func hardenScram(dsn string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	pool, err := pgxpool.New(ctx, dsn)
-	if err != nil {
-		return err
-	}
-	defer pool.Close()
-
-	if _, err := pool.Exec(ctx,
-		"ALTER SYSTEM SET password_encryption = 'scram-sha-256'"); err != nil {
-		return fmt.Errorf("alter system: %w", err)
-	}
-	if _, err := pool.Exec(ctx, "SELECT pg_reload_conf()"); err != nil {
-		return err
-	}
-	// Also SET in-session: pg_reload_conf signals SIGHUP asynchronously,
-	// so ALTER SYSTEM may not be visible yet on the next statement.
-	// Rehash under scram (password_encryption is a USERSET GUC).
-	if _, err := pool.Exec(ctx,
-		"SET password_encryption='scram-sha-256'; ALTER ROLE postgres PASSWORD 'postgres'"); err != nil {
-		return fmt.Errorf("rehash role: %w", err)
-	}
-
-	hba := filepath.Join(dataDir, "pg_hba.conf")
-	b, err := os.ReadFile(hba) // #nosec G304 -- test-owned data dir
-	if err != nil {
-		return fmt.Errorf("read pg_hba: %w", err)
-	}
-	b = hbaAuthRE.ReplaceAll(b, []byte("scram-sha-256"))
-	if err := os.WriteFile(hba, b, 0o600); err != nil { // #nosec G703 -- test-owned data dir
-		return fmt.Errorf("write pg_hba: %w", err)
-	}
-	if _, err := pool.Exec(ctx, "SELECT pg_reload_conf()"); err != nil {
-		return err
-	}
-	return nil
-}
-
-func mustUserCache() string {
-	dir, err := os.UserCacheDir()
-	if err != nil {
-		return os.TempDir()
-	}
-	return dir
-}
-
-// withLock runs fn holding a cross-process lockfile at path; locks older
-// than 10 minutes are treated as stale (crashed holder) and removed.
-func withLock(path string, fn func() error) error {
-	for {
-		// Path is derived from our own cache dir, not user input.
-		f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600) // #nosec G304
-		if err == nil {
-			_ = f.Close()
-			break
-		}
-		if st, serr := os.Stat(path); serr == nil && time.Since(st.ModTime()) > 10*time.Minute {
-			_ = os.Remove(path)
-			continue
-		}
-		time.Sleep(200 * time.Millisecond)
-	}
-	defer func() { _ = os.Remove(path) }()
-	return fn()
 }
 
 // testConfig returns a config.Database pointing at dsn with the
@@ -375,7 +289,7 @@ func AppPoolOn(tb testing.TB, dsn string) *pgxpool.Pool {
 		tb.Fatalf("parse dsn: %v", err)
 	}
 	appDSN := fmt.Sprintf("postgres://%s:%s@%s:%d/%s",
-		appRoleName, appPass, acfg.ConnConfig.Host, acfg.ConnConfig.Port,
+		appRoleName, appRolePassword, acfg.ConnConfig.Host, acfg.ConnConfig.Port,
 		acfg.ConnConfig.Database)
 	pool, err := db.Open(ctx, testConfig(appDSN), discard)
 	if err != nil {
