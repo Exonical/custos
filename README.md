@@ -9,9 +9,27 @@ work itself.
 
 ## Status
 
-**Milestone 0 — architecture.** This repository currently contains design
-documentation only; no application code exists yet. Milestone 1
-(foundation binary) is planned in [docs/milestone-1.md](docs/milestone-1.md).
+**Milestones 1–5 implemented.** The `custos` binary serves, works and
+migrates today:
+
+- **M1** — foundation binary on hardened PostgreSQL (SCRAM-only, TLS
+  verify-full, RLS, append-only audit, split roles).
+- **M2** — OIDC authentication, JIT user provisioning, tenants,
+  projects and RBAC.
+- **M3** — cluster registry and sync; Slurm 26.05 adapter (slurmrestd
+  `v0.0.45`) with conformance fixtures.
+- **M4** — secure job submission: content-addressed scripts,
+  `ExecutionSpec`, admission and the submission wrapper.
+- **M5** — validation pipeline with persisted results, ValidationPolicy,
+  ShellCheck sidecar, workflow versions with a publish gate, and the
+  execution engine (`execution.advance`, `task.admit`, structured argv).
+
+An end-to-end stack (`scripts/e2e.sh`, `deploy/e2e/`) runs the whole
+thing against a real Slurm 26.05 cluster and Keycloak 26.7 under Podman;
+`test/e2e` exercises authentication through workflow cancellation.
+
+Next up: **M6** OpenBao secret storage, **M7** accounting/policy sync,
+**M8** the Next.js UI.
 
 ## Documentation
 
@@ -41,7 +59,7 @@ documentation only; no application code exists yet. Milestone 1
 - [API conventions](docs/api.md) — OpenAPI contract, routing, envelopes
 - [Threat model](docs/threat-model.md) — assets, actors, STRIDE threats
 - [Milestone 1 plan](docs/milestone-1.md) — foundation implementation plan
-- [Architecture Decision Records](docs/adr/README.md) — ADR-001 … ADR-013
+- [Architecture Decision Records](docs/adr/README.md) — ADR-001 … ADR-016
 
 ## Planned stack
 

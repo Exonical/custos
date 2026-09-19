@@ -127,50 +127,63 @@ explained below.
 
 ```text
 cmd/
-  custos/                 main; subcommands: serve, worker, migrate, version
+  custos/                 main; subcommands: serve, worker, migrate, admin,
+                          version
+  custos-validator/       loopback-only validator sidecar (ShellCheck etc.)
 internal/
   platform/               cross-cutting infra, no domain logic
+    apperr/               typed API error envelope
     config/               load + validate config (fail closed)
+    db/                   pgx pool, tx helper, migrations (goose-style up/down)
+    health/               liveness/readiness endpoints
+    httpx/                middleware: request id, recover, limits, headers, CORS
     log/                  slog setup, redaction helpers
     otel/                 tracer/meter providers, prometheus exporter
-    db/                   pgx pool, tx helper, migrate runner
-    httpx/                middleware: request id, recover, limits, headers, CORS
-    clock/, ids/          time & ULID/UUIDv7 helpers (testability)
+    workqueue/            durable PG-backed queue: WorkItem, lease, retry,
+                          reschedule, DLQ
   authn/                  Principal, OIDC verifier, JWKS cache (port + impl)
   authz/                  Authorizer port, RBAC implementation, permission catalog
   tenants/                Tenant, TenantMembership, Group, tenant-scope resolution
   users/                  User provisioning from OIDC claims
   projects/               Project, ProjectMembership, cluster access, Slurm account mapping
   clusters/               Cluster registry, capabilities, tenant assignments, sync
-  slurm/                  SlurmCluster port, neutral types, fake; slinky/ adapter
-  jobs/                   Job aggregate, submission, cancellation, reconciliation
+  slurm/                  Cluster/Accounting ports, neutral types, fake,
+                          conformance; slinky/v0045 adapter; httpclient
+  jobs/                   Job aggregate, submission service, worker handlers
   scripts/                content-addressed payload storage, digests, size limits
-  validation/             ScriptValidator port, pipeline, severity policy; shsyntax/ sbatchscan/ shellcheck/ envcheck/ softwareenv/
-  admission/              ExecutionSpec builder (policy → entitlement → allocation → admission → placement)
-  submission/             wrapper generation + ExecutionSpec → slurm.JobSubmission mapping
-  workflows/              Definition/Version, spec parsing, schema, DAG validation
-  executions/             WorkflowExecution/TaskExecution state machine + engine
-  placement/              PlacementEngine port + explicit/static implementation
+  validation/             ValidationPolicy, pipeline, persisted results;
+                          shsyntax/ sbatchscan/ shellcheck/ envcheck/
+                          sbatchimport/ policy/
+  admission/              ExecutionSpec builder (policy → entitlement →
+                          allocation → admission → placement)
+  submission/             wrapper generation + ExecutionSpec → slurm.JobSubmission
+  workflows/              Definition/Version service, publish gate, task snapshot
+  executions/             WorkflowExecution/TaskExecution states, engine,
+                          service (execution.advance / task.admit)
+  workflowspec/           custos.io/v1alpha1 spec types + expr/ units/
+                          validate/ schema/
   policies/               tenant/project resource policy evaluation
-  allocations/            Allocation, budget checks
-  accounting/             UsageRecord collection + aggregation queries
-  secrets/                SecretReference, Secrets port; openbao/ adapter; fake
-  artifacts/              Artifact + Storage port (interfaces only early)
-  audit/                  AuditEvent, Recorder port, postgres sink, forwarders
-  workqueue/              durable PG-backed queue: WorkItem, lease, retry, DLQ
-  api/                    HTTP layer only
-    v1/                   handlers, DTO mapping, error envelope
-    openapi/              embedded openapi.yaml + served /api/v1/openapi.json
+  secrets/                SecretReference, Resolver port; file provider
+                          (OpenBao adapter in M6)
+  audit/                  AuditEvent, Recorder port, postgres sink
+  api/                    HTTP layer only: handlers, DTO mapping, error envelope
 pkg/
-  api/v1/                 public request/response types (CLI + UI codegen source)
-  workflowspec/           public workflow YAML/JSON schema types + validator
-migrations/               numbered SQL migrations (goose-style up/down)
-web/                      Next.js app
+  api/v1/                 generated request/response types (oapi-codegen)
+api/
+  openapi/v1.yaml         hand-maintained OpenAPI 3.1 source
+test/
+  e2e/                    suite against the live stack (CUSTOS_E2E=1)
 deploy/
-  container/              Containerfiles
-  helm/custos/            chart
+  compose/                hardened runtime compose stack (custos, worker,
+                          validators, postgres:18)
+  e2e/                    Slurm 26.05 + Keycloak 26.7 + nginx e2e stack
+  Containerfile.validator validator sidecar image
 docs/                     this directory; docs/adr/
 ```
+
+Not yet present (later milestones): `internal/accounting`,
+`internal/artifacts`, `internal/secrets/openbao` (M6/M7), `deploy/helm`,
+`web/` (M8).
 
 Changes from the prompt's suggestion and why:
 

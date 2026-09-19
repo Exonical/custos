@@ -105,22 +105,22 @@ skip/retry/cancel, execution terminal accounting) and `task.admit`
 enqueue `execution.advance` from inside the jobs worker. The rest lands
 with the workflow milestones.
 
-| Kind | Trigger | Handler outline |
-| --- | --- | --- |
-| `job.submit` | job admitted (ad-hoc jobs go through the same admission step) | reconcile-by-name first; build `JobSubmission` from the persisted `ExecutionSpec`; resolve credentials; `SubmitJob`; persist `slurm_job_id`; transition to QUEUED; enqueue `job.reconcile` |
-| `job.reconcile` | after submit; periodic while non-terminal; on demand | `GetJob`; map state; guarded transition; reschedule with interval growing 5s→60s (age-based); if Slurm says "unknown job" and accounting has a record → terminal from accounting; if unknown everywhere for >10 minutes after submit → FAILED (`LOST`) |
-| `job.cancel` | cancel request | `CancelJob` (`ErrNotFound` = done); SUBMITTING jobs go CANCELED directly and the submit handler skips them; enqueue reconcile ≈+2s |
-| `jobs.sweep` | periodic per cluster (60s) | `ListJobs(name prefix custos-)` once; bulk-reconcile all non-terminal jobs on that cluster; jobs absent for >10min → FAILED (`LOST`) (see cadence below) |
-| `task.admit` | task READY | verify script digest ↔ `ScriptValidation` currency (enqueue `script.validate` if stale, requeue self); build + persist `ExecutionSpec`; transition `ADMITTING → SUBMITTING`; enqueue `job.submit` |
-| `script.validate` | validate endpoint (async for large scripts), publish, stale validation at admission | run validator pipeline (external tools via sidecar); persist `ScriptValidation` |
-| `policy.sync` | ResourcePolicy / binding change; periodic per cluster (M7+) | mirror binding limits to slurmdbd associations via `slurm.Accounting` write ops; report drift |
-| `execution.advance` | any task terminal transition | evaluate DAG: unblock READY tasks, evaluate `when`, fan-out, decide execution terminal state |
-| `cluster.sync` | periodic per cluster | see `docs/slurm.md` |
-| `accounting.collect` | periodic per cluster (window) | `GetJobRecords(since=watermark)`; upsert `usage_records`; advance watermark |
-| `usage.aggregate` | hourly | roll up `usage_records` into `usage_daily` |
-| `tenant.delete` | tenant deletion | staged teardown |
-| `maintenance.partitions` | daily | create next month partitions; drop expired |
-| `idempotency.expire` | hourly | purge expired keys |
+| Kind | Status | Trigger | Handler outline |
+| --- | --- | --- | --- |
+| `job.submit` | implemented | job admitted (ad-hoc jobs go through the same admission step) | reconcile-by-name first; build `JobSubmission` from the persisted `ExecutionSpec`; resolve credentials; `SubmitJob`; persist `slurm_job_id`; transition to QUEUED; enqueue `job.reconcile` |
+| `job.reconcile` | implemented | after submit; periodic while non-terminal; on demand | `GetJob`; map state; guarded transition; reschedule with interval growing 5s→60s (age-based); if Slurm says "unknown job" and accounting has a record → terminal from accounting; if unknown everywhere for >10 minutes after submit → FAILED (`LOST`) |
+| `job.cancel` | implemented | cancel request | `CancelJob` (`ErrNotFound` = done); SUBMITTING jobs go CANCELED directly and the submit handler skips them; enqueue reconcile ≈+2s |
+| `jobs.sweep` | implemented | periodic per cluster (60s) | `ListJobs(name prefix custos-)` once; bulk-reconcile all non-terminal jobs on that cluster; jobs absent for >10min → FAILED (`LOST`) (see cadence below) |
+| `task.admit` | implemented | task READY | verify script digest ↔ `ScriptValidation` currency — the pipeline runs **synchronously** here and persists a fresh `ScriptValidation` when stale (there is no async `script.validate` work item; see below); freeze + persist `ExecutionSpec`; transition `ADMITTING → SUBMITTING`; enqueue `job.submit` |
+| `execution.advance` | implemented | any task terminal transition | evaluate DAG: unblock READY tasks, evaluate `when`, fan-out, decide execution terminal state |
+| `cluster.sync` | implemented | periodic per cluster | see `docs/slurm.md` |
+| `tenant.delete` | implemented | tenant deletion | staged teardown |
+| `maintenance.partitions` | implemented | daily (enqueued at worker start) | create next month partitions; drop expired |
+| `idempotency.expire` | implemented | hourly | purge expired keys |
+| `script.validate` | **deferred** — not a work item | — | Validation is synchronous everywhere it is needed today: the pipeline runs inline in the submit/admit paths and at publish. If a future need arises (async validation of very large scripts, or batch revalidation after a policy change) it will arrive as this kind. |
+| `policy.sync` | future (M7+) | ResourcePolicy / binding change; periodic per cluster | mirror binding limits to slurmdbd associations via `slurm.Accounting` write ops; report drift |
+| `accounting.collect` | future (M7+) | periodic per cluster (window) | `GetJobRecords(since=watermark)`; upsert `usage_records`; advance watermark |
+| `usage.aggregate` | future (M7+) | hourly | roll up `usage_records` into `usage_daily` |
 
 ## Reconciliation of the "lost submit" case
 
