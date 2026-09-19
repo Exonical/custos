@@ -33,3 +33,6 @@ deploy/compose/.secrets/
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# generated e2e stack secrets (scripts/e2e.sh)
+deploy/e2e/.secrets/
