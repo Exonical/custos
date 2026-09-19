@@ -59,7 +59,7 @@ trap 'rm -rf "$CUSTOS_JOB_DIR"' EXIT
 base64 -d > "$CUSTOS_JOB_DIR/payload" <<'CUSTOS_PAYLOAD_{{ .Nonce }}'
 {{ .PayloadBase64 }}
 CUSTOS_PAYLOAD_{{ .Nonce }}
-echo "{{ q .PayloadDigest }}  $CUSTOS_JOB_DIR/payload" | sha256sum -c --quiet
+echo {{ q .PayloadDigest }}"  $CUSTOS_JOB_DIR/payload" | sha256sum -c --quiet
 chmod 0500 "$CUSTOS_JOB_DIR/payload"{{ end }}
 cd {{ q .WorkingDir }}
 {{ if .MPI }}exec srun --ntasks={{ .Tasks }} {{ end }}{{ if .HasPayload }}{{ q .Interpreter }} "$CUSTOS_JOB_DIR/payload"{{ end }}{{ range .Argv }} {{ . }}{{ end }}

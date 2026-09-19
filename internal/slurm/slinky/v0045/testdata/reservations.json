@@ -1,19 +1,32 @@
 {
-  "reservations": [
-    {
-      "name": "maint-oct",
-      "start_time": { "set": true, "number": 1760000000 },
-      "end_time": { "set": true, "number": 1760086400 },
-      "node_count": 10,
-      "users": "root,admin",
-      "accounts": "",
-      "flags": ["MAINT", "SPEC_NODES"]
-    }
-  ],
-  "last_update": { "set": true, "number": 1758000000 },
+  "reservations": [],
+  "last_update": {
+    "set": true,
+    "infinite": false,
+    "number": 1789795767
+  },
   "meta": {
-    "plugin": { "data_parser": "v0.0.45" },
-    "slurm": { "release": "26.05.4" }
+    "plugin": {
+      "type": "openapi\/slurmctld",
+      "name": "Slurm OpenAPI slurmctld",
+      "data_parser": "data_parser\/v0.0.45",
+      "accounting_storage": "accounting_storage\/slurmdbd"
+    },
+    "client": {
+      "source": "10.89.2.36:6820(fd:9)",
+      "user": "root",
+      "group": "root"
+    },
+    "command": [],
+    "slurm": {
+      "version": {
+        "major": "26",
+        "micro": "4",
+        "minor": "05"
+      },
+      "release": "26.05.4",
+      "cluster": "e2e"
+    }
   },
   "errors": [],
   "warnings": []

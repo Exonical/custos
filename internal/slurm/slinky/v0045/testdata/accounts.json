@@ -1,17 +1,45 @@
 {
   "accounts": [
     {
-      "name": "chem",
-      "description": "Chemistry department",
-      "organization": "uni"
+      "associations": [],
+      "coordinators": [],
+      "description": "e2e-acct",
+      "name": "e2e-acct",
+      "organization": "e2e-acct",
+      "flags": []
     },
     {
-      "name": "phys",
-      "description": "Physics department",
-      "organization": "uni"
+      "associations": [],
+      "coordinators": [],
+      "description": "default root account",
+      "name": "root",
+      "organization": "root",
+      "flags": []
     }
   ],
-  "meta": { "plugin": { "data_parser": "v0.0.45" } },
+  "meta": {
+    "plugin": {
+      "type": "openapi\/slurmdbd",
+      "name": "Slurm OpenAPI slurmdbd",
+      "data_parser": "data_parser\/v0.0.45",
+      "accounting_storage": "accounting_storage\/slurmdbd"
+    },
+    "client": {
+      "source": "10.89.2.36:6820(fd:9)",
+      "user": "nobody",
+      "group": ""
+    },
+    "command": [],
+    "slurm": {
+      "version": {
+        "major": "26",
+        "micro": "4",
+        "minor": "05"
+      },
+      "release": "26.05.4",
+      "cluster": "e2e"
+    }
+  },
   "errors": [],
   "warnings": []
 }

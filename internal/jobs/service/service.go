@@ -324,7 +324,13 @@ func (s *Service) Submit(ctx context.Context, p authn.Principal,
 				"field":         denial.Field,
 				"script_digest": digest.String(),
 			})
-		return Result{}, nil, apperr.New(apperr.Validation,
+		return Result{}, []validation.Diagnostic{{
+			Source:   "admission",
+			Code:     denial.Code,
+			Severity: denial.Severity,
+			Field:    denial.Field,
+			Message:  denial.Message,
+		}}, apperr.New(apperr.Validation,
 			"POLICY_VIOLATION",
 			fmt.Sprintf("%s: %s", denial.Field, denial.Message))
 	}

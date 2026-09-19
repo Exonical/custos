@@ -170,11 +170,16 @@ func toJobDesc(req slurm.JobSubmission) *api.V0045JobDescMsg {
 	if req.Walltime > 0 {
 		d.TimeLimit = u32nv(int64(req.Walltime / time.Minute))
 	}
+	// slurmrestd rejects submissions without an environment block
+	// (errno 2127) — send a minimal PATH when the request carries none.
 	if len(req.Environment) > 0 {
 		env := make(api.V0045StringArray, 0, len(req.Environment))
 		for k, v := range req.Environment {
 			env = append(env, k+"="+v)
 		}
+		d.Environment = &env
+	} else {
+		env := api.V0045StringArray{"PATH=/usr/bin:/bin"}
 		d.Environment = &env
 	}
 	if len(req.Argv) > 0 {

@@ -106,15 +106,21 @@ func TestJobDescValues(t *testing.T) {
 }
 
 // TestJobDescOmitsZero verifies an empty submission leaves everything
-// unset (no implicit defaults reach Slurm).
+// unset (no implicit defaults reach Slurm) except Environment, which
+// slurmrestd requires — the adapter sends a minimal PATH default.
 func TestJobDescOmitsZero(t *testing.T) {
 	d := toJobDesc(slurm.JobSubmission{Script: "x"})
 	v := reflect.ValueOf(*d)
 	for i := 0; i < v.NumField(); i++ {
+		name := v.Type().Field(i).Name
 		if !v.Field(i).IsNil() &&
-			v.Type().Field(i).Name != "Script" {
-			t.Errorf("field %s unexpectedly set", v.Type().Field(i).Name)
+			name != "Script" && name != "Environment" {
+			t.Errorf("field %s unexpectedly set", name)
 		}
+	}
+	if d.Environment == nil || len(*d.Environment) != 1 ||
+		(*d.Environment)[0] != "PATH=/usr/bin:/bin" {
+		t.Errorf("default Environment = %+v", d.Environment)
 	}
 }
 

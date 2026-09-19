@@ -1,13 +1,345 @@
 {
   "statistics": {
-    "agent_count": 3,
-    "jobs_submitted": 12040,
-    "jobs_started": 11800,
-    "jobs_completed": 11750
+    "req_time": {
+      "set": true,
+      "infinite": false,
+      "number": 1789795768
+    },
+    "req_time_start": {
+      "set": true,
+      "infinite": false,
+      "number": 1789795504
+    },
+    "server_thread_count": 1,
+    "agent_queue_size": 0,
+    "agent_count": 0,
+    "agent_thread_count": 0,
+    "dbd_agent_queue_size": 0,
+    "gettimeofday_latency": 18,
+    "schedule_cycle_max": 838,
+    "schedule_cycle_last": 13,
+    "schedule_cycle_sum": 6914,
+    "schedule_cycle_total": 27,
+    "schedule_cycle_mean": 256,
+    "schedule_cycle_mean_depth": 0,
+    "schedule_cycle_per_minute": 6,
+    "schedule_cycle_depth": 11,
+    "schedule_exit": {
+      "end_job_queue": 27,
+      "default_queue_depth": 0,
+      "max_job_start": 0,
+      "max_rpc_cnt": 0,
+      "max_sched_time": 0,
+      "licenses": 0
+    },
+    "schedule_queue_length": 0,
+    "jobs_submitted": 11,
+    "jobs_started": 11,
+    "jobs_completed": 9,
+    "jobs_canceled": 0,
+    "jobs_failed": 0,
+    "jobs_pending": 0,
+    "jobs_running": 0,
+    "job_states_ts": {
+      "set": true,
+      "infinite": false,
+      "number": 1789795744
+    },
+    "bf_backfilled_jobs": 0,
+    "bf_last_backfilled_jobs": 0,
+    "bf_backfilled_het_jobs": 0,
+    "bf_cycle_counter": 0,
+    "bf_cycle_mean": 0,
+    "bf_depth_mean": 0,
+    "bf_depth_mean_try": 0,
+    "bf_cycle_sum": 0,
+    "bf_cycle_last": 0,
+    "bf_cycle_max": 0,
+    "bf_exit": {
+      "end_job_queue": 0,
+      "bf_max_job_start": 0,
+      "bf_max_job_test": 0,
+      "bf_max_time": 0,
+      "bf_node_space_size": 0,
+      "state_changed": 0
+    },
+    "bf_last_depth": 0,
+    "bf_last_depth_try": 0,
+    "bf_depth_sum": 0,
+    "bf_depth_try_sum": 0,
+    "bf_queue_len": 0,
+    "bf_queue_len_mean": 0,
+    "bf_queue_len_sum": 0,
+    "bf_table_size": 0,
+    "bf_table_size_sum": 0,
+    "bf_table_size_mean": 0,
+    "bf_when_last_cycle": {
+      "set": true,
+      "infinite": false,
+      "number": 0
+    },
+    "bf_active": false,
+    "rpcs_by_message_type": [
+      {
+        "type_id": 1008,
+        "message_type": "REQUEST_PING",
+        "count": 60,
+        "queued": 0,
+        "dropped": 0,
+        "cycle_last": 0,
+        "cycle_max": 0,
+        "total_time": 6259,
+        "average_time": {
+          "set": true,
+          "infinite": false,
+          "number": 104
+        }
+      },
+      {
+        "type_id": 2009,
+        "message_type": "REQUEST_PARTITION_INFO",
+        "count": 63,
+        "queued": 0,
+        "dropped": 0,
+        "cycle_last": 0,
+        "cycle_max": 0,
+        "total_time": 7080,
+        "average_time": {
+          "set": true,
+          "infinite": false,
+          "number": 112
+        }
+      },
+      {
+        "type_id": 2007,
+        "message_type": "REQUEST_NODE_INFO",
+        "count": 30,
+        "queued": 0,
+        "dropped": 0,
+        "cycle_last": 0,
+        "cycle_max": 0,
+        "total_time": 5394,
+        "average_time": {
+          "set": true,
+          "infinite": false,
+          "number": 179
+        }
+      },
+      {
+        "type_id": 2035,
+        "message_type": "REQUEST_STATS_INFO",
+        "count": 29,
+        "queued": 0,
+        "dropped": 0,
+        "cycle_last": 0,
+        "cycle_max": 0,
+        "total_time": 3171,
+        "average_time": {
+          "set": true,
+          "infinite": false,
+          "number": 109
+        }
+      },
+      {
+        "type_id": 1002,
+        "message_type": "MESSAGE_NODE_REGISTRATION_STATUS",
+        "count": 1,
+        "queued": 0,
+        "dropped": 0,
+        "cycle_last": 0,
+        "cycle_max": 0,
+        "total_time": 159,
+        "average_time": {
+          "set": true,
+          "infinite": false,
+          "number": 159
+        }
+      },
+      {
+        "type_id": 5039,
+        "message_type": "REQUEST_AUTH_TOKEN",
+        "count": 1,
+        "queued": 0,
+        "dropped": 0,
+        "cycle_last": 0,
+        "cycle_max": 0,
+        "total_time": 186,
+        "average_time": {
+          "set": true,
+          "infinite": false,
+          "number": 186
+        }
+      },
+      {
+        "type_id": 2003,
+        "message_type": "REQUEST_JOB_INFO",
+        "count": 18,
+        "queued": 0,
+        "dropped": 0,
+        "cycle_last": 0,
+        "cycle_max": 0,
+        "total_time": 2475,
+        "average_time": {
+          "set": true,
+          "infinite": false,
+          "number": 137
+        }
+      },
+      {
+        "type_id": 4003,
+        "message_type": "REQUEST_SUBMIT_BATCH_JOB",
+        "count": 11,
+        "queued": 0,
+        "dropped": 0,
+        "cycle_last": 0,
+        "cycle_max": 0,
+        "total_time": 6402,
+        "average_time": {
+          "set": true,
+          "infinite": false,
+          "number": 582
+        }
+      },
+      {
+        "type_id": 5018,
+        "message_type": "REQUEST_COMPLETE_BATCH_SCRIPT",
+        "count": 11,
+        "queued": 0,
+        "dropped": 0,
+        "cycle_last": 0,
+        "cycle_max": 0,
+        "total_time": 5733,
+        "average_time": {
+          "set": true,
+          "infinite": false,
+          "number": 521
+        }
+      },
+      {
+        "type_id": 2049,
+        "message_type": "REQUEST_FED_INFO",
+        "count": 11,
+        "queued": 0,
+        "dropped": 0,
+        "cycle_last": 0,
+        "cycle_max": 0,
+        "total_time": 1282,
+        "average_time": {
+          "set": true,
+          "infinite": false,
+          "number": 116
+        }
+      },
+      {
+        "type_id": 2021,
+        "message_type": "REQUEST_JOB_INFO_SINGLE",
+        "count": 11,
+        "queued": 0,
+        "dropped": 0,
+        "cycle_last": 0,
+        "cycle_max": 0,
+        "total_time": 1374,
+        "average_time": {
+          "set": true,
+          "infinite": false,
+          "number": 124
+        }
+      },
+      {
+        "type_id": 5041,
+        "message_type": "REQUEST_KILL_JOBS",
+        "count": 3,
+        "queued": 0,
+        "dropped": 0,
+        "cycle_last": 0,
+        "cycle_max": 0,
+        "total_time": 933,
+        "average_time": {
+          "set": true,
+          "infinite": false,
+          "number": 311
+        }
+      },
+      {
+        "type_id": 6012,
+        "message_type": "MESSAGE_EPILOG_COMPLETE",
+        "count": 2,
+        "queued": 0,
+        "dropped": 0,
+        "cycle_last": 0,
+        "cycle_max": 0,
+        "total_time": 602,
+        "average_time": {
+          "set": true,
+          "infinite": false,
+          "number": 301
+        }
+      },
+      {
+        "type_id": 2024,
+        "message_type": "REQUEST_RESERVATION_INFO",
+        "count": 1,
+        "queued": 0,
+        "dropped": 0,
+        "cycle_last": 0,
+        "cycle_max": 0,
+        "total_time": 121,
+        "average_time": {
+          "set": true,
+          "infinite": false,
+          "number": 121
+        }
+      }
+    ],
+    "rpcs_by_user": [
+      {
+        "user_id": 0,
+        "user": "root",
+        "count": 22,
+        "total_time": 7406,
+        "average_time": {
+          "set": true,
+          "infinite": false,
+          "number": 336
+        }
+      },
+      {
+        "user_id": 2000,
+        "user": "custos",
+        "count": 230,
+        "total_time": 33765,
+        "average_time": {
+          "set": true,
+          "infinite": false,
+          "number": 146
+        }
+      }
+    ],
+    "pending_rpcs": [],
+    "pending_rpcs_by_hostlist": []
   },
   "meta": {
-    "plugin": { "data_parser": "v0.0.45" },
-    "slurm": { "release": "26.05.4" }
+    "plugin": {
+      "type": "openapi\/slurmctld",
+      "name": "Slurm OpenAPI slurmctld",
+      "data_parser": "data_parser\/v0.0.45",
+      "accounting_storage": "accounting_storage\/slurmdbd"
+    },
+    "client": {
+      "source": "10.89.2.36:6820(fd:9)",
+      "user": "root",
+      "group": "root"
+    },
+    "command": [],
+    "slurm": {
+      "version": {
+        "major": "26",
+        "micro": "4",
+        "minor": "05"
+      },
+      "release": "26.05.4",
+      "cluster": "e2e"
+    }
   },
   "errors": [],
   "warnings": []

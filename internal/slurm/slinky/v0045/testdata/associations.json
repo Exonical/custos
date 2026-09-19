@@ -1,24 +1,425 @@
 {
   "associations": [
     {
-      "id": 11,
-      "user": "alice",
-      "account": "chem",
-      "cluster": "hpc",
-      "partition": "normal",
-      "is_default": true,
-      "default": { "qos": "normal" }
+      "accounting": [],
+      "account": "root",
+      "cluster": "e2e",
+      "comment": "",
+      "default": {
+        "qos": ""
+      },
+      "flags": [],
+      "max": {
+        "jobs": {
+          "per": {
+            "count": {
+              "set": false,
+              "infinite": true,
+              "number": 0
+            },
+            "accruing": {
+              "set": false,
+              "infinite": true,
+              "number": 0
+            },
+            "submitted": {
+              "set": false,
+              "infinite": true,
+              "number": 0
+            },
+            "wall_clock": {
+              "set": false,
+              "infinite": true,
+              "number": 0
+            }
+          },
+          "active": {
+            "set": false,
+            "infinite": true,
+            "number": 0
+          },
+          "accruing": {
+            "set": false,
+            "infinite": true,
+            "number": 0
+          },
+          "total": {
+            "set": false,
+            "infinite": true,
+            "number": 0
+          }
+        },
+        "tres": {
+          "total": [],
+          "group": {
+            "minutes": [],
+            "active": []
+          },
+          "minutes": {
+            "total": [],
+            "per": {
+              "job": []
+            }
+          },
+          "per": {
+            "job": [],
+            "node": []
+          }
+        },
+        "per": {
+          "account": {
+            "wall_clock": {
+              "set": false,
+              "infinite": true,
+              "number": 0
+            }
+          }
+        }
+      },
+      "id": 1,
+      "is_default": false,
+      "lineage": "\/",
+      "min": {
+        "priority_threshold": {
+          "set": false,
+          "infinite": true,
+          "number": 0
+        }
+      },
+      "parent_account": "",
+      "partition": "",
+      "priority": {
+        "set": false,
+        "infinite": true,
+        "number": 0
+      },
+      "qos": [
+        "normal"
+      ],
+      "shares_raw": 1,
+      "user": ""
     },
     {
-      "id": 12,
-      "user": "bob",
-      "account": "phys",
-      "cluster": "hpc",
+      "accounting": [],
+      "account": "root",
+      "cluster": "e2e",
+      "comment": "",
+      "default": {
+        "qos": ""
+      },
+      "flags": [],
+      "max": {
+        "jobs": {
+          "per": {
+            "count": {
+              "set": false,
+              "infinite": true,
+              "number": 0
+            },
+            "accruing": {
+              "set": false,
+              "infinite": true,
+              "number": 0
+            },
+            "submitted": {
+              "set": false,
+              "infinite": true,
+              "number": 0
+            },
+            "wall_clock": {
+              "set": false,
+              "infinite": true,
+              "number": 0
+            }
+          },
+          "active": {
+            "set": false,
+            "infinite": true,
+            "number": 0
+          },
+          "accruing": {
+            "set": false,
+            "infinite": true,
+            "number": 0
+          },
+          "total": {
+            "set": false,
+            "infinite": true,
+            "number": 0
+          }
+        },
+        "tres": {
+          "total": [],
+          "group": {
+            "minutes": [],
+            "active": []
+          },
+          "minutes": {
+            "total": [],
+            "per": {
+              "job": []
+            }
+          },
+          "per": {
+            "job": [],
+            "node": []
+          }
+        },
+        "per": {
+          "account": {
+            "wall_clock": {
+              "set": false,
+              "infinite": true,
+              "number": 0
+            }
+          }
+        }
+      },
+      "id": 2,
+      "is_default": true,
+      "lineage": "\/0-root\/",
+      "min": {
+        "priority_threshold": {
+          "set": false,
+          "infinite": true,
+          "number": 0
+        }
+      },
+      "parent_account": "",
+      "partition": "",
+      "priority": {
+        "set": false,
+        "infinite": true,
+        "number": 0
+      },
+      "qos": [
+        "normal"
+      ],
+      "shares_raw": 1,
+      "user": "root"
+    },
+    {
+      "accounting": [],
+      "account": "e2e-acct",
+      "cluster": "e2e",
+      "comment": "",
+      "default": {
+        "qos": ""
+      },
+      "flags": [],
+      "max": {
+        "jobs": {
+          "per": {
+            "count": {
+              "set": false,
+              "infinite": true,
+              "number": 0
+            },
+            "accruing": {
+              "set": false,
+              "infinite": true,
+              "number": 0
+            },
+            "submitted": {
+              "set": false,
+              "infinite": true,
+              "number": 0
+            },
+            "wall_clock": {
+              "set": false,
+              "infinite": true,
+              "number": 0
+            }
+          },
+          "active": {
+            "set": false,
+            "infinite": true,
+            "number": 0
+          },
+          "accruing": {
+            "set": false,
+            "infinite": true,
+            "number": 0
+          },
+          "total": {
+            "set": false,
+            "infinite": true,
+            "number": 0
+          }
+        },
+        "tres": {
+          "total": [],
+          "group": {
+            "minutes": [],
+            "active": []
+          },
+          "minutes": {
+            "total": [],
+            "per": {
+              "job": []
+            }
+          },
+          "per": {
+            "job": [],
+            "node": []
+          }
+        },
+        "per": {
+          "account": {
+            "wall_clock": {
+              "set": false,
+              "infinite": true,
+              "number": 0
+            }
+          }
+        }
+      },
+      "id": 3,
       "is_default": false,
-      "default": { "qos": "long" }
+      "lineage": "\/e2e-acct\/",
+      "min": {
+        "priority_threshold": {
+          "set": false,
+          "infinite": true,
+          "number": 0
+        }
+      },
+      "parent_account": "root",
+      "partition": "",
+      "priority": {
+        "set": false,
+        "infinite": true,
+        "number": 0
+      },
+      "qos": [
+        "normal"
+      ],
+      "shares_raw": 1,
+      "user": ""
+    },
+    {
+      "accounting": [],
+      "account": "e2e-acct",
+      "cluster": "e2e",
+      "comment": "",
+      "default": {
+        "qos": ""
+      },
+      "flags": [],
+      "max": {
+        "jobs": {
+          "per": {
+            "count": {
+              "set": false,
+              "infinite": true,
+              "number": 0
+            },
+            "accruing": {
+              "set": false,
+              "infinite": true,
+              "number": 0
+            },
+            "submitted": {
+              "set": false,
+              "infinite": true,
+              "number": 0
+            },
+            "wall_clock": {
+              "set": false,
+              "infinite": true,
+              "number": 0
+            }
+          },
+          "active": {
+            "set": false,
+            "infinite": true,
+            "number": 0
+          },
+          "accruing": {
+            "set": false,
+            "infinite": true,
+            "number": 0
+          },
+          "total": {
+            "set": false,
+            "infinite": true,
+            "number": 0
+          }
+        },
+        "tres": {
+          "total": [],
+          "group": {
+            "minutes": [],
+            "active": []
+          },
+          "minutes": {
+            "total": [],
+            "per": {
+              "job": []
+            }
+          },
+          "per": {
+            "job": [],
+            "node": []
+          }
+        },
+        "per": {
+          "account": {
+            "wall_clock": {
+              "set": false,
+              "infinite": true,
+              "number": 0
+            }
+          }
+        }
+      },
+      "id": 4,
+      "is_default": true,
+      "lineage": "\/e2e-acct\/0-custos\/",
+      "min": {
+        "priority_threshold": {
+          "set": false,
+          "infinite": true,
+          "number": 0
+        }
+      },
+      "parent_account": "",
+      "partition": "",
+      "priority": {
+        "set": false,
+        "infinite": true,
+        "number": 0
+      },
+      "qos": [
+        "normal"
+      ],
+      "shares_raw": 1,
+      "user": "custos"
     }
   ],
-  "meta": { "plugin": { "data_parser": "v0.0.45" } },
+  "meta": {
+    "plugin": {
+      "type": "openapi\/slurmdbd",
+      "name": "Slurm OpenAPI slurmdbd",
+      "data_parser": "data_parser\/v0.0.45",
+      "accounting_storage": "accounting_storage\/slurmdbd"
+    },
+    "client": {
+      "source": "10.89.2.36:6820(fd:9)",
+      "user": "nobody",
+      "group": ""
+    },
+    "command": [],
+    "slurm": {
+      "version": {
+        "major": "26",
+        "micro": "4",
+        "minor": "05"
+      },
+      "release": "26.05.4",
+      "cluster": "e2e"
+    }
+  },
   "errors": [],
   "warnings": []
 }

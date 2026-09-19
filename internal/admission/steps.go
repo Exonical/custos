@@ -206,6 +206,11 @@ func Build(in BuildInput) (ExecutionSpec, *Denial) {
 	}
 	spec := in.Spec
 	spec.SchemaVersion = SchemaVersion
+	// Slurm requires a current working directory and the wrapper cd's to
+	// it — default to /tmp when the request leaves it unset.
+	if spec.WorkingDir == "" {
+		spec.WorkingDir = "/tmp"
+	}
 	spec.Account = account
 	spec.Partition = partition
 	spec.QoS = qos
