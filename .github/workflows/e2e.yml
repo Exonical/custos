@@ -1,0 +1,50 @@
+name: e2e
+
+# Nightly + manual only — never on PRs (see docs/e2e.md).
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 3 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      CONTAINER_ENGINE: docker
+      CUSTOS_E2E: "1"
+      CUSTOS_E2E_API: https://127.0.0.1:8080
+      CUSTOS_E2E_CA: ${{ github.workspace }}/deploy/e2e/.secrets/e2e-ca.crt
+      CUSTOS_E2E_KEYCLOAK: https://keycloak.e2e:8443/realms/custos
+      CUSTOS_E2E_CLIENT_ID: custos-e2e
+      CUSTOS_E2E_CLIENT_SECRET: e2e-client-secret
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: hosts entry for the Keycloak issuer
+        run: echo "127.0.0.1 keycloak.e2e" | sudo tee -a /etc/hosts
+
+      - name: Build Custos + validator images
+        run: |
+          docker build -t custos:local -f Containerfile .
+          docker build -t custos-validator:local -f deploy/Containerfile.validator .
+
+      - name: Bring the e2e stack up
+        run: scripts/e2e.sh up
+
+      - name: Run the e2e suite
+        run: go test ./test/e2e/... -count=1 -timeout 30m -v
+
+      - name: Dump compose logs on failure
+        if: failure()
+        run: scripts/e2e.sh logs --tail=2000
+
+      - name: Tear down
+        if: always()
+        run: scripts/e2e.sh down

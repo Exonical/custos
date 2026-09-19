@@ -1,0 +1,221 @@
+name: custos-e2e
+
+# End-to-end stack: real Slurm 26.05 cluster (Slinky images) +
+# Keycloak 26.7 + the hardened runtime stack from deploy/compose.
+# Start with scripts/e2e.sh — it runs init-secrets, brings this up and
+# bootstraps Slurm accounting + the platform-admin grant.
+#
+# Hostname wiring: nginx carries the network aliases keycloak.e2e and
+# slurmrestd.e2e, so every container resolves them to the TLS
+# terminator directly. On the host, keycloak.e2e must resolve to
+# 127.0.0.1 (nginx publishes 8443 on loopback) — scripts/e2e.sh prints
+# the /etc/hosts line. The issuer https://keycloak.e2e:8443 is then
+# identical inside and outside the stack.
+#
+# Secret file permissions: bind mounts arrive mode 777 on this engine
+# and Slurm refuses keys/configs that aren't 600/640, so each daemon's
+# entrypoint is wrapped in a bash -c that installs the files from the
+# read-only /etc/slurm-secrets mount into /etc/slurm with mode 600
+# before exec'ing the daemon (running as root, per the Slinky images).
+
+include:
+  - ../compose/compose.yaml
+
+services:
+  # ---- Slurm 26.05 cluster (cluster name: e2e) --------------------
+
+  mariadb:
+    image: docker.io/library/mariadb:11.8
+    # slurmdbd fatals on InnoDB write conflicts unless snapshot
+    # isolation is off (recommended by the slurmdbd docs).
+    command: ["--innodb-snapshot-isolation=OFF"]
+    environment:
+      MARIADB_RANDOM_ROOT_PASSWORD: "1"
+      MARIADB_DATABASE: slurm_acct_db
+      MARIADB_USER: slurm
+      MARIADB_PASSWORD_FILE: /run/secrets/slurmdb-password
+    secrets:
+      - slurmdb-password
+    tmpfs:
+      - /var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  slurmdbd:
+    hostname: slurmdbd
+    image: ghcr.io/slinkyproject/slurmdbd:26.05-ubuntu26.04
+    entrypoint: ["/usr/bin/tini", "-g", "--", "/bin/bash", "-c"]
+    command:
+      - >-
+        install -m 600 -o slurm /etc/slurm-secrets/slurm.key /etc/slurm/slurm.key &&
+        install -m 600 -o slurm /etc/slurm-secrets/jwt_hs256.key /etc/slurm/jwt_hs256.key &&
+        install -m 600 -o slurm /etc/slurm-secrets/slurmdbd.conf /etc/slurm/slurmdbd.conf &&
+        install -d -o slurm /run/slurmdbd && exec /usr/sbin/slurmdbd -D -vvv
+    volumes:
+      - ./slurm/slurm.conf:/etc/slurm/slurm.conf:ro
+      - ./.secrets/slurm:/etc/slurm-secrets:ro
+    tmpfs:
+      - /run
+      - /var/log/slurm
+    depends_on:
+      mariadb:
+        condition: service_healthy
+
+  slurmctld:
+    hostname: slurmctld
+    image: ghcr.io/slinkyproject/slurmctld:26.05-ubuntu26.04
+    entrypoint: ["/usr/bin/tini", "-g", "--", "/bin/bash", "-c"]
+    command:
+      - >-
+        install -m 600 -o slurm /etc/slurm-secrets/slurm.key /etc/slurm/slurm.key &&
+        install -m 600 -o slurm /etc/slurm-secrets/jwt_hs256.key /etc/slurm/jwt_hs256.key &&
+        install -d -m 755 -o slurm -g slurm /var/spool/slurmctld &&
+        exec /usr/sbin/slurmctld -D -vvv
+    volumes:
+      - ./slurm/slurm.conf:/etc/slurm/slurm.conf:ro
+      - ./.secrets/slurm:/etc/slurm-secrets:ro
+    tmpfs:
+      - /run
+      - /var/spool/slurmctld
+      - /var/log/slurm
+    depends_on:
+      slurmdbd:
+        condition: service_started
+
+  slurmd:
+    hostname: slurmd
+    image: ghcr.io/slinkyproject/slurmd:26.05-ubuntu26.04
+    entrypoint: ["/usr/bin/tini", "-g", "--", "/bin/bash", "-c"]
+    command:
+      - >-
+        install -m 600 -o slurm /etc/slurm-secrets/slurm.key /etc/slurm/slurm.key &&
+        install -m 600 -o slurm /etc/slurm-secrets/jwt_hs256.key /etc/slurm/jwt_hs256.key &&
+        exec /usr/sbin/slurmd -D -vvv
+    volumes:
+      - ./slurm/slurm.conf:/etc/slurm/slurm.conf:ro
+      - ./slurm/cgroup.conf:/etc/slurm/cgroup.conf:ro
+      - ./.secrets/slurm:/etc/slurm-secrets:ro
+    tmpfs:
+      - /run
+      - /var/spool/slurmd
+      - /var/log/slurm
+    depends_on:
+      slurmctld:
+        condition: service_started
+
+  slurmrestd:
+    image: ghcr.io/slinkyproject/slurmrestd:26.05-ubuntu26.04
+    environment:
+      # Required for the auth/jwt plugin to load inside slurmrestd
+      # (REST quickstart: "export SLURM_JWT=daemon").
+      SLURM_JWT: daemon
+    entrypoint: ["/usr/bin/tini", "-g", "--", "/bin/bash", "-c"]
+    command:
+      - >-
+        useradd -r -u 1500 -m slurmrestd &&
+        install -m 600 -o slurmrestd /etc/slurm-secrets/slurm.key /etc/slurm/slurm.key &&
+        install -m 600 -o slurmrestd /etc/slurm-secrets/jwt_hs256.key /etc/slurm/jwt_hs256.key &&
+        exec runuser -u slurmrestd -- /usr/sbin/slurmrestd -vvv -a rest_auth/jwt
+        -s openapi/slurmctld,openapi/slurmdbd 0.0.0.0:6820
+    volumes:
+      - ./slurm/slurm.conf:/etc/slurm/slurm.conf:ro
+      - ./.secrets/slurm:/etc/slurm-secrets:ro
+    tmpfs:
+      - /run
+      - /var/log/slurm
+    depends_on:
+      slurmctld:
+        condition: service_started
+
+  # ---- Keycloak 26.7 reference IdP (test realm) --------------------
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.7
+    command: start-dev --import-realm
+    environment:
+      KC_HOSTNAME: "https://keycloak.e2e:8443"
+      KC_HTTP_ENABLED: "true"
+      KC_PROXY_HEADERS: xforwarded
+      KC_HEALTH_ENABLED: "true"
+      # Test-only bootstrap admin (console access only; tests never
+      # use it). Keycloak has no *_FILE variant for this variable.
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: e2e-admin-password
+    volumes:
+      - ./keycloak/realm-custos.json:/opt/keycloak/data/import/realm-custos.json:ro
+    healthcheck:
+      # Management interface (health endpoints) is port 9000 in KC 26.
+      test:
+        - CMD-SHELL
+        - "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /health/ready HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q '200' <&3"
+      interval: 5s
+      timeout: 5s
+      retries: 60
+      start_period: 90s
+
+  # ---- TLS terminator ----------------------------------------------
+
+  nginx:
+    image: docker.io/library/nginx:1.29-alpine
+    # Render the DNS resolver from /etc/resolv.conf (the embedded DNS IP
+    # differs per engine/subnet: aardvark-dns on podman, 127.0.0.11 on
+    # docker) so upstream names re-resolve per request — see the comment
+    # in nginx.conf.template for why variables are used in proxy_pass.
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        resolver=$$(awk '/^nameserver/{print $$2; exit}' /etc/resolv.conf) &&
+        sed "s/RESOLVER_PLACEHOLDER/$$resolver/g"
+        /etc/nginx/templates/nginx.conf.template > /etc/nginx/conf.d/e2e.conf &&
+        exec nginx -g 'daemon off;'
+    volumes:
+      - ./nginx/nginx.conf.template:/etc/nginx/templates/nginx.conf.template:ro
+      - ./.secrets/slurmrestd.crt:/etc/nginx/tls/slurmrestd.crt:ro
+      - ./.secrets/slurmrestd.key:/etc/nginx/tls/slurmrestd.key:ro
+      - ./.secrets/keycloak.crt:/etc/nginx/tls/keycloak.crt:ro
+      - ./.secrets/keycloak.key:/etc/nginx/tls/keycloak.key:ro
+    networks:
+      default:
+        aliases:
+          - keycloak.e2e
+          - slurmrestd.e2e
+    ports:
+      # Host-side Go tests reach the same issuer the containers use.
+      - "127.0.0.1:8443:8443"
+      # 6820 stays compose-network-only: nothing on the host needs it.
+    depends_on:
+      keycloak:
+        condition: service_healthy
+      slurmrestd:
+        condition: service_started
+
+  # ---- Custos runtime (config overridden for e2e) ------------------
+
+  custos:
+    volumes:
+      - ./custos.yaml:/etc/custos/config.yaml:ro
+      - ./.secrets:/etc/custos/secrets:ro
+    environment:
+      CUSTOS_AUTH__OIDC__CLIENT_SECRET_FILE: /etc/custos/secrets/keycloak-client-secret
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      nginx:
+        condition: service_started
+
+  worker:
+    volumes:
+      - ./custos.yaml:/etc/custos/config.yaml:ro
+      - ./.secrets:/etc/custos/secrets:ro
+    environment:
+      CUSTOS_AUTH__OIDC__CLIENT_SECRET_FILE: /etc/custos/secrets/keycloak-client-secret
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+secrets:
+  slurmdb-password:
+    file: ./.secrets/slurmdb-password

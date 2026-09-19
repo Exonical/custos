@@ -39,6 +39,7 @@ Validation aborts startup (`config.invalid`) when:
 | `auth.oidc.accepted_token_types` | slice | `at+jwt,JWT,` | `CUSTOS_AUTH__OIDC__ACCEPTED_TOKEN_TYPES` | Permitted JOSE typ header values (empty string = typ absent) |
 | `auth.oidc.allowed_algorithms` | slice | `RS256,ES256` | `CUSTOS_AUTH__OIDC__ALLOWED_ALGORITHMS` | Permitted JWS algorithms |
 | `auth.oidc.audiences` | slice | `` | `CUSTOS_AUTH__OIDC__AUDIENCES` | Accepted token audiences |
+| `auth.oidc.ca_file` | string | `` | `CUSTOS_AUTH__OIDC__CA_FILE` | PEM CA bundle for the OIDC issuer's TLS (empty = system roots) |
 | `auth.oidc.claims` | section | `` | `CUSTOS_AUTH__OIDC__CLAIMS` | Claim names mapped onto Principal fields |
 | `auth.oidc.claims.email` | string | `email` | `CUSTOS_AUTH__OIDC__CLAIMS__EMAIL` | Claim carrying the email address |
 | `auth.oidc.claims.groups` | string | `groups` | `CUSTOS_AUTH__OIDC__CLAIMS__GROUPS` | Claim carrying group memberships (string array) |

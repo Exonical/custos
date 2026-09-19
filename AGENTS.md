@@ -17,6 +17,10 @@ design-level behaviour** — the docs are the contract.
 - `go build ./cmd/custos`
 - Docs changes: `npx markdownlint docs/**/*.md README.md CONTRIBUTING.md SECURITY.md AGENTS.md --disable MD013 MD033 MD024`
 
+E2E (optional; local + nightly CI, never on PRs): `scripts/e2e.sh up`
+brings up real Slurm 26.05 + Keycloak 26.7 under Podman, then
+`CUSTOS_E2E=1 go test ./test/e2e/... -count=1 -v` — see `docs/e2e.md`.
+
 ## Environment notes
 
 - This dev machine has **no Docker, no make, no local PostgreSQL**, but

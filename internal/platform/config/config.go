@@ -122,6 +122,7 @@ type OIDC struct {
 	Issuer                 string        `yaml:"issuer" doc:"OIDC issuer URL (https, no query/fragment)"`
 	ClientID               string        `yaml:"client_id" doc:"OIDC client identifier"`
 	ClientSecret           Secret        `yaml:"client_secret" doc:"OIDC client secret"`
+	CAFile                 string        `yaml:"ca_file" doc:"PEM CA bundle for the OIDC issuer's TLS (empty = system roots)"`
 	Audiences              []string      `yaml:"audiences" doc:"Accepted token audiences"`
 	AllowedAlgorithms      []string      `yaml:"allowed_algorithms" doc:"Permitted JWS algorithms"`
 	Discovery              bool          `yaml:"discovery" doc:"Fetch issuer .well-known/openid-configuration for jwks_uri"`

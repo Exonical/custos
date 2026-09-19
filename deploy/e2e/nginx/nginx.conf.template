@@ -1,0 +1,59 @@
+# TLS terminator for the e2e stack. Custos refuses plaintext endpoints
+# off-loopback, so both slurmrestd and Keycloak sit behind TLS server
+# blocks signed by the e2e CA (deploy/e2e/.secrets/e2e-ca.crt).
+#
+#   https://slurmrestd.e2e:6820 -> slurmrestd:6820  (compose network only)
+#   https://keycloak.e2e:8443   -> keycloak:8080    (also published on
+#                                                  127.0.0.1:8443 so the
+#                                                  host test process can
+#                                                  use the same issuer)
+#
+# Upstream hostnames are resolved PER REQUEST, not once at startup:
+# nginx caches proxy_pass hostnames at config load, so a recreated
+# upstream container (new IP) would strand the proxy with 502s. Using a
+# variable in proxy_pass forces runtime resolution through `resolver`,
+# which the service entrypoint renders from /etc/resolv.conf into
+# RESOLVER_PLACEHOLDER (aardvark-dns on podman, embedded DNS on docker —
+# the IP differs per engine/subnet, so it cannot be hardcoded).
+
+access_log off;
+
+# Rendered by the service entrypoint from /etc/resolv.conf (aardvark-dns
+# on podman, embedded DNS on docker — the IP is engine/subnet specific).
+resolver RESOLVER_PLACEHOLDER valid=10s ipv6=off;
+
+	server {
+		listen 6820 ssl;
+		server_name slurmrestd.e2e;
+
+		ssl_certificate     /etc/nginx/tls/slurmrestd.crt;
+		ssl_certificate_key /etc/nginx/tls/slurmrestd.key;
+		ssl_protocols       TLSv1.3;
+
+		location / {
+			set $restd http://slurmrestd:6820;
+			proxy_pass $restd$request_uri;
+			proxy_set_header Host $host;
+			# slurmrestd responses (job records) can be large/slow.
+			proxy_read_timeout 120s;
+		}
+	}
+
+	server {
+		listen 8443 ssl;
+		server_name keycloak.e2e;
+
+		ssl_certificate     /etc/nginx/tls/keycloak.crt;
+		ssl_certificate_key /etc/nginx/tls/keycloak.key;
+		ssl_protocols       TLSv1.3;
+
+		location / {
+			set $kc http://keycloak:8080;
+			proxy_pass $kc$request_uri;
+			proxy_set_header Host $host;
+			proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+			proxy_set_header X-Forwarded-Proto https;
+			proxy_set_header X-Forwarded-Host $host;
+			proxy_read_timeout 120s;
+		}
+	}

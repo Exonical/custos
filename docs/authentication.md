@@ -170,3 +170,11 @@ only, never the token), `user.provisioned`, `membership.granted`,
 `membership.updated`, `membership.revoked`, `membership.revoke_blocked`,
 `group.member.added`, `group.member.removed`, `platform_role.granted`,
 `platform_role.revoked`.
+
+## Reference IdP in e2e
+
+Keycloak 26.7 is the reference identity provider exercised end-to-end:
+`deploy/e2e/keycloak/realm-custos.json` imports realm `custos` with a
+confidential client, audience/groups mappers and test users; Custos
+verifies its TLS with `auth.oidc.ca_file` against the e2e CA. See
+`docs/e2e.md`.

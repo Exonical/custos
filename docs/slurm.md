@@ -126,7 +126,9 @@ type Job struct {
 - Version mapping code is mechanical and boring on purpose; a contract test
   suite (`internal/slurm/conformance`) runs the **same tests** against every
   adapter version and against the in-memory fake, with recorded slurmrestd
-  JSON fixtures captured from real clusters.
+  JSON fixtures captured from real clusters. The `v0045` fixtures under
+  `internal/slurm/slinky/v0045/testdata/` are recorded from the e2e
+  stack's live Slurm **26.05.4** cluster (see `docs/e2e.md`).
 
 ### Authentication to slurmrestd
 

@@ -35,6 +35,8 @@ documentation only; no application code exists yet. Milestone 1
   reconciliation loops
 - [Observability](docs/observability.md) — metrics, logs, accounting
   pipeline, health
+- [End-to-end stack](docs/e2e.md) — real Slurm 26.05 + Keycloak 26.7
+  under Podman, `test/e2e` suite
 - [Frontend](docs/frontend.md) — Next.js BFF, sessions, editor
 - [API conventions](docs/api.md) — OpenAPI contract, routing, envelopes
 - [Threat model](docs/threat-model.md) — assets, actors, STRIDE threats

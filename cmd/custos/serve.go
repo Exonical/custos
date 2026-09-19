@@ -2,11 +2,14 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/netip"
+	"os"
 	"os/signal"
 	"syscall"
 	"time"
@@ -105,7 +108,12 @@ func cmdServe(parent context.Context, configPath string, lookupEnv config.Lookup
 	// DenyAll in dev_mode without an issuer so bearer routes fail closed.
 	var verifier authn.Verifier = authn.DenyAll{}
 	if !cfg.DevMode || cfg.Auth.OIDC.Issuer != "" {
-		v, err := authn.NewOIDCVerifier(ctx, cfg.Auth.OIDC, nil, logger)
+		oidcClient, err := oidcHTTPClient(cfg.Auth.OIDC.CAFile)
+		if err != nil {
+			logger.ErrorContext(ctx, "oidc ca_file", "error", err)
+			return 1
+		}
+		v, err := authn.NewOIDCVerifier(ctx, cfg.Auth.OIDC, oidcClient, logger)
 		if err != nil {
 			logger.ErrorContext(ctx, "oidc verifier setup", "error", err)
 			return 1
@@ -291,4 +299,31 @@ func trustedProxies(logger *slog.Logger, cfg config.Config) []netip.Prefix {
 		out = append(out, pfx)
 	}
 	return out
+}
+
+// oidcHTTPClient builds the HTTP client the OIDC verifier uses for
+// discovery and JWKS fetches. caFile pins a private CA (e.g. the e2e
+// stack's CA) appended to the system roots; empty uses the defaults.
+func oidcHTTPClient(caFile string) (*http.Client, error) {
+	if caFile == "" {
+		return nil, nil // verifier falls back to http.DefaultClient
+	}
+	pem, err := os.ReadFile(caFile) // #nosec G304 -- path comes from validated operator config
+	if err != nil {
+		return nil, fmt.Errorf("auth.oidc.ca_file: %w", err)
+	}
+	roots, err := x509.SystemCertPool()
+	if err != nil || roots == nil {
+		roots = x509.NewCertPool()
+	}
+	if !roots.AppendCertsFromPEM(pem) {
+		return nil, fmt.Errorf(
+			"auth.oidc.ca_file: no parseable certificates in %s", caFile)
+	}
+	return &http.Client{Transport: &http.Transport{
+		TLSClientConfig: &tls.Config{
+			MinVersion: tls.VersionTLS12,
+			RootCAs:    roots,
+		},
+	}}, nil
 }
