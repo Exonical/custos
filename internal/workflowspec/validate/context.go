@@ -21,6 +21,9 @@ type Context struct {
 	// binding and the cluster's capability snapshot; ok=false means no
 	// enabled binding exists.
 	Cluster func(name string) (admission.Binding, validation.ClusterSnapshot, bool)
+	// SecretReference resolves a tenant SecretReference name. It validates
+	// bindings for M6-B while static validation keeps spec.secrets fail-closed.
+	SecretReference func(name string) bool
 	// DefaultCluster is the placement used when neither the task nor
 	// the workflow names one ("" → no capability checks possible).
 	DefaultCluster string
@@ -30,6 +33,14 @@ type Context struct {
 // secrets available, placement bound. Steps 1-4 must have run first.
 func Contextual(w workflowspec.Workflow, ctx Context) []FieldError {
 	var errs []FieldError
+	if ctx.SecretReference != nil {
+		for handle, use := range w.Spec.Secrets {
+			if !ctx.SecretReference(use.Ref) {
+				errs = append(errs, FieldError{Path: "spec.secrets." + handle + ".ref",
+					Code: "SECRET_REFERENCE_NOT_FOUND", Message: "secret reference not found"})
+			}
+		}
+	}
 	for i, t := range w.Spec.Tasks {
 		base := fmt.Sprintf("spec.tasks[%d]", i)
 		ty := t.Type

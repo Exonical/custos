@@ -30,7 +30,7 @@ var auditorReadPerms = []Action{
 	WorkflowRead,
 	ExecutionReadSelf, ExecutionReadTenant,
 	JobReadSelf, JobReadTenant,
-	SecretReferenceRead,
+	SecretReferenceRead, SecretConnectorRead,
 	AccountingReadSelf, AccountingReadProject, AccountingReadTenant,
 	AuditReadTenant,
 }
@@ -41,7 +41,7 @@ var researcherPerms = []Action{
 	JobSubmit, JobReadSelf, JobCancelSelf,
 	ExecutionReadSelf, ExecutionCancelSelf,
 	AccountingReadSelf,
-	SecretReferenceUse,
+	SecretReferenceRead, SecretReferenceCreate, SecretReferenceUse, SecretReferenceDelete,
 }
 
 // rolePermissions is the role -> permissions data table. Platform and
@@ -59,7 +59,8 @@ var rolePermissions = map[string][]Action{
 		WorkflowRead, WorkflowCreate, WorkflowPublish, WorkflowExecute, WorkflowApprove,
 		ExecutionReadSelf, ExecutionReadTenant, ExecutionCancelSelf, ExecutionCancelAny,
 		JobSubmit, JobReadSelf, JobReadTenant, JobCancelSelf, JobCancelAny,
-		SecretReferenceRead, SecretReferenceCreate, SecretReferenceUse,
+		SecretReferenceRead, SecretReferenceCreate, SecretReferenceUse, SecretReferenceDelete,
+		SecretConnectorRead, SecretConnectorManage,
 		AccountingReadSelf, AccountingReadProject, AccountingReadTenant,
 		AuditReadTenant,
 	},
@@ -70,7 +71,7 @@ var rolePermissions = map[string][]Action{
 		AccountingReadTenant,
 	},
 	RoleWorkflowAuthor: append(slices.Clone(researcherPerms),
-		WorkflowCreate, WorkflowPublish, SecretReferenceRead),
+		WorkflowCreate, WorkflowPublish),
 	RoleResearcher: researcherPerms,
 	RoleViewer: {
 		TenantRead, ProjectRead, ClusterRead, WorkflowRead,

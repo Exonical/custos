@@ -13,8 +13,10 @@ Everything runs locally or in the nightly CI job — never on PRs.
 | slurmctld | `slinkyproject/slurmctld:26.05-ubuntu26.04` | cluster `e2e`, `auth/slurm` + `auth/jwt` |
 | slurmd | `slinkyproject/slurmd:26.05-ubuntu26.04` | one node `c1` (`CPUs=2`), **unprivileged**: `proctrack/pgid`, `task/none`, cgroup plugin disabled |
 | slurmrestd | `slinkyproject/slurmrestd:26.05-ubuntu26.04` | `-a rest_auth/jwt`, data_parser `v0.0.45`, 26.05.4 |
-| nginx | `nginx:1.29-alpine` | TLS terminator for slurmrestd (`slurmrestd.e2e:6820`) and Keycloak (`keycloak.e2e:8443`); upstreams resolve per request via the embedded DNS resolver |
-| keycloak | `keycloak/keycloak:26.7` | realm `custos`, confidential client `custos-e2e`, test users below |
+| nginx | `nginx:1.29-alpine` | TLS terminator for slurmrestd (`slurmrestd.e2e:6820`), Keycloak (`keycloak.e2e:8443`), and BYO OpenBao (`openbao-byo.e2e:8250`); upstreams resolve per request via embedded DNS |
+| keycloak | `keycloak/keycloak:26.7` | realm `custos`; user client `custos-e2e`; service-account client `custos-openbao` for workload JWT auth |
+| openbao | `openbao/openbao:2.6.2` | platform provider, TLS + file storage, initialized/unsealed by one-shot bootstrap; root token revoked |
+| openbao-byo | `openbao/openbao:2.6.2` | customer-manager stand-in; dev server is e2e-only and Custos reaches it through nginx TLS |
 | postgres | `postgres:18` | Custos metadata (same as the runtime stack) |
 | custos / worker | `custos:local` | the hardened runtime services |
 | validator-api / validator-worker | `custos-validator:local` | ShellCheck 0.11.0 sidecars on `127.0.0.1:8481` inside each parent's network namespace |
@@ -28,8 +30,9 @@ scripts/e2e.sh logs    # pass-through to compose logs
 ```
 
 `up` does, in order: generate `.secrets/` (CA, certs, `slurm.key`,
-`jwt_hs256.key`, slurmdbd password, Keycloak client secret); bring the
-whole stack up healthy; wait for the ShellCheck sidecars on
+`jwt_hs256.key`, slurmdbd password, Keycloak client secrets, and TLS material);
+bring the whole stack up healthy; initialize/unseal platform OpenBao, configure
+its Keycloak JWT role, and revoke its bootstrap root token; wait for the ShellCheck sidecars on
 `127.0.0.1:8481` **inside each parent netns** (see below); wait for
 slurmctld and node `c1`; create the `custos` Slurm user (uid 2000) in
 slurmctld/slurmd/slurmrestd/**slurmdbd**; wait for `sacctmgr` and add
@@ -37,10 +40,12 @@ cluster `e2e`, account `e2e-acct`, QoS `normal`+`high`, and the `custos`
 association idempotently (existence-checked, no swallowed errors);
 **restart slurmctld** so it registers the cluster's control port with
 slurmdbd (job accounting records require it — verified via
-`sacctmgr show cluster`); mint a long-lived JWT into
-`.secrets/slurm/token`; wait for Custos readiness; grant
-`platform-admin` to the Keycloak `platform-admin` user; and seed tenant
-`acme` + claim rules so the first `/me` reconciles immediately.
+`sacctmgr show cluster`); mint a long-lived JWT and write it both to the
+file-provider fixture and platform OpenBao; seed the TLS-fronted BYO OpenBao;
+wait for Custos readiness; grant `platform-admin`; seed tenant `acme` and its
+claim rules; then write Alice's fixture value in her new tenant namespace.
+`TestE2E` exercises both cluster providers, the automatic default connector,
+a BYO connector, owner isolation, path/namespace validation, and SSRF denial.
 
 Then, with the env it prints:
 

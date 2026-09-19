@@ -331,6 +331,48 @@ func (e ClusterUpdateVisibility) Valid() bool {
 	}
 }
 
+// Defines values for CreateSecretConnectorKind.
+const (
+	CreateSecretConnectorKindOpenbao CreateSecretConnectorKind = "openbao"
+)
+
+// Valid indicates whether the value is a known member of the CreateSecretConnectorKind enum.
+func (e CreateSecretConnectorKind) Valid() bool {
+	switch e {
+	case CreateSecretConnectorKindOpenbao:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CreateSecretReferenceKind.
+const (
+	CreateSecretReferenceKindApiToken          CreateSecretReferenceKind = "api_token"
+	CreateSecretReferenceKindGeneric           CreateSecretReferenceKind = "generic"
+	CreateSecretReferenceKindSlurmToken        CreateSecretReferenceKind = "slurm_token"
+	CreateSecretReferenceKindSshKey            CreateSecretReferenceKind = "ssh_key"
+	CreateSecretReferenceKindStorageCredential CreateSecretReferenceKind = "storage_credential"
+)
+
+// Valid indicates whether the value is a known member of the CreateSecretReferenceKind enum.
+func (e CreateSecretReferenceKind) Valid() bool {
+	switch e {
+	case CreateSecretReferenceKindApiToken:
+		return true
+	case CreateSecretReferenceKindGeneric:
+		return true
+	case CreateSecretReferenceKindSlurmToken:
+		return true
+	case CreateSecretReferenceKindSshKey:
+		return true
+	case CreateSecretReferenceKindStorageCredential:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for DiagnosticSeverity.
 const (
 	DiagnosticSeverityERROR             DiagnosticSeverity = "ERROR"
@@ -757,15 +799,81 @@ func (e ScriptValidateRequestLanguage) Valid() bool {
 	}
 }
 
+// Defines values for SecretConnectorKind.
+const (
+	SecretConnectorKindOpenbao         SecretConnectorKind = "openbao"
+	SecretConnectorKindPlatformOpenbao SecretConnectorKind = "platform-openbao"
+)
+
+// Valid indicates whether the value is a known member of the SecretConnectorKind enum.
+func (e SecretConnectorKind) Valid() bool {
+	switch e {
+	case SecretConnectorKindOpenbao:
+		return true
+	case SecretConnectorKindPlatformOpenbao:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SecretConnectorState.
+const (
+	SecretConnectorStateActive   SecretConnectorState = "active"
+	SecretConnectorStateDisabled SecretConnectorState = "disabled"
+)
+
+// Valid indicates whether the value is a known member of the SecretConnectorState enum.
+func (e SecretConnectorState) Valid() bool {
+	switch e {
+	case SecretConnectorStateActive:
+		return true
+	case SecretConnectorStateDisabled:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for SecretRefProvider.
 const (
-	File SecretRefProvider = "file"
+	SecretRefProviderFile    SecretRefProvider = "file"
+	SecretRefProviderOpenbao SecretRefProvider = "openbao"
 )
 
 // Valid indicates whether the value is a known member of the SecretRefProvider enum.
 func (e SecretRefProvider) Valid() bool {
 	switch e {
-	case File:
+	case SecretRefProviderFile:
+		return true
+	case SecretRefProviderOpenbao:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SecretReferenceKind.
+const (
+	SecretReferenceKindApiToken          SecretReferenceKind = "api_token"
+	SecretReferenceKindGeneric           SecretReferenceKind = "generic"
+	SecretReferenceKindSlurmToken        SecretReferenceKind = "slurm_token"
+	SecretReferenceKindSshKey            SecretReferenceKind = "ssh_key"
+	SecretReferenceKindStorageCredential SecretReferenceKind = "storage_credential"
+)
+
+// Valid indicates whether the value is a known member of the SecretReferenceKind enum.
+func (e SecretReferenceKind) Valid() bool {
+	switch e {
+	case SecretReferenceKindApiToken:
+		return true
+	case SecretReferenceKindGeneric:
+		return true
+	case SecretReferenceKindSlurmToken:
+		return true
+	case SecretReferenceKindSshKey:
+		return true
+	case SecretReferenceKindStorageCredential:
 		return true
 	default:
 		return false
@@ -1370,6 +1478,34 @@ type ClusterUpdateIdentityMode string
 // ClusterUpdateVisibility defines model for ClusterUpdate.Visibility.
 type ClusterUpdateVisibility string
 
+// CreateSecretConnector defines model for CreateSecretConnector.
+type CreateSecretConnector struct {
+	Config     map[string]interface{}    `json:"config"`
+	Credential *map[string]string        `json:"credential,omitempty"`
+	Kind       CreateSecretConnectorKind `json:"kind"`
+	Name       string                    `json:"name"`
+}
+
+// CreateSecretConnectorKind defines model for CreateSecretConnector.Kind.
+type CreateSecretConnectorKind string
+
+// CreateSecretReference defines model for CreateSecretReference.
+type CreateSecretReference struct {
+	AllowedUses   *[]string                 `json:"allowed_uses,omitempty"`
+	Connector     *string                   `json:"connector,omitempty"`
+	Key           string                    `json:"key"`
+	Kind          CreateSecretReferenceKind `json:"kind"`
+	Mount         *string                   `json:"mount,omitempty"`
+	Name          string                    `json:"name"`
+	OwnerId       *openapi_types.UUID       `json:"owner_id,omitempty"`
+	Path          string                    `json:"path"`
+	ProjectId     *openapi_types.UUID       `json:"project_id,omitempty"`
+	SecretVersion *int                      `json:"secret_version,omitempty"`
+}
+
+// CreateSecretReferenceKind defines model for CreateSecretReference.Kind.
+type CreateSecretReferenceKind string
+
 // Diagnostic defines model for Diagnostic.
 type Diagnostic struct {
 	Code      string             `json:"code"`
@@ -1808,16 +1944,66 @@ type ScriptValidateResponse struct {
 	Valid        bool              `json:"valid"`
 }
 
+// SecretConnector defines model for SecretConnector.
+type SecretConnector struct {
+	Config map[string]interface{} `json:"config"`
+
+	// CredentialRef Reference to a secret value (docs/secrets.md); never the value.
+	CredentialRef *SecretRef           `json:"credential_ref,omitempty"`
+	Id            openapi_types.UUID   `json:"id"`
+	Kind          SecretConnectorKind  `json:"kind"`
+	Name          string               `json:"name"`
+	State         SecretConnectorState `json:"state"`
+	TenantId      openapi_types.UUID   `json:"tenant_id"`
+	Version       int64                `json:"version"`
+}
+
+// SecretConnectorKind defines model for SecretConnector.Kind.
+type SecretConnectorKind string
+
+// SecretConnectorState defines model for SecretConnector.State.
+type SecretConnectorState string
+
 // SecretRef Reference to a secret value (docs/secrets.md); never the value.
 type SecretRef struct {
-	// Key Optional JSON key inside the file.
-	Key      *string           `json:"key,omitempty"`
-	Path     string            `json:"path"`
-	Provider SecretRefProvider `json:"provider"`
+	// Key Field within the secret document.
+	Key *string `json:"key,omitempty"`
+
+	// Mount OpenBao KV v2 mount; required for openbao references.
+	Mount *string `json:"mount,omitempty"`
+
+	// Namespace OpenBao namespace; required for openbao references.
+	Namespace *string           `json:"namespace,omitempty"`
+	Path      string            `json:"path"`
+	Provider  SecretRefProvider `json:"provider"`
+
+	// Version Optional pinned OpenBao KV version.
+	Version *int `json:"version,omitempty"`
 }
 
 // SecretRefProvider defines model for SecretRef.Provider.
 type SecretRefProvider string
+
+// SecretReference defines model for SecretReference.
+type SecretReference struct {
+	AllowedUses   []string            `json:"allowed_uses"`
+	ConnectorId   openapi_types.UUID  `json:"connector_id"`
+	Id            openapi_types.UUID  `json:"id"`
+	Key           string              `json:"key"`
+	Kind          SecretReferenceKind `json:"kind"`
+	Mount         string              `json:"mount"`
+	Name          string              `json:"name"`
+	Namespace     string              `json:"namespace"`
+	OwnerId       *openapi_types.UUID `json:"owner_id,omitempty"`
+	Path          string              `json:"path"`
+	ProjectId     *openapi_types.UUID `json:"project_id,omitempty"`
+	SecretVersion *int                `json:"secret_version,omitempty"`
+	TenantId      openapi_types.UUID  `json:"tenant_id"`
+	Version       int64               `json:"version"`
+}
+
+// SecretReferenceKind defines model for SecretReference.Kind.
+type SecretReferenceKind string
 
 // TaskExecution defines model for TaskExecution.
 type TaskExecution struct {
@@ -2179,6 +2365,12 @@ type ListProjectMembersParams struct {
 	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// UpdateSecretConnectorJSONBody defines parameters for UpdateSecretConnector.
+type UpdateSecretConnectorJSONBody = map[string]interface{}
+
+// UpdateSecretReferenceJSONBody defines parameters for UpdateSecretReference.
+type UpdateSecretReferenceJSONBody = map[string]interface{}
+
 // LookupUsersParams defines parameters for LookupUsers.
 type LookupUsersParams struct {
 	Email string `form:"email" json:"email"`
@@ -2315,6 +2507,18 @@ type ImportSbatchJSONRequestBody = ImportSbatchRequest
 
 // ValidateScriptJSONRequestBody defines body for ValidateScript for application/json ContentType.
 type ValidateScriptJSONRequestBody = ScriptValidateRequest
+
+// CreateSecretConnectorJSONRequestBody defines body for CreateSecretConnector for application/json ContentType.
+type CreateSecretConnectorJSONRequestBody = CreateSecretConnector
+
+// UpdateSecretConnectorJSONRequestBody defines body for UpdateSecretConnector for application/json ContentType.
+type UpdateSecretConnectorJSONRequestBody = UpdateSecretConnectorJSONBody
+
+// CreateSecretReferenceJSONRequestBody defines body for CreateSecretReference for application/json ContentType.
+type CreateSecretReferenceJSONRequestBody = CreateSecretReference
+
+// UpdateSecretReferenceJSONRequestBody defines body for UpdateSecretReference for application/json ContentType.
+type UpdateSecretReferenceJSONRequestBody = UpdateSecretReferenceJSONBody
 
 // ExecuteWorkflowJSONRequestBody defines body for ExecuteWorkflow for application/json ContentType.
 type ExecuteWorkflowJSONRequestBody = WorkflowExecuteRequest
@@ -2564,6 +2768,42 @@ type ServerInterface interface {
 	// ValidateScript Validate a script ad hoc (workflow.create; rate-limited)
 	// (POST /tenants/{tenant}/scripts/validate)
 	ValidateScript(w http.ResponseWriter, r *http.Request, tenant TenantSlug)
+	// ListSecretConnectors List tenant secret connectors
+	// (GET /tenants/{tenant}/secret-connectors)
+	ListSecretConnectors(w http.ResponseWriter, r *http.Request, tenant TenantSlug)
+	// CreateSecretConnector Create a tenant secret connector
+	// (POST /tenants/{tenant}/secret-connectors)
+	CreateSecretConnector(w http.ResponseWriter, r *http.Request, tenant TenantSlug)
+
+	// (DELETE /tenants/{tenant}/secret-connectors/{connector})
+	DeleteSecretConnector(w http.ResponseWriter, r *http.Request, tenant TenantSlug, connector string)
+
+	// (GET /tenants/{tenant}/secret-connectors/{connector})
+	GetSecretConnector(w http.ResponseWriter, r *http.Request, tenant TenantSlug, connector string)
+
+	// (PATCH /tenants/{tenant}/secret-connectors/{connector})
+	UpdateSecretConnector(w http.ResponseWriter, r *http.Request, tenant TenantSlug, connector string)
+
+	// (POST /tenants/{tenant}/secret-connectors/{connector}/test)
+	TestSecretConnector(w http.ResponseWriter, r *http.Request, tenant TenantSlug, connector string)
+
+	// (GET /tenants/{tenant}/secret-references)
+	ListSecretReferences(w http.ResponseWriter, r *http.Request, tenant TenantSlug)
+
+	// (POST /tenants/{tenant}/secret-references)
+	CreateSecretReference(w http.ResponseWriter, r *http.Request, tenant TenantSlug)
+
+	// (DELETE /tenants/{tenant}/secret-references/{reference})
+	DeleteSecretReference(w http.ResponseWriter, r *http.Request, tenant TenantSlug, reference string)
+
+	// (GET /tenants/{tenant}/secret-references/{reference})
+	GetSecretReference(w http.ResponseWriter, r *http.Request, tenant TenantSlug, reference string)
+
+	// (PATCH /tenants/{tenant}/secret-references/{reference})
+	UpdateSecretReference(w http.ResponseWriter, r *http.Request, tenant TenantSlug, reference string)
+
+	// (POST /tenants/{tenant}/secret-references/{reference}/test)
+	TestSecretReference(w http.ResponseWriter, r *http.Request, tenant TenantSlug, reference string)
 	// LookupUsers Look up users by exact email (tenant.members.manage)
 	// (GET /tenants/{tenant}/users/lookup)
 	LookupUsers(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params LookupUsersParams)
@@ -5269,6 +5509,390 @@ func (siw *ServerInterfaceWrapper) ValidateScript(w http.ResponseWriter, r *http
 	handler.ServeHTTP(w, r)
 }
 
+// ListSecretConnectors operation middleware
+func (siw *ServerInterfaceWrapper) ListSecretConnectors(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListSecretConnectors(w, r, tenant)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateSecretConnector operation middleware
+func (siw *ServerInterfaceWrapper) CreateSecretConnector(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateSecretConnector(w, r, tenant)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteSecretConnector operation middleware
+func (siw *ServerInterfaceWrapper) DeleteSecretConnector(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "connector" -------------
+	var connector string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "connector", r.PathValue("connector"), &connector, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "connector", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteSecretConnector(w, r, tenant, connector)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetSecretConnector operation middleware
+func (siw *ServerInterfaceWrapper) GetSecretConnector(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "connector" -------------
+	var connector string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "connector", r.PathValue("connector"), &connector, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "connector", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetSecretConnector(w, r, tenant, connector)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateSecretConnector operation middleware
+func (siw *ServerInterfaceWrapper) UpdateSecretConnector(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "connector" -------------
+	var connector string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "connector", r.PathValue("connector"), &connector, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "connector", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateSecretConnector(w, r, tenant, connector)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// TestSecretConnector operation middleware
+func (siw *ServerInterfaceWrapper) TestSecretConnector(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "connector" -------------
+	var connector string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "connector", r.PathValue("connector"), &connector, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "connector", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.TestSecretConnector(w, r, tenant, connector)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListSecretReferences operation middleware
+func (siw *ServerInterfaceWrapper) ListSecretReferences(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListSecretReferences(w, r, tenant)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateSecretReference operation middleware
+func (siw *ServerInterfaceWrapper) CreateSecretReference(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateSecretReference(w, r, tenant)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteSecretReference operation middleware
+func (siw *ServerInterfaceWrapper) DeleteSecretReference(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "reference" -------------
+	var reference string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "reference", r.PathValue("reference"), &reference, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "reference", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteSecretReference(w, r, tenant, reference)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetSecretReference operation middleware
+func (siw *ServerInterfaceWrapper) GetSecretReference(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "reference" -------------
+	var reference string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "reference", r.PathValue("reference"), &reference, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "reference", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetSecretReference(w, r, tenant, reference)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateSecretReference operation middleware
+func (siw *ServerInterfaceWrapper) UpdateSecretReference(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "reference" -------------
+	var reference string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "reference", r.PathValue("reference"), &reference, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "reference", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateSecretReference(w, r, tenant, reference)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// TestSecretReference operation middleware
+func (siw *ServerInterfaceWrapper) TestSecretReference(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "reference" -------------
+	var reference string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "reference", r.PathValue("reference"), &reference, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "reference", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.TestSecretReference(w, r, tenant, reference)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // LookupUsers operation middleware
 func (siw *ServerInterfaceWrapper) LookupUsers(w http.ResponseWriter, r *http.Request) {
 
@@ -6579,6 +7203,18 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/tenants/{tenant}/projects/{project}/jobs/{job}", wrapper.GetJob)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/tenants/{tenant}/projects/{project}/jobs/{job}/cancel", wrapper.CancelJob)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/tenants/{tenant}/projects/{project}/jobs/{job}/execution-spec", wrapper.GetJobExecutionSpec)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/tenants/{tenant}/secret-connectors", wrapper.ListSecretConnectors)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/tenants/{tenant}/secret-connectors", wrapper.CreateSecretConnector)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/tenants/{tenant}/secret-connectors/{connector}", wrapper.DeleteSecretConnector)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/tenants/{tenant}/secret-connectors/{connector}", wrapper.GetSecretConnector)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/tenants/{tenant}/secret-connectors/{connector}", wrapper.UpdateSecretConnector)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/tenants/{tenant}/secret-connectors/{connector}/test", wrapper.TestSecretConnector)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/tenants/{tenant}/secret-references", wrapper.ListSecretReferences)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/tenants/{tenant}/secret-references", wrapper.CreateSecretReference)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/tenants/{tenant}/secret-references/{reference}", wrapper.DeleteSecretReference)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/tenants/{tenant}/secret-references/{reference}", wrapper.GetSecretReference)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/tenants/{tenant}/secret-references/{reference}", wrapper.UpdateSecretReference)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/tenants/{tenant}/secret-references/{reference}/test", wrapper.TestSecretReference)
 
 	return m
 }
@@ -11066,6 +11702,300 @@ func (response ValidateScript429JSONResponse) VisitValidateScriptResponse(w http
 	return err
 }
 
+type ListSecretConnectorsRequestObject struct {
+	Tenant TenantSlug `json:"tenant"`
+}
+
+type ListSecretConnectorsResponseObject interface {
+	VisitListSecretConnectorsResponse(w http.ResponseWriter) error
+}
+
+type ListSecretConnectors200JSONResponse map[string]interface{}
+
+func (response ListSecretConnectors200JSONResponse) VisitListSecretConnectorsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateSecretConnectorRequestObject struct {
+	Tenant TenantSlug `json:"tenant"`
+	Body   *CreateSecretConnectorJSONRequestBody
+}
+
+type CreateSecretConnectorResponseObject interface {
+	VisitCreateSecretConnectorResponse(w http.ResponseWriter) error
+}
+
+type CreateSecretConnector201JSONResponse SecretConnector
+
+func (response CreateSecretConnector201JSONResponse) VisitCreateSecretConnectorResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateSecretConnector422JSONResponse Error
+
+func (response CreateSecretConnector422JSONResponse) VisitCreateSecretConnectorResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteSecretConnectorRequestObject struct {
+	Tenant    TenantSlug `json:"tenant"`
+	Connector string     `json:"connector"`
+}
+
+type DeleteSecretConnectorResponseObject interface {
+	VisitDeleteSecretConnectorResponse(w http.ResponseWriter) error
+}
+
+type DeleteSecretConnector204Response struct {
+}
+
+func (response DeleteSecretConnector204Response) VisitDeleteSecretConnectorResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteSecretConnector409Response struct {
+}
+
+func (response DeleteSecretConnector409Response) VisitDeleteSecretConnectorResponse(w http.ResponseWriter) error {
+	w.WriteHeader(409)
+	return nil
+}
+
+type GetSecretConnectorRequestObject struct {
+	Tenant    TenantSlug `json:"tenant"`
+	Connector string     `json:"connector"`
+}
+
+type GetSecretConnectorResponseObject interface {
+	VisitGetSecretConnectorResponse(w http.ResponseWriter) error
+}
+
+type GetSecretConnector200JSONResponse SecretConnector
+
+func (response GetSecretConnector200JSONResponse) VisitGetSecretConnectorResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateSecretConnectorRequestObject struct {
+	Tenant    TenantSlug `json:"tenant"`
+	Connector string     `json:"connector"`
+	Body      *UpdateSecretConnectorJSONRequestBody
+}
+
+type UpdateSecretConnectorResponseObject interface {
+	VisitUpdateSecretConnectorResponse(w http.ResponseWriter) error
+}
+
+type UpdateSecretConnector200JSONResponse SecretConnector
+
+func (response UpdateSecretConnector200JSONResponse) VisitUpdateSecretConnectorResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TestSecretConnectorRequestObject struct {
+	Tenant    TenantSlug `json:"tenant"`
+	Connector string     `json:"connector"`
+}
+
+type TestSecretConnectorResponseObject interface {
+	VisitTestSecretConnectorResponse(w http.ResponseWriter) error
+}
+
+type TestSecretConnector200JSONResponse map[string]interface{}
+
+func (response TestSecretConnector200JSONResponse) VisitTestSecretConnectorResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSecretReferencesRequestObject struct {
+	Tenant TenantSlug `json:"tenant"`
+}
+
+type ListSecretReferencesResponseObject interface {
+	VisitListSecretReferencesResponse(w http.ResponseWriter) error
+}
+
+type ListSecretReferences200JSONResponse map[string]interface{}
+
+func (response ListSecretReferences200JSONResponse) VisitListSecretReferencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateSecretReferenceRequestObject struct {
+	Tenant TenantSlug `json:"tenant"`
+	Body   *CreateSecretReferenceJSONRequestBody
+}
+
+type CreateSecretReferenceResponseObject interface {
+	VisitCreateSecretReferenceResponse(w http.ResponseWriter) error
+}
+
+type CreateSecretReference201JSONResponse SecretReference
+
+func (response CreateSecretReference201JSONResponse) VisitCreateSecretReferenceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateSecretReference422Response struct {
+}
+
+func (response CreateSecretReference422Response) VisitCreateSecretReferenceResponse(w http.ResponseWriter) error {
+	w.WriteHeader(422)
+	return nil
+}
+
+type DeleteSecretReferenceRequestObject struct {
+	Tenant    TenantSlug `json:"tenant"`
+	Reference string     `json:"reference"`
+}
+
+type DeleteSecretReferenceResponseObject interface {
+	VisitDeleteSecretReferenceResponse(w http.ResponseWriter) error
+}
+
+type DeleteSecretReference204Response struct {
+}
+
+func (response DeleteSecretReference204Response) VisitDeleteSecretReferenceResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type GetSecretReferenceRequestObject struct {
+	Tenant    TenantSlug `json:"tenant"`
+	Reference string     `json:"reference"`
+}
+
+type GetSecretReferenceResponseObject interface {
+	VisitGetSecretReferenceResponse(w http.ResponseWriter) error
+}
+
+type GetSecretReference200JSONResponse SecretReference
+
+func (response GetSecretReference200JSONResponse) VisitGetSecretReferenceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateSecretReferenceRequestObject struct {
+	Tenant    TenantSlug `json:"tenant"`
+	Reference string     `json:"reference"`
+	Body      *UpdateSecretReferenceJSONRequestBody
+}
+
+type UpdateSecretReferenceResponseObject interface {
+	VisitUpdateSecretReferenceResponse(w http.ResponseWriter) error
+}
+
+type UpdateSecretReference200JSONResponse SecretReference
+
+func (response UpdateSecretReference200JSONResponse) VisitUpdateSecretReferenceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TestSecretReferenceRequestObject struct {
+	Tenant    TenantSlug `json:"tenant"`
+	Reference string     `json:"reference"`
+}
+
+type TestSecretReferenceResponseObject interface {
+	VisitTestSecretReferenceResponse(w http.ResponseWriter) error
+}
+
+type TestSecretReference200JSONResponse map[string]interface{}
+
+func (response TestSecretReference200JSONResponse) VisitTestSecretReferenceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type LookupUsersRequestObject struct {
 	Tenant TenantSlug `json:"tenant"`
 	Params LookupUsersParams
@@ -12384,6 +13314,42 @@ type StrictServerInterface interface {
 	// ValidateScript Validate a script ad hoc (workflow.create; rate-limited)
 	// (POST /tenants/{tenant}/scripts/validate)
 	ValidateScript(ctx context.Context, request ValidateScriptRequestObject) (ValidateScriptResponseObject, error)
+	// ListSecretConnectors List tenant secret connectors
+	// (GET /tenants/{tenant}/secret-connectors)
+	ListSecretConnectors(ctx context.Context, request ListSecretConnectorsRequestObject) (ListSecretConnectorsResponseObject, error)
+	// CreateSecretConnector Create a tenant secret connector
+	// (POST /tenants/{tenant}/secret-connectors)
+	CreateSecretConnector(ctx context.Context, request CreateSecretConnectorRequestObject) (CreateSecretConnectorResponseObject, error)
+
+	// (DELETE /tenants/{tenant}/secret-connectors/{connector})
+	DeleteSecretConnector(ctx context.Context, request DeleteSecretConnectorRequestObject) (DeleteSecretConnectorResponseObject, error)
+
+	// (GET /tenants/{tenant}/secret-connectors/{connector})
+	GetSecretConnector(ctx context.Context, request GetSecretConnectorRequestObject) (GetSecretConnectorResponseObject, error)
+
+	// (PATCH /tenants/{tenant}/secret-connectors/{connector})
+	UpdateSecretConnector(ctx context.Context, request UpdateSecretConnectorRequestObject) (UpdateSecretConnectorResponseObject, error)
+
+	// (POST /tenants/{tenant}/secret-connectors/{connector}/test)
+	TestSecretConnector(ctx context.Context, request TestSecretConnectorRequestObject) (TestSecretConnectorResponseObject, error)
+
+	// (GET /tenants/{tenant}/secret-references)
+	ListSecretReferences(ctx context.Context, request ListSecretReferencesRequestObject) (ListSecretReferencesResponseObject, error)
+
+	// (POST /tenants/{tenant}/secret-references)
+	CreateSecretReference(ctx context.Context, request CreateSecretReferenceRequestObject) (CreateSecretReferenceResponseObject, error)
+
+	// (DELETE /tenants/{tenant}/secret-references/{reference})
+	DeleteSecretReference(ctx context.Context, request DeleteSecretReferenceRequestObject) (DeleteSecretReferenceResponseObject, error)
+
+	// (GET /tenants/{tenant}/secret-references/{reference})
+	GetSecretReference(ctx context.Context, request GetSecretReferenceRequestObject) (GetSecretReferenceResponseObject, error)
+
+	// (PATCH /tenants/{tenant}/secret-references/{reference})
+	UpdateSecretReference(ctx context.Context, request UpdateSecretReferenceRequestObject) (UpdateSecretReferenceResponseObject, error)
+
+	// (POST /tenants/{tenant}/secret-references/{reference}/test)
+	TestSecretReference(ctx context.Context, request TestSecretReferenceRequestObject) (TestSecretReferenceResponseObject, error)
 	// LookupUsers Look up users by exact email (tenant.members.manage)
 	// (GET /tenants/{tenant}/users/lookup)
 	LookupUsers(ctx context.Context, request LookupUsersRequestObject) (LookupUsersResponseObject, error)
@@ -14646,6 +15612,354 @@ func (sh *strictHandler) ValidateScript(w http.ResponseWriter, r *http.Request, 
 	}
 }
 
+// ListSecretConnectors operation middleware
+func (sh *strictHandler) ListSecretConnectors(w http.ResponseWriter, r *http.Request, tenant TenantSlug) {
+	var request ListSecretConnectorsRequestObject
+
+	request.Tenant = tenant
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListSecretConnectors(ctx, request.(ListSecretConnectorsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListSecretConnectors")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListSecretConnectorsResponseObject); ok {
+		if err := validResponse.VisitListSecretConnectorsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateSecretConnector operation middleware
+func (sh *strictHandler) CreateSecretConnector(w http.ResponseWriter, r *http.Request, tenant TenantSlug) {
+	var request CreateSecretConnectorRequestObject
+
+	request.Tenant = tenant
+
+	var body CreateSecretConnectorJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateSecretConnector(ctx, request.(CreateSecretConnectorRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateSecretConnector")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateSecretConnectorResponseObject); ok {
+		if err := validResponse.VisitCreateSecretConnectorResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteSecretConnector operation middleware
+func (sh *strictHandler) DeleteSecretConnector(w http.ResponseWriter, r *http.Request, tenant TenantSlug, connector string) {
+	var request DeleteSecretConnectorRequestObject
+
+	request.Tenant = tenant
+	request.Connector = connector
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteSecretConnector(ctx, request.(DeleteSecretConnectorRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteSecretConnector")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteSecretConnectorResponseObject); ok {
+		if err := validResponse.VisitDeleteSecretConnectorResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetSecretConnector operation middleware
+func (sh *strictHandler) GetSecretConnector(w http.ResponseWriter, r *http.Request, tenant TenantSlug, connector string) {
+	var request GetSecretConnectorRequestObject
+
+	request.Tenant = tenant
+	request.Connector = connector
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetSecretConnector(ctx, request.(GetSecretConnectorRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetSecretConnector")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetSecretConnectorResponseObject); ok {
+		if err := validResponse.VisitGetSecretConnectorResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateSecretConnector operation middleware
+func (sh *strictHandler) UpdateSecretConnector(w http.ResponseWriter, r *http.Request, tenant TenantSlug, connector string) {
+	var request UpdateSecretConnectorRequestObject
+
+	request.Tenant = tenant
+	request.Connector = connector
+
+	var body UpdateSecretConnectorJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateSecretConnector(ctx, request.(UpdateSecretConnectorRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateSecretConnector")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateSecretConnectorResponseObject); ok {
+		if err := validResponse.VisitUpdateSecretConnectorResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// TestSecretConnector operation middleware
+func (sh *strictHandler) TestSecretConnector(w http.ResponseWriter, r *http.Request, tenant TenantSlug, connector string) {
+	var request TestSecretConnectorRequestObject
+
+	request.Tenant = tenant
+	request.Connector = connector
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.TestSecretConnector(ctx, request.(TestSecretConnectorRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "TestSecretConnector")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(TestSecretConnectorResponseObject); ok {
+		if err := validResponse.VisitTestSecretConnectorResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListSecretReferences operation middleware
+func (sh *strictHandler) ListSecretReferences(w http.ResponseWriter, r *http.Request, tenant TenantSlug) {
+	var request ListSecretReferencesRequestObject
+
+	request.Tenant = tenant
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListSecretReferences(ctx, request.(ListSecretReferencesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListSecretReferences")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListSecretReferencesResponseObject); ok {
+		if err := validResponse.VisitListSecretReferencesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateSecretReference operation middleware
+func (sh *strictHandler) CreateSecretReference(w http.ResponseWriter, r *http.Request, tenant TenantSlug) {
+	var request CreateSecretReferenceRequestObject
+
+	request.Tenant = tenant
+
+	var body CreateSecretReferenceJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateSecretReference(ctx, request.(CreateSecretReferenceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateSecretReference")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateSecretReferenceResponseObject); ok {
+		if err := validResponse.VisitCreateSecretReferenceResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteSecretReference operation middleware
+func (sh *strictHandler) DeleteSecretReference(w http.ResponseWriter, r *http.Request, tenant TenantSlug, reference string) {
+	var request DeleteSecretReferenceRequestObject
+
+	request.Tenant = tenant
+	request.Reference = reference
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteSecretReference(ctx, request.(DeleteSecretReferenceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteSecretReference")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteSecretReferenceResponseObject); ok {
+		if err := validResponse.VisitDeleteSecretReferenceResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetSecretReference operation middleware
+func (sh *strictHandler) GetSecretReference(w http.ResponseWriter, r *http.Request, tenant TenantSlug, reference string) {
+	var request GetSecretReferenceRequestObject
+
+	request.Tenant = tenant
+	request.Reference = reference
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetSecretReference(ctx, request.(GetSecretReferenceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetSecretReference")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetSecretReferenceResponseObject); ok {
+		if err := validResponse.VisitGetSecretReferenceResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateSecretReference operation middleware
+func (sh *strictHandler) UpdateSecretReference(w http.ResponseWriter, r *http.Request, tenant TenantSlug, reference string) {
+	var request UpdateSecretReferenceRequestObject
+
+	request.Tenant = tenant
+	request.Reference = reference
+
+	var body UpdateSecretReferenceJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateSecretReference(ctx, request.(UpdateSecretReferenceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateSecretReference")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateSecretReferenceResponseObject); ok {
+		if err := validResponse.VisitUpdateSecretReferenceResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// TestSecretReference operation middleware
+func (sh *strictHandler) TestSecretReference(w http.ResponseWriter, r *http.Request, tenant TenantSlug, reference string) {
+	var request TestSecretReferenceRequestObject
+
+	request.Tenant = tenant
+	request.Reference = reference
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.TestSecretReference(ctx, request.(TestSecretReferenceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "TestSecretReference")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(TestSecretReferenceResponseObject); ok {
+		if err := validResponse.VisitTestSecretReferenceResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // LookupUsers operation middleware
 func (sh *strictHandler) LookupUsers(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params LookupUsersParams) {
 	var request LookupUsersRequestObject
@@ -15414,194 +16728,205 @@ func (sh *strictHandler) ListWorkflowVersionValidations(w http.ResponseWriter, r
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
+	"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",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

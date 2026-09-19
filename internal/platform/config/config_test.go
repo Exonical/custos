@@ -226,6 +226,43 @@ func TestRedactedNeverLeaks(t *testing.T) {
 	}
 }
 
+func TestLoadOpenBaoPointerConfig(t *testing.T) {
+	secretFile := filepath.Join(t.TempDir(), "client-secret")
+	if err := os.WriteFile(secretFile, []byte("workload-secret"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	path := writeTemp(t, `dev_mode: true
+server: {tls: {mode: disabled}}
+metrics: {tls: {mode: disabled}}
+database: {url: "postgres://u:p@db/custos", ssl_mode: disable}
+secrets:
+  openbao:
+    address: "https://bao.example"
+    namespace: custos
+    timeout: 5s
+    auth:
+      method: jwt
+      jwt:
+        role: custos
+        oidc_client_credentials:
+          token_url: "https://idp.example/token"
+          client_id: custos
+`)
+	cfg, err := Load(path, envMap(map[string]string{
+		"CUSTOS_SECRETS__OPENBAO__AUTH__JWT__OIDC_CLIENT_CREDENTIALS__CLIENT_SECRET_FILE": secretFile,
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Secrets.OpenBao == nil || cfg.Secrets.OpenBao.Auth.JWT.OIDCClientCredentials == nil ||
+		cfg.Secrets.OpenBao.Auth.JWT.OIDCClientCredentials.ClientSecret.Reveal() != "workload-secret" {
+		t.Fatal("OpenBao pointer configuration was not loaded")
+	}
+	if strings.Contains(fmt.Sprint(cfg.Redacted()), "workload-secret") {
+		t.Fatal("OpenBao client secret leaked from redacted config")
+	}
+}
+
 func mustJSON(t *testing.T, v any) string {
 	t.Helper()
 	b, err := json.Marshal(v)

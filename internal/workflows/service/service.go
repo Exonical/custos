@@ -45,17 +45,18 @@ type ValidationStore interface {
 
 // Deps wires the service.
 type Deps struct {
-	Repo        workflows.Repository
-	Projects    *projectsvc.Service
-	Policies    *policiessvc.Service
-	Clusters    clusters.Repository
-	Pipeline    *pipeline.Pipeline
-	VPolicy     *vpolicy.Service
-	Validations ValidationStore
-	Scripts     scripts.Store
-	Metrics     *pipeline.Metrics // may be nil
-	AZ          authz.Authorizer
-	Audit       audit.Recorder
+	Repo            workflows.Repository
+	SecretReference func(context.Context, uuid.UUID, string) bool
+	Projects        *projectsvc.Service
+	Policies        *policiessvc.Service
+	Clusters        clusters.Repository
+	Pipeline        *pipeline.Pipeline
+	VPolicy         *vpolicy.Service
+	Validations     ValidationStore
+	Scripts         scripts.Store
+	Metrics         *pipeline.Metrics // may be nil
+	AZ              authz.Authorizer
+	Audit           audit.Recorder
 }
 
 // Service is the workflows application service.
@@ -383,6 +384,9 @@ func (s *Service) buildContext(ctx context.Context, scope tenants.Scope,
 	return wfvalidate.Context{
 		ShellAllowed:   vpol.AllowShellTasks,
 		ResourcePolicy: pol,
+		SecretReference: func(name string) bool {
+			return s.d.SecretReference != nil && s.d.SecretReference(ctx, w.TenantID, name)
+		},
 		Cluster: func(name string) (admission.Binding,
 			validation.ClusterSnapshot, bool) {
 			c, err := s.d.Clusters.GetByNameOrID(ctx, name)

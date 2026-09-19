@@ -93,6 +93,15 @@ func walk(t reflect.Type, v reflect.Value, prefix, envPrefix string, rows *[]row
 			env = "CUSTOS_" + strings.ToUpper(key) // top level: single _
 		}
 		ft := f.Type
+		if ft.Kind() == reflect.Pointer && ft.Elem().Kind() == reflect.Struct {
+			*rows = append(*rows, row{full, "section", "", env, docTag(f)})
+			ev := reflect.New(ft.Elem()).Elem()
+			if !fv.IsNil() {
+				ev = fv.Elem()
+			}
+			walk(ft.Elem(), ev, full, env, rows)
+			continue
+		}
 		if ft.Kind() == reflect.Struct && ft != reflect.TypeOf(time.Duration(0)) {
 			*rows = append(*rows, row{full, "section", "", env, docTag(f)})
 			walk(ft, fv, full, env, rows)

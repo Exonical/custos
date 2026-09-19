@@ -43,6 +43,11 @@ func applyYAMLValue(sv reflect.Value, n *yaml.Node, path string) error {
 	switch {
 	case n.Kind == yaml.AliasNode:
 		return applyYAMLValue(sv, n.Alias, path)
+	case sv.Kind() == reflect.Pointer:
+		if sv.IsNil() {
+			sv.Set(reflect.New(sv.Type().Elem()))
+		}
+		return applyYAMLValue(sv.Elem(), n, path)
 	case sv.Kind() == reflect.Struct && n.Kind == yaml.MappingNode:
 		st := sv.Type()
 		for i := 0; i < len(n.Content); i += 2 {
@@ -192,6 +197,12 @@ func walkEnv(sv reflect.Value, prefix, path string, lookup LookupEnv) error {
 		envName := prefix + sep + strings.ToUpper(strings.ReplaceAll(name, "-", "_"))
 		fpath := joinPath(path, name)
 		switch {
+		case fv.Kind() == reflect.Pointer && !fv.IsNil() && fv.Type().Elem().Kind() == reflect.Struct:
+			if err := walkEnv(fv.Elem(), envName, fpath, lookup); err != nil {
+				return err
+			}
+		case fv.Kind() == reflect.Pointer:
+			continue
 		case fv.Kind() == reflect.Struct && fv.Type() != durationType:
 			if err := walkEnv(fv, envName, fpath, lookup); err != nil {
 				return err

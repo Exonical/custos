@@ -22,6 +22,37 @@ include:
   - ../compose/compose.yaml
 
 services:
+  # Platform OpenBao uses file storage + TLS and Keycloak workload JWT auth.
+  openbao:
+    volumes:
+      - ../compose/openbao.hcl:/openbao/config/openbao.hcl:ro
+      - ./.secrets/openbao.crt:/openbao/tls/openbao.crt:ro
+      - ./.secrets/openbao.key:/openbao/tls/openbao.key:ro
+      - openbaodata:/openbao/data
+
+  openbao-init:
+    volumes:
+      - ./init-openbao.sh:/bootstrap/init-openbao.sh:ro
+      - ./.secrets:/bootstrap
+      - ./.secrets/e2e-ca.crt:/openbao/tls/ca.crt:ro
+    depends_on:
+      openbao:
+        condition: service_healthy
+      nginx:
+        condition: service_started
+
+  # Customer-managed stand-in: dev mode is intentionally limited to e2e;
+  # nginx provides TLS for every Custos connection to it.
+  openbao-byo:
+    image: quay.io/openbao/openbao:2.6.2
+    command: ["server", "-dev", "-dev-root-token-id=e2e-byo-token", "-dev-listen-address=0.0.0.0:8200"]
+    cap_add: [IPC_LOCK]
+    healthcheck:
+      test: ["CMD", "bao", "status", "-address=http://127.0.0.1:8200"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
   # ---- Slurm 26.05 cluster (cluster name: e2e) --------------------
 
   mariadb:
@@ -177,11 +208,14 @@ services:
       - ./.secrets/slurmrestd.key:/etc/nginx/tls/slurmrestd.key:ro
       - ./.secrets/keycloak.crt:/etc/nginx/tls/keycloak.crt:ro
       - ./.secrets/keycloak.key:/etc/nginx/tls/keycloak.key:ro
+      - ./.secrets/openbao-byo.crt:/etc/nginx/tls/openbao-byo.crt:ro
+      - ./.secrets/openbao-byo.key:/etc/nginx/tls/openbao-byo.key:ro
     networks:
       default:
         aliases:
           - keycloak.e2e
           - slurmrestd.e2e
+          - openbao-byo.e2e
     ports:
       # Host-side Go tests reach the same issuer the containers use.
       - "127.0.0.1:8443:8443"
@@ -191,6 +225,8 @@ services:
         condition: service_healthy
       slurmrestd:
         condition: service_started
+      openbao-byo:
+        condition: service_healthy
 
   # ---- Custos runtime (config overridden for e2e) ------------------
 
@@ -200,6 +236,7 @@ services:
       - ./.secrets:/etc/custos/secrets:ro
     environment:
       CUSTOS_AUTH__OIDC__CLIENT_SECRET_FILE: /etc/custos/secrets/keycloak-client-secret
+      CUSTOS_SECRETS__OPENBAO__AUTH__JWT__OIDC_CLIENT_CREDENTIALS__CLIENT_SECRET_FILE: /etc/custos/secrets/openbao-client-secret
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -212,6 +249,7 @@ services:
       - ./.secrets:/etc/custos/secrets:ro
     environment:
       CUSTOS_AUTH__OIDC__CLIENT_SECRET_FILE: /etc/custos/secrets/keycloak-client-secret
+      CUSTOS_SECRETS__OPENBAO__AUTH__JWT__OIDC_CLIENT_CREDENTIALS__CLIENT_SECRET_FILE: /etc/custos/secrets/openbao-client-secret
     depends_on:
       migrate:
         condition: service_completed_successfully

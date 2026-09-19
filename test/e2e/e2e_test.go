@@ -103,8 +103,9 @@ func TestE2E(t *testing.T) {
 			"ca_bundle_pem": caPEM,
 			"identity_mode": "service",
 			"service_user":  "custos",
-			"token_ref":     map[string]any{"provider": "file", "path": "/etc/custos/secrets/slurm/token"},
-			"visibility":    "assigned",
+			"token_ref": map[string]any{"provider": "openbao", "namespace": "custos",
+				"mount": "kv", "path": "clusters/e2e", "key": "token"},
+			"visibility": "assigned",
 		}, tokAdmin, nil)
 		if status == http.StatusConflict {
 			t.Log("cluster e2e already registered")
@@ -128,6 +129,24 @@ func TestE2E(t *testing.T) {
 		if tc["api_version"] != "v0.0.45" {
 			t.Fatalf("api_version = %v", tc["api_version"])
 		}
+
+		// Keep one live assertion for the file provider, then restore the
+		// OpenBao reference used by the rest of the scenario.
+		status, cl = api(t, http.MethodPatch, "/clusters/e2e", map[string]any{
+			"token_ref": map[string]any{"provider": "file", "path": "/etc/custos/secrets/slurm/token"},
+			"version":   cl["version"],
+		}, tokAdmin, nil)
+		want(t, status, cl, http.StatusOK, "file-provider cluster credential")
+		status, tc = api(t, http.MethodPost, "/clusters/e2e/test-connection", nil, tokAdmin, nil)
+		want(t, status, tc, http.StatusOK, "file-provider test-connection")
+		status, cl = api(t, http.MethodGet, "/clusters/e2e", nil, tokAdmin, nil)
+		want(t, status, cl, http.StatusOK, "refresh cluster version")
+		status, cl = api(t, http.MethodPatch, "/clusters/e2e", map[string]any{
+			"token_ref": map[string]any{"provider": "openbao", "namespace": "custos",
+				"mount": "kv", "path": "clusters/e2e", "key": "token"},
+			"version": cl["version"],
+		}, tokAdmin, nil)
+		want(t, status, cl, http.StatusOK, "restore OpenBao cluster credential")
 
 		// cluster.sync drives state to active.
 		poll(t, "cluster state active", 90*time.Second, func() bool {
@@ -197,6 +216,74 @@ func TestE2E(t *testing.T) {
 		}
 		poll(t, "alice reconciled as researcher", 90*time.Second,
 			func() bool { return hasRole(tokAlice, "researcher") })
+	})
+
+	t.Run("03c_secret_connectors_and_references", func(t *testing.T) {
+		status, refs := api(t, http.MethodPost, "/tenants/acme/secret-references",
+			map[string]any{"name": "hf-token" + runSfx, "path": "users/" + aliceID + "/hf-token",
+				"key": "value", "kind": "api_token", "allowed_uses": []string{"workflow_env"}},
+			tokAlice, nil)
+		want(t, status, refs, http.StatusCreated, "create default secret reference")
+		refID, _ := refs["id"].(string)
+		status, tested := api(t, http.MethodPost,
+			"/tenants/acme/secret-references/"+refID+"/test", nil, tokAlice, nil)
+		want(t, status, tested, http.StatusOK, "test default secret reference")
+		if tested["ok"] != true {
+			t.Fatalf("secret test = %v", tested)
+		}
+		status, _ = api(t, http.MethodGet,
+			"/tenants/acme/secret-references/"+refID, nil, tokBob, nil)
+		if status != http.StatusNotFound {
+			t.Fatalf("bob secret reference: HTTP %d, want 404", status)
+		}
+		for _, bad := range []map[string]any{
+			{"name": "bad-path" + runSfx, "path": "users/../other", "key": "value", "kind": "generic"},
+			{"name": "bad-ns" + runSfx, "namespace": "foreign", "path": "x", "key": "value", "kind": "generic"},
+		} {
+			status, body := api(t, http.MethodPost, "/tenants/acme/secret-references", bad, tokAlice, nil)
+			if status != http.StatusUnprocessableEntity {
+				t.Fatalf("invalid reference: HTTP %d want 422: %v", status, body)
+			}
+		}
+
+		caPEM, err := readFile("deploy/e2e/.secrets/e2e-ca.crt")
+		if err != nil {
+			t.Fatal(err)
+		}
+		status, conn := api(t, http.MethodPost, "/tenants/acme/secret-connectors", map[string]any{
+			"name": "byo" + runSfx, "kind": "openbao",
+			"config": map[string]any{"address": "https://openbao-byo.e2e:8250", "ca_pem": caPEM,
+				"namespace": "customer", "mount": "kv", "auth": map[string]any{"method": "token"}},
+			"credential": map[string]any{"token": "e2e-byo-token"},
+		}, tokAdmin, nil)
+		want(t, status, conn, http.StatusCreated, "create BYO connector")
+		connID, _ := conn["id"].(string)
+		status, tested = api(t, http.MethodPost,
+			"/tenants/acme/secret-connectors/"+connID+"/test", nil, tokAdmin, nil)
+		want(t, status, tested, http.StatusOK, "test BYO connector")
+		status, refs = api(t, http.MethodPost, "/tenants/acme/secret-references",
+			map[string]any{"name": "byo-ref" + runSfx, "connector": connID,
+				"path": "e2e", "key": "value", "kind": "generic"}, tokAlice, nil)
+		want(t, status, refs, http.StatusCreated, "create BYO secret reference")
+		status, tested = api(t, http.MethodPost,
+			"/tenants/acme/secret-references/"+refs["id"].(string)+"/test", nil, tokAlice, nil)
+		want(t, status, tested, http.StatusOK, "resolve BYO secret reference")
+
+		for i, address := range []string{"http://openbao-byo:8200", "https://127.0.0.1:8200", "https://169.254.169.254"} {
+			status, body := api(t, http.MethodPost, "/tenants/acme/secret-connectors", map[string]any{
+				"name": fmt.Sprintf("bad-connector-%d%s", i, runSfx), "kind": "openbao",
+				"config": map[string]any{"address": address, "ca_pem": caPEM,
+					"namespace": "customer", "mount": "kv", "auth": map[string]any{"method": "token"}},
+				"credential": map[string]any{"token": "e2e-byo-token"},
+			}, tokAdmin, nil)
+			if status != http.StatusUnprocessableEntity {
+				t.Fatalf("unsafe connector %s: HTTP %d want 422: %v", address, status, body)
+			}
+		}
+		status, _ = api(t, http.MethodGet, "/tenants/acme/secret-connectors", nil, tokBob, nil)
+		if status != http.StatusNotFound {
+			t.Fatalf("bob connectors: HTTP %d, want 404", status)
+		}
 	})
 
 	t.Run("04_project_policy", func(t *testing.T) {

@@ -34,11 +34,14 @@ import (
 	"github.com/Exonical/custos/internal/platform/httpx"
 	"github.com/Exonical/custos/internal/platform/log"
 	"github.com/Exonical/custos/internal/platform/otel"
+	"github.com/Exonical/custos/internal/platform/safehttp"
 	policypg "github.com/Exonical/custos/internal/policies/postgres"
 	policiesvc "github.com/Exonical/custos/internal/policies/service"
 	projectpg "github.com/Exonical/custos/internal/projects/postgres"
 	projectsvc "github.com/Exonical/custos/internal/projects/service"
 	scriptpg "github.com/Exonical/custos/internal/scripts/postgres"
+	"github.com/Exonical/custos/internal/secretrefs"
+	secretpg "github.com/Exonical/custos/internal/secretrefs/postgres"
 	tenantpg "github.com/Exonical/custos/internal/tenants/postgres"
 	tenantsvc "github.com/Exonical/custos/internal/tenants/service"
 	"github.com/Exonical/custos/internal/users"
@@ -133,14 +136,33 @@ func cmdServe(parent context.Context, configPath string, lookupEnv config.Lookup
 		users.WithGroupsClaim(cfg.Auth.OIDC.Claims.Groups),
 		users.WithMeterProvider(prov.Meter),
 		users.WithLogger(logger))
-	tenantSvc := tenantsvc.NewService(tenantRepo, tenantRepo, tenantRepo,
-		userRepo, authz.RBAC{}, recorder)
-
-	sdeps, err := newSlurmDeps(cfg)
+	sdeps, err := newSlurmDeps(ctx, cfg, logger, prov.Meter)
 	if err != nil {
 		logger.ErrorContext(ctx, "slurm setup", "error", err)
 		return 1
 	}
+	if sdeps.OpenBao != nil {
+		defer func() { _ = sdeps.OpenBao.Close() }()
+		reg.Register(sdeps.OpenBao, false)
+	}
+	secretRepo := secretpg.New(pool)
+	connectorFactory := &secretrefs.ConnectorFactory{
+		Platform: sdeps.OpenBao,
+		Policy: safehttp.DialPolicy{AllowPrivate: sdeps.Policy.AllowPrivate,
+			AllowLoopback: sdeps.Policy.AllowLoopback, AllowHTTP: sdeps.Policy.AllowHTTP,
+			DenyCIDRs: sdeps.Policy.DenyCIDRs},
+		Logger: logger, Meter: prov.Meter,
+	}
+	secretRuntime := secretrefs.NewRuntime(secretRepo, connectorFactory, sdeps.Resolver)
+	defer func() { _ = secretRuntime.Close() }()
+	platformNS := ""
+	if cfg.Secrets.OpenBao != nil {
+		platformNS = cfg.Secrets.OpenBao.Namespace
+	}
+	secretSvc := secretrefs.NewService(secretRepo, secretRuntime, authz.RBAC{},
+		recorder, sdeps.OpenBao, platformNS)
+	tenantSvc := tenantsvc.NewService(tenantRepo, tenantRepo, tenantRepo,
+		userRepo, authz.RBAC{}, recorder, secretSvc)
 	clusterRepo := clusterpg.New(pool)
 	clusterSvc := clustersvc.New(clustersvc.Deps{
 		Repository: clusterRepo, Tenants: tenantRepo,
@@ -182,17 +204,18 @@ func cmdServe(parent context.Context, configPath string, lookupEnv config.Lookup
 	})
 
 	wfSvc := wfsvc.New(wfsvc.Deps{
-		Repo:        wfpg.New(pool),
-		Projects:    projectSvc,
-		Policies:    policySvc,
-		Clusters:    clusterRepo,
-		Pipeline:    pipe,
-		VPolicy:     vpolSvc,
-		Validations: vstore,
-		Scripts:     scriptpg.New(pool),
-		Metrics:     vMetrics,
-		AZ:          authz.RBAC{},
-		Audit:       recorder,
+		Repo:            wfpg.New(pool),
+		SecretReference: secretSvc.ReferenceExists,
+		Projects:        projectSvc,
+		Policies:        policySvc,
+		Clusters:        clusterRepo,
+		Pipeline:        pipe,
+		VPolicy:         vpolSvc,
+		Validations:     vstore,
+		Scripts:         scriptpg.New(pool),
+		Metrics:         vMetrics,
+		AZ:              authz.RBAC{},
+		Audit:           recorder,
 	})
 
 	execSvc := execsvc.New(execsvc.Deps{
@@ -229,6 +252,7 @@ func cmdServe(parent context.Context, configPath string, lookupEnv config.Lookup
 		VLimiter:       httpx.NewPrincipalRateLimiter(30, 10, 0),
 		Workflows:      wfSvc,
 		Executions:     execSvc,
+		SecretRefs:     secretSvc,
 		AZ:             authz.RBAC{},
 	})
 

@@ -66,19 +66,20 @@ type JobStore interface {
 
 // Deps wires the engine handlers.
 type Deps struct {
-	Execs       executions.Repository
-	Workflows   workflows.Repository
-	Policies    *policiessvc.Service
-	VPolicy     *vpolicy.Service
-	Clusters    clusters.Repository
-	Projects    *projectsvc.Service
-	Pipeline    *pipeline.Pipeline
-	Validations ValidationStore
-	Scripts     scripts.Store
-	Jobs        JobStore
-	Audit       audit.Recorder // may be nil
-	Metrics     *pipeline.Metrics
-	Now         func() time.Time // tests may override; nil → time.Now
+	Execs           executions.Repository
+	Workflows       workflows.Repository
+	SecretReference func(context.Context, uuid.UUID, string) bool
+	Policies        *policiessvc.Service
+	VPolicy         *vpolicy.Service
+	Clusters        clusters.Repository
+	Projects        *projectsvc.Service
+	Pipeline        *pipeline.Pipeline
+	Validations     ValidationStore
+	Scripts         scripts.Store
+	Jobs            JobStore
+	Audit           audit.Recorder // may be nil
+	Metrics         *pipeline.Metrics
+	Now             func() time.Time // tests may override; nil → time.Now
 }
 
 func (d Deps) now() time.Time {
@@ -359,6 +360,9 @@ func buildContext(ctx context.Context, d Deps,
 	return wfvalidate.Context{
 		ShellAllowed:   vpol.AllowShellTasks,
 		ResourcePolicy: pol,
+		SecretReference: func(name string) bool {
+			return d.SecretReference != nil && d.SecretReference(ctx, e.TenantID, name)
+		},
 		Cluster: func(name string) (admission.Binding,
 			validation.ClusterSnapshot, bool) {
 			c, err := d.Clusters.GetByNameOrID(ctx, name)

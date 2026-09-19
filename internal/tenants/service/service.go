@@ -19,20 +19,30 @@ import (
 // Service is the tenant application service: every method authorizes
 // through authz, applies state gating, and records audit events.
 type Service struct {
-	repo   tenants.Repository
-	groups tenants.GroupRepository
-	rules  tenants.ClaimRuleRepository
-	users  users.Repository
-	az     authz.Authorizer
-	rec    audit.Recorder
+	repo    tenants.Repository
+	groups  tenants.GroupRepository
+	rules   tenants.ClaimRuleRepository
+	users   users.Repository
+	az      authz.Authorizer
+	rec     audit.Recorder
+	secrets TenantSecrets
+}
+
+// TenantSecrets provisions the tenant's default secret connector.
+type TenantSecrets interface {
+	EnsureTenant(context.Context, uuid.UUID, uuid.UUID) error
 }
 
 // NewService wires the tenant service. groups/rules are separate ports;
 // the postgres Repository satisfies all three.
 func NewService(repo tenants.Repository, groups tenants.GroupRepository,
 	rules tenants.ClaimRuleRepository, u users.Repository,
-	az authz.Authorizer, rec audit.Recorder) *Service {
-	return &Service{repo: repo, groups: groups, rules: rules, users: u, az: az, rec: rec}
+	az authz.Authorizer, rec audit.Recorder, hooks ...TenantSecrets) *Service {
+	s := &Service{repo: repo, groups: groups, rules: rules, users: u, az: az, rec: rec}
+	if len(hooks) > 0 {
+		s.secrets = hooks[0]
+	}
+	return s
 }
 
 // CreateTenant is the POST /tenants body.
@@ -113,6 +123,11 @@ func (s *Service) Create(ctx context.Context, p authn.Principal, in CreateTenant
 	}
 	if err := s.repo.Create(ctx, t); err != nil {
 		return tenants.Tenant{}, err
+	}
+	if s.secrets != nil {
+		if err := s.secrets.EnsureTenant(ctx, t.ID, p.UserID); err != nil {
+			return tenants.Tenant{}, err
+		}
 	}
 	s.audit(ctx, p, &t.ID, "tenant.created", "tenant", t.ID.String(),
 		map[string]any{"slug": t.Slug})

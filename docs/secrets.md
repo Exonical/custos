@@ -1,152 +1,147 @@
-# Secrets (OpenBao)
+# Secrets and connectors
 
 ## Principles
 
-- Custos stores **references**, OpenBao stores **values**.
-- Custos authenticates to OpenBao with workload identity; no root or
-  long-lived token is ever configured.
-- Secret values are read at the moment of use, held in memory for the
-  duration of the operation, and zeroed where the type allows.
-- Values never enter: logs, PostgreSQL, audit payloads, metrics, traces, API
-  responses (except the narrow, explicitly audited "reveal" path a future
-  milestone may add for user-owned secrets).
+- Custos stores **references**; OpenBao stores **values**.
+- Custos authenticates to platform OpenBao with workload identity. A root token
+  is used only by stack bootstrap and is revoked immediately.
+- Values are read at use time, held only for the operation, and wiped where the
+  type allows. They never enter PostgreSQL, logs, audit details, metrics,
+  traces, or API responses.
+- M6-A implements providers, connectors, references, cluster credentials, and
+  safe connectivity tests. Job delivery is M6-B and remains fail-closed with
+  `SECRETS_NOT_AVAILABLE`.
 
-## Namespace strategy
+## Platform OpenBao
 
-Recommended layout (OpenBao namespaces are hierarchical):
+The recommended layout is:
 
 ```text
-custos/                                   (platform namespace)
-  ├─ kv/platform/...                       Custos-internal (e.g. cluster service JWT signing material references)
-  ├─ kv/clusters/<cluster-id>/...          slurmrestd credentials, mTLS client cert refs
-  └─ tenants/<tenant-id>/                  ONE child namespace per tenant
-        ├─ kv/services/<name>              tenant service credentials
-        ├─ kv/users/<user-id>/<name>       user-owned secrets (path-separated, not namespace)
-        ├─ kv/workflows/<workflow-id>/...  workflow-scoped secrets
-        └─ transit/, ssh/ (optional engines) per tenant
+custos/                                  platform namespace
+  kv/clusters/<cluster-id>/...           slurmrestd credentials
+  tenants/<tenant-id>/                   one child namespace per tenant
+    kv/connectors/<connector-id>          BYO connector login credential
+    kv/services/<name>                    tenant service credentials
+    kv/users/<user-id>/<name>             user-owned secrets
+    kv/workflows/<workflow-id>/...        workflow-scoped secrets
 ```
 
-Tradeoff analysis — per-user namespaces vs paths:
+Tenant namespaces plus user paths provide a bounded namespace count while
+retaining an OpenBao boundary between tenants (ADR-003). Custos idempotently
+creates the tenant namespace, KV v2 mount, and `tenant-<id>-runtime` policy when
+a tenant is created, and lazily on first default-reference creation.
 
-| Option | Pros | Cons |
-| --- | --- | --- |
-| Namespace per tenant, **path per user** (recommended) | Bounded namespace count (tens–hundreds); one policy template per tenant with templated paths (`kv/users/{{identity.entity.aliases...}}`); simple backup/rotation | Requires careful policy templating for user-level isolation |
-| Namespace per tenant **and** per user | Hard isolation per user; per-user audit device possible | Tens of thousands of namespaces; each has its own auth mounts, policies, token stores — operational and memory cost; slow listing |
-| Single namespace, path per tenant | Simplest | Tenant admins cannot be delegated OpenBao admin; policy blast radius platform-wide |
+### Authentication and token lifecycle
 
-Decision: tenant namespaces + user paths (ADR-003). User-level isolation is
-enforced by OpenBao policies *and* by Custos (`SecretReference` ownership),
-not by namespace boundaries.
+The adapter is a thin, typed HTTP client over the small auth/token/namespace/
+policy/KV v2 surface used by Custos. This avoids pulling OpenBao's full API
+module and transitive helper tree into the control plane while keeping request
+and error handling directly testable with `httptest`.
 
-## Custos authentication to OpenBao
+The platform provider supports:
 
-- Kubernetes: `auth/kubernetes` or `auth/jwt` with the pod's projected
-  service-account token → short-lived OpenBao token (TTL minutes), renewed
-  by a background goroutine owned by the adapter, re-login on failure.
-- Non-Kubernetes: `auth/jwt` with a workload JWT from the platform, or
-  `auth/approle` with the secret-id delivered via a mounted file (dev only).
+- JWT auth using either a mounted workload JWT file or an OIDC
+  client-credentials token (the e2e stack uses Keycloak for this shape); and
+- AppRole with the secret-id in a mounted file, only when `dev_mode` is true.
 
-Custos's own token has policies allowing:
+Exactly one JWT source is required. Plain HTTP and AppRole fail configuration
+validation outside `dev_mode`. Login yields a short-lived parent token. The
+provider renews it at approximately two-thirds of its TTL and re-authenticates
+with jittered backoff after renewal failure. Shutdown revokes the provider-owned
+token.
 
-- token creation in tenant namespaces with **bounded** policies and TTLs
-  (`create child token with policy tenant-<id>-runtime, ttl <= 10m`), and
-- KV read on `custos/kv/clusters/*`.
+Tenant resolution derives the namespace from the persisted reference, creates
+a one-use orphan token in that tenant namespace with only
+`tenant-<id>-runtime` and a TTL of at most ten minutes, performs the KV v2 read,
+and attempts token revocation. Child tokens and values are not cached; only the
+parent token is cached. **The implemented provider does not fall back to parent
+reads for tenant values**: failure to create the child token fails the request,
+preserving the isolation boundary.
 
-Per-request secret access uses a **child token scoped to the tenant
-namespace**, so a bug in tenant A's code path cannot read tenant B's KV
-even if it constructs the path.
+Cluster credentials are platform-owned and are read with the parent token from
+`custos/kv/clusters/<cluster-id>` (the e2e fixture uses `clusters/e2e` because
+the UUID is not known before registration).
+
+## Connectors
+
+A `SecretConnector` selects the manager used by tenant references:
+
+- `platform-openbao` is the automatically provisioned `default` connector when
+  platform OpenBao is configured. It uses the platform address, CA, workload
+  auth, tenant namespace, and child-token isolation described above.
+- `openbao` connects to a tenant-managed OpenBao/Vault-compatible endpoint.
+  Its non-secret configuration contains address, pinned CA, namespace, mount,
+  and auth shape. M6-A supports static token, AppRole (`role_id` plus a
+  separately stored `secret_id`), and JWT (`role` plus a separately stored
+  workload JWT). The factory remains additive for future AWS, Azure, and GCP
+  secret-manager kinds.
+
+BYO credentials supplied during create/rotate are written directly to the
+platform tenant namespace at `kv/connectors/<connector-id>`. PostgreSQL stores
+only the platform `credential_ref`; API responses never echo the credential.
+Consequently, BYO connector creation requires platform OpenBao and otherwise
+returns `PLATFORM_SECRETS_REQUIRED`.
+
+Connector addresses are tenant-controlled. Create, update, test, and resolution
+use the same `platform/safehttp` transport as Slurm: TLS 1.3 minimum, optional
+pinned CA, no redirects, all DNS answers vetted, and dialing by vetted address
+to prevent rebinding. Cloud metadata, link-local, loopback, unspecified, and
+policy-disallowed private addresses fail closed. `slurm.dial_policy.allow_private`
+also controls private BYO endpoints; HTTP remains forbidden for BYO connectors.
+Connectors are cached by `(id, version)` and invalidated on update or deletion.
+A connector with references cannot be deleted (`CONNECTOR_IN_USE`).
 
 ## SecretReference
 
-```go
-type SecretReference struct {
-    ID        uuid.UUID
-    TenantID  uuid.UUID
-    OwnerID   *uuid.UUID     // user-owned when set
-    ProjectID *uuid.UUID
-    Name      string          // human handle used in workflow specs: secrets.<name>
-    Provider  string          // "openbao"
-    Namespace string          // "custos/tenants/<tenant-id>"
-    Mount     string          // "kv"
-    Path      string          // "users/<uid>/hf-token"
-    Key       string          // field within the KV entry
-    Version   *int            // pin, or nil = latest
-    Kind      string          // ssh_key | slurm_token | api_token | generic | storage_credential
-    AllowedUses []string      // "workflow_env", "stage_in", ...
-    CreatedBy uuid.UUID
-    CreatedAt time.Time
-}
+Tenant references persist only metadata:
+
+```text
+id, tenant_id, owner_id?, project_id?, name, connector_id,
+namespace, mount, path, key, secret_version?, kind, allowed_uses,
+created_by, timestamps, optimistic version
 ```
 
-Validation on create: namespace must equal the tenant's namespace (the API
-never accepts a namespace from the client — it is derived); path must match
-`^[A-Za-z0-9_./-]+$`, no `..` segments; the caller must hold
-`secret.reference.create`; if `OwnerID` is set it must be the caller unless
-tenant-admin.
+Create accepts a connector name or UUID and defaults to `default`. The platform
+connector namespace is server-derived as `custos/tenants/<tenant-id>`; clients
+cannot select a foreign namespace. Paths match `^[A-Za-z0-9_./-]+$` and may not
+contain empty, `.` or `..` segments. Kinds are `ssh_key`, `slurm_token`,
+`api_token`, `generic`, and `storage_credential`. Owned references are visible
+only to their owner and tenant administrators.
 
-## Secrets port
+`POST .../secret-references/{reference}/test` resolves and immediately wipes the
+value, returning only `{ok, kind, version, resolved_at}`. Connector tests return
+only `{ok, kind, latency_ms}`. Tests and access are audited without values or
+tokens.
 
-```go
-package secrets
+## Platform provider references
 
-type Resolver interface {
-    // Resolve returns the value for ref. ctx must carry TenantContext; the
-    // adapter derives the namespace-scoped token from it.
-    Resolve(ctx context.Context, ref SecretReference) (Value, error)
-}
+Platform-owned cluster references retain `provider` because they do not belong
+to a tenant connector:
 
-type Value struct{ bytes []byte }     // unexported; String() returns "[REDACTED]"
-func (v *Value) Bytes() []byte
-func (v *Value) Zero()
-```
+| Provider | Use |
+| --- | --- |
+| `file` | Dev/test mounted files. Absolute paths must resolve inside `secrets.file_roots`; symlink and `..` escapes are denied. Files are limited to 64 KiB. |
+| `openbao` | Production KV v2 references with `namespace`, `mount`, `path`, `key`, and optional `version`. |
 
-`Value` implements `fmt.Stringer`, `slog.LogValuer`, and `json.Marshaler` to
-redact itself, so accidental logging prints `[REDACTED]`.
+A recognized but unconfigured provider returns HTTP 422
+`SECRET_PROVIDER_UNAVAILABLE`. OpenBao 403 and 404 map to
+`secrets.forbidden`/`secrets.not_found`; transport and 5xx failures map to
+`SECRETS_UNAVAILABLE`.
 
-## Providers
+## Readiness and metrics
 
-`secrets.Resolver` dispatches on `Reference.Provider`:
+The API registers optional readiness check `openbao`: an outage produces
+`degraded` with HTTP 200 so state reads remain available. The worker metrics
+listener exposes `/health/ready` with OpenBao as a required check, so the same
+outage reports not-ready there. Workers also authenticate at startup and fail
+secret-dependent work closed; resolution failures retain durable-work backoff. Resolution emits
+`custos_secrets_resolve_total{kind,result}` with bounded connector kinds and
+results; labels never contain tenant, path, connector, or secret identifiers.
 
-| Provider | Status | Use |
-| --- | --- | --- |
-| `file` | implemented (M3) | Dev/test and interim deployments that mount cluster credentials as files. Paths must resolve — after `filepath.Clean` + `EvalSymlinks` — inside an allow-listed root from `secrets.file_roots` (absolute paths only); `..` escapes and symlinks escaping the root are denied (`secrets.path_outside_root`). Files ≤ 64 KiB, trailing newline trimmed; `Key` extracts a string field from a JSON document. |
-| `openbao` | M6 | OpenBao KV, the production provider (this doc). |
+## Delivery to jobs (M6-B)
 
-## Delivery to jobs (execution plane)
-
-Jobs are untrusted; delivering a secret to a job is a deliberate, audited
-act. Milestone 6 supports:
-
-1. **Environment injection at submit time** — value placed in the Slurm job
-   environment. Weakest option (visible in `scontrol show job` to the user,
-   and to root on nodes); allowed only for `Kind=generic` and only when the
-   policy permits `workflow_env`.
-2. **Response-wrapped token** (preferred) — Custos creates a wrapped,
-   single-use, short-TTL OpenBao token restricted to the referenced path;
-   the job unwraps it with the `bao` CLI. The wrapped token, not the secret,
-   is in the env.
-
-Never delivered to jobs: Custos's own OpenBao token, cluster slurmrestd
-credentials, PostgreSQL credentials.
-
-## Cluster credentials
-
-`clusters.credential_ref` points at `custos/kv/clusters/<id>` holding the
-slurmrestd JWT (or the key material to mint them) and optional mTLS client
-certificate. The Slurm adapter's `TokenProvider` reads through
-`secrets.Resolver` with a short in-memory TTL cache (bounded to the token's
-own lifetime). Rotating the secret in OpenBao is picked up without restart.
-
-## Outage behavior
-
-- Secret resolution failure → the operation fails with `SECRETS_UNAVAILABLE`
-  (5xx), work items back off with jitter, nothing is retried more than the
-  work item's policy allows.
-- Readiness: OpenBao unreachable marks `/health/ready` as **degraded** (still
-  200 with body detail) for the API — reads of Custos state still work — and
-  **not ready** for the `worker` mode, so submitters stop taking leases.
-
-## Audit
-
-`secret.reference.created/deleted`, `secret.accessed` (ref id, purpose,
-job/execution id, result). Never the value, never the OpenBao token.
+Environment injection and response-wrapped short-lived tokens are deliberately
+not implemented in M6-A. Workflow `spec.secrets` names are available to the
+contextual lookup hook, but static validation continues to reject every use
+with `SECRETS_NOT_AVAILABLE`. Jobs never receive the platform token, cluster
+credentials, connector credentials, or database credentials.

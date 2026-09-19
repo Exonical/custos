@@ -22,14 +22,18 @@ import (
 	jobsworker "github.com/Exonical/custos/internal/jobs/worker"
 	"github.com/Exonical/custos/internal/platform/config"
 	"github.com/Exonical/custos/internal/platform/db"
+	"github.com/Exonical/custos/internal/platform/health"
 	"github.com/Exonical/custos/internal/platform/log"
 	"github.com/Exonical/custos/internal/platform/otel"
+	"github.com/Exonical/custos/internal/platform/safehttp"
 	"github.com/Exonical/custos/internal/platform/workqueue"
 	policypg "github.com/Exonical/custos/internal/policies/postgres"
 	policiesvc "github.com/Exonical/custos/internal/policies/service"
 	projectpg "github.com/Exonical/custos/internal/projects/postgres"
 	projectsvc "github.com/Exonical/custos/internal/projects/service"
 	scriptpg "github.com/Exonical/custos/internal/scripts/postgres"
+	"github.com/Exonical/custos/internal/secretrefs"
+	secretpg "github.com/Exonical/custos/internal/secretrefs/postgres"
 	tenantpg "github.com/Exonical/custos/internal/tenants/postgres"
 	wfpg "github.com/Exonical/custos/internal/workflows/postgres"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -77,11 +81,28 @@ func cmdWorker(parent context.Context, configPath string, lookupEnv config.Looku
 
 	// Cluster sync: self-rescheduling chain per cluster; bootstrap
 	// enqueues every non-disabled cluster (dedupe makes it idempotent).
-	sdeps, err := newSlurmDeps(cfg)
+	sdeps, err := newSlurmDeps(ctx, cfg, logger, prov.Meter)
 	if err != nil {
 		logger.ErrorContext(ctx, "slurm setup", "error", err)
 		return 1
 	}
+	if sdeps.OpenBao != nil {
+		defer func() { _ = sdeps.OpenBao.Close() }()
+	}
+	secretRepo := secretpg.New(pool)
+	secretRuntime := secretrefs.NewRuntime(secretRepo, &secretrefs.ConnectorFactory{
+		Platform: sdeps.OpenBao,
+		Policy: safehttp.DialPolicy{AllowPrivate: sdeps.Policy.AllowPrivate,
+			AllowLoopback: sdeps.Policy.AllowLoopback, AllowHTTP: sdeps.Policy.AllowHTTP,
+			DenyCIDRs: sdeps.Policy.DenyCIDRs}, Logger: logger, Meter: prov.Meter,
+	}, sdeps.Resolver)
+	defer func() { _ = secretRuntime.Close() }()
+	platformNS := ""
+	if cfg.Secrets.OpenBao != nil {
+		platformNS = cfg.Secrets.OpenBao.Namespace
+	}
+	secretSvc := secretrefs.NewService(secretRepo, secretRuntime, authz.RBAC{},
+		recorder, sdeps.OpenBao, platformNS)
 	clusterRepo := clusterpg.New(pool)
 	q.Register(clustersync.Kind, clustersync.Handler(clusterRepo,
 		sdeps.Factory, cfg.Worker.ClusterSyncInterval,
@@ -117,18 +138,19 @@ func cmdWorker(parent context.Context, configPath string, lookupEnv config.Looku
 	tenantRepo := tenantpg.New(pool)
 	projectRepo := projectpg.New(pool)
 	execDeps := engine.Deps{
-		Execs:       execpg.New(pool),
-		Workflows:   wfpg.New(pool),
-		Policies:    policiesvc.NewService(policypg.New(pool), authz.RBAC{}, recorder),
-		VPolicy:     vdeps.VPolicy,
-		Clusters:    clusterRepo,
-		Projects:    projectsvc.NewService(projectRepo, projectRepo, projectRepo, tenantRepo, clusterRepo, authz.RBAC{}, recorder),
-		Pipeline:    vdeps.Pipeline,
-		Validations: vdeps.Store,
-		Scripts:     scriptpg.New(pool),
-		Jobs:        jobpg.New(pool),
-		Audit:       recorder,
-		Metrics:     vdeps.Metrics,
+		Execs:           execpg.New(pool),
+		Workflows:       wfpg.New(pool),
+		SecretReference: secretSvc.ReferenceExists,
+		Policies:        policiesvc.NewService(policypg.New(pool), authz.RBAC{}, recorder),
+		VPolicy:         vdeps.VPolicy,
+		Clusters:        clusterRepo,
+		Projects:        projectsvc.NewService(projectRepo, projectRepo, projectRepo, tenantRepo, clusterRepo, authz.RBAC{}, recorder),
+		Pipeline:        vdeps.Pipeline,
+		Validations:     vdeps.Store,
+		Scripts:         scriptpg.New(pool),
+		Jobs:            jobpg.New(pool),
+		Audit:           recorder,
+		Metrics:         vdeps.Metrics,
 	}
 	q.Register(engine.KindAdvance, engine.Advance(execDeps))
 	q.Register(engine.KindAdmit, engine.Admit(execDeps))
@@ -153,8 +175,13 @@ func cmdWorker(parent context.Context, configPath string, lookupEnv config.Looku
 		return 1
 	}
 
+	workerHealth := health.NewRegistry()
+	workerHealth.Register(db.NewChecker(pool), true)
+	if sdeps.OpenBao != nil {
+		workerHealth.Register(sdeps.OpenBao, true)
+	}
 	g, gctx := errgroup.WithContext(ctx)
-	if err := runMetrics(gctx, g, cfg, prov.PromRegistry, logger); err != nil {
+	if err := runMetrics(gctx, g, cfg, prov.PromRegistry, logger, workerHealth); err != nil {
 		logger.ErrorContext(ctx, "metrics setup", "error", err)
 		return 1
 	}

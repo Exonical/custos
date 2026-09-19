@@ -10,6 +10,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/Exonical/custos/internal/platform/config"
+	"github.com/Exonical/custos/internal/platform/health"
 	"github.com/Exonical/custos/internal/platform/httpx"
 	"github.com/Exonical/custos/internal/platform/otel"
 )
@@ -17,7 +18,7 @@ import (
 // runMetrics serves GET /metrics on cfg.Metrics.Listen inside g when
 // enabled. Security headers only; no access log (scrape noise).
 func runMetrics(ctx context.Context, g *errgroup.Group, cfg config.Config,
-	reg *prometheus.Registry, logger *slog.Logger) error {
+	reg *prometheus.Registry, logger *slog.Logger, readiness ...*health.Registry) error {
 	if !cfg.Metrics.Enabled {
 		return nil
 	}
@@ -30,7 +31,8 @@ func runMetrics(ctx context.Context, g *errgroup.Group, cfg config.Config,
 		IdleTimeout:       60 * time.Second,
 		ShutdownTimeout:   10 * time.Second,
 	}
-	srv, err := httpx.NewServer(scfg, httpx.SecurityHeaders(metricsMux(reg)), logger)
+	srv, err := httpx.NewServer(scfg,
+		httpx.SecurityHeaders(metricsMux(reg, logger, readiness...)), logger)
 	if err != nil {
 		return err
 	}
@@ -41,8 +43,13 @@ func runMetrics(ctx context.Context, g *errgroup.Group, cfg config.Config,
 	return nil
 }
 
-func metricsMux(reg *prometheus.Registry) *http.ServeMux {
+func metricsMux(reg *prometheus.Registry, logger *slog.Logger,
+	readiness ...*health.Registry) *http.ServeMux {
 	m := http.NewServeMux()
 	m.Handle("GET /metrics", otel.MetricsHandler(reg))
+	if len(readiness) > 0 && readiness[0] != nil {
+		m.Handle("GET /health/ready",
+			readiness[0].ReadyHandler(500*time.Millisecond, logger))
+	}
 	return m
 }

@@ -46,7 +46,45 @@ type DialPolicy struct {
 
 // Secrets configures secret providers.
 type Secrets struct {
-	FileRoots []string `yaml:"file_roots" doc:"Allow-listed absolute roots for the file secret provider"`
+	FileRoots []string       `yaml:"file_roots" doc:"Allow-listed absolute roots for the file secret provider"`
+	OpenBao   *OpenBaoConfig `yaml:"openbao,omitempty" doc:"OpenBao production secret provider (empty disables it)"`
+}
+
+// OpenBaoConfig configures the OpenBao production provider.
+type OpenBaoConfig struct {
+	Address   string        `yaml:"address" doc:"OpenBao API base URL"`
+	CAFile    string        `yaml:"ca_file" doc:"PEM CA bundle for OpenBao TLS"`
+	Namespace string        `yaml:"namespace" doc:"Platform OpenBao namespace (for example custos)"`
+	Auth      OpenBaoAuth   `yaml:"auth" doc:"OpenBao workload authentication"`
+	Timeout   time.Duration `yaml:"timeout" doc:"Per-request OpenBao timeout"`
+}
+
+// OpenBaoAuth selects JWT workload identity or development-only AppRole.
+type OpenBaoAuth struct {
+	Method  string         `yaml:"method" doc:"jwt | approle (approle requires dev_mode)"`
+	JWT     OpenBaoJWT     `yaml:"jwt" doc:"JWT auth settings"`
+	AppRole OpenBaoAppRole `yaml:"approle" doc:"Development-only AppRole settings"`
+}
+
+// OpenBaoJWT configures the JWT auth role and exactly one JWT source.
+type OpenBaoJWT struct {
+	Role                  string                 `yaml:"role" doc:"OpenBao JWT auth role"`
+	TokenFile             string                 `yaml:"token_file" doc:"Projected workload JWT file"`
+	OIDCClientCredentials *OIDCClientCredentials `yaml:"oidc_client_credentials,omitempty" doc:"OIDC client-credentials workload JWT source"`
+}
+
+// OIDCClientCredentials configures workload client credentials.
+type OIDCClientCredentials struct {
+	TokenURL     string   `yaml:"token_url" doc:"OIDC token endpoint"`
+	ClientID     string   `yaml:"client_id" doc:"OIDC confidential client id"`
+	ClientSecret Secret   `yaml:"client_secret" doc:"OIDC confidential client secret"`
+	Scopes       []string `yaml:"scopes" doc:"Optional requested OAuth scopes"`
+}
+
+// OpenBaoAppRole configures development-only AppRole login.
+type OpenBaoAppRole struct {
+	RoleID       string `yaml:"role_id" doc:"OpenBao AppRole role id"`
+	SecretIDFile string `yaml:"secret_id_file" doc:"Mounted AppRole secret-id file"`
 }
 
 // Server configures the public HTTP listener.
@@ -233,6 +271,9 @@ func Default() Config {
 	c.Validation.Shellcheck.Endpoint = "http://127.0.0.1:8481"
 	c.Validation.Shellcheck.Timeout = 10 * time.Second
 	c.Validation.UnavailableSeverity = "ERROR"
+	if c.Secrets.OpenBao != nil {
+		c.Secrets.OpenBao.Timeout = 10 * time.Second
+	}
 	if runtime.GOOS == "windows" {
 		c.Secrets.FileRoots = []string{`C:\custos\secrets`}
 	} else {

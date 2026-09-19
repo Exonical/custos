@@ -24,6 +24,7 @@ secrets:
 volumes:
   pgdata:
   pgcerts:
+  openbaodata:
 
 x-custos-hardening: &custos-hardening
   read_only: true
@@ -36,6 +37,34 @@ x-custos-hardening: &custos-hardening
   user: "65532:65532"
 
 services:
+  openbao:
+    image: quay.io/openbao/openbao:2.6.2
+    command: ["server", "-config=/openbao/config/openbao.hcl"]
+    cap_add: [IPC_LOCK]
+    volumes:
+      - ./openbao.hcl:/openbao/config/openbao.hcl:ro
+      - ./.secrets/openbao.crt:/openbao/tls/openbao.crt:ro
+      - ./.secrets/openbao.key:/openbao/tls/openbao.key:ro
+      - openbaodata:/openbao/data
+    healthcheck:
+      test: ["CMD-SHELL", "bao status -address=https://openbao:8200 -ca-cert=/openbao/tls/openbao.crt >/dev/null 2>&1; test $$? -le 2"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+    security_opt:
+      - no-new-privileges:true
+
+  openbao-init:
+    image: quay.io/openbao/openbao:2.6.2
+    entrypoint: ["/bin/sh", "/bootstrap/init-openbao.sh"]
+    volumes:
+      - ./init-openbao.sh:/bootstrap/init-openbao.sh:ro
+      - ./.secrets:/bootstrap
+      - ./.secrets/openbao.crt:/openbao/tls/openbao.crt:ro
+    depends_on:
+      openbao:
+        condition: service_healthy
+
   postgres:
     image: postgres:18
     environment:
@@ -129,6 +158,8 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
+      openbao-init:
+        condition: service_completed_successfully
 
   worker:
     image: custos:local
@@ -147,6 +178,8 @@ services:
       - "127.0.0.1:9190:9090"
     depends_on:
       migrate:
+        condition: service_completed_successfully
+      openbao-init:
         condition: service_completed_successfully
 
   # Validator sidecars share the API/worker network namespaces so

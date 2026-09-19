@@ -22,9 +22,12 @@ type clusterHandlers struct {
 // (provider/path/key), never secret material.
 func clusterDTO(c clusters.Cluster) map[string]any {
 	tok := map[string]any{
-		"provider": c.TokenRef.Provider,
-		"path":     c.TokenRef.Path,
-		"key":      c.TokenRef.Key,
+		"provider":  c.TokenRef.Provider,
+		"namespace": c.TokenRef.Namespace,
+		"mount":     c.TokenRef.Mount,
+		"path":      c.TokenRef.Path,
+		"key":       c.TokenRef.Key,
+		"version":   c.TokenRef.Version,
 	}
 	out := map[string]any{
 		"id":                   c.ID,
@@ -48,9 +51,12 @@ func clusterDTO(c clusters.Cluster) map[string]any {
 	}
 	if c.ClientCertRef != nil {
 		out["client_cert_ref"] = map[string]any{
-			"provider": c.ClientCertRef.Provider,
-			"path":     c.ClientCertRef.Path,
-			"key":      c.ClientCertRef.Key,
+			"provider":  c.ClientCertRef.Provider,
+			"namespace": c.ClientCertRef.Namespace,
+			"mount":     c.ClientCertRef.Mount,
+			"path":      c.ClientCertRef.Path,
+			"key":       c.ClientCertRef.Key,
+			"version":   c.ClientCertRef.Version,
 		}
 	}
 	if c.LastSyncAt != nil {
@@ -83,13 +89,17 @@ func summaryDTO(s clustersvc.ClusterSummary) map[string]any {
 }
 
 type secretRefDTO struct {
-	Provider string `json:"provider"`
-	Path     string `json:"path"`
-	Key      string `json:"key,omitempty"`
+	Provider  string `json:"provider"`
+	Namespace string `json:"namespace,omitempty"`
+	Mount     string `json:"mount,omitempty"`
+	Path      string `json:"path"`
+	Key       string `json:"key,omitempty"`
+	Version   int    `json:"version,omitempty"`
 }
 
 func (r secretRefDTO) ref() secrets.Reference {
-	return secrets.Reference{Provider: r.Provider, Path: r.Path, Key: r.Key}
+	return secrets.Reference{Provider: r.Provider, Namespace: r.Namespace,
+		Mount: r.Mount, Path: r.Path, Key: r.Key, Version: r.Version}
 }
 
 type createClusterDTO struct {

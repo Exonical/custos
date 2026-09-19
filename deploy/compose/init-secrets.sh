@@ -30,6 +30,16 @@ if [ ! -s "$d/server.crt" ]; then
 	chmod 644 "$d/server.crt"
 fi
 
+if [ ! -s "$d/openbao.crt" ]; then
+	MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='/CN' \
+		openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 \
+		-nodes -days 365 -subj /CN=openbao \
+		-addext subjectAltName=DNS:openbao \
+		-keyout "$d/openbao.key" -out "$d/openbao.crt"
+	chmod 600 "$d/openbao.key"
+	chmod 644 "$d/openbao.crt"
+fi
+
 # Self-signed server cert doubles as the CA for verify-full.
 printf 'postgres://custos_migrate:%s@postgres:5432/custos' \
 	"$(cat "$d/custos-migrate-password")" > "$d/custos-migrate-url"

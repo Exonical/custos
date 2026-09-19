@@ -46,6 +46,8 @@ cert() {
 cert slurmrestd slurmrestd.e2e "DNS:slurmrestd.e2e"
 cert keycloak keycloak.e2e "DNS:keycloak.e2e"
 cert api custos.e2e "DNS:custos.e2e,DNS:localhost,IP:127.0.0.1"
+cert openbao openbao "DNS:openbao"
+cert openbao-byo openbao-byo.e2e "DNS:openbao-byo.e2e"
 
 # --- Slurm auth keys -------------------------------------------------
 # auth/slurm shared secret (any file; slurm.key format is opaque).
@@ -85,6 +87,10 @@ chmod 600 "$d/slurm/token"
 if [ ! -s "$d/keycloak-client-secret" ]; then
 	printf 'e2e-client-secret' > "$d/keycloak-client-secret"
 	chmod 600 "$d/keycloak-client-secret"
+fi
+if [ ! -s "$d/openbao-client-secret" ]; then
+	printf 'e2e-openbao-secret' > "$d/openbao-client-secret"
+	chmod 600 "$d/openbao-client-secret"
 fi
 # Keycloak bootstrap admin (test-only, used only for emergency console
 # access — tests never log in as admin).

@@ -119,8 +119,8 @@ func TestMultiDispatch(t *testing.T) {
 	m := secrets.Multi{"file": r}
 	if _, err := m.Resolve(context.Background(), secrets.Reference{
 		Provider: "openbao", Path: "x",
-	}); !apperr.Is(err, apperr.Invalid) {
-		t.Fatalf("want Invalid, got %v", err)
+	}); !apperr.Is(err, apperr.Validation) {
+		t.Fatalf("want Validation, got %v", err)
 	}
 }
 

@@ -84,6 +84,24 @@ Validation aborts startup (`config.invalid`) when:
 | `metrics.tls.require_client_cert` | bool | `false` | `CUSTOS_METRICS__TLS__REQUIRE_CLIENT_CERT` | Require and verify client certificates (mTLS) |
 | `secrets` | section | `` | `CUSTOS_SECRETS` | Secret-provider settings (docs/secrets.md) |
 | `secrets.file_roots` | slice | `C:\custos\secrets` | `CUSTOS_SECRETS__FILE_ROOTS` | Allow-listed absolute roots for the file secret provider |
+| `secrets.openbao` | section | `` | `CUSTOS_SECRETS__OPENBAO` | OpenBao production secret provider (empty disables it) |
+| `secrets.openbao.address` | string | `` | `CUSTOS_SECRETS__OPENBAO__ADDRESS` | OpenBao API base URL |
+| `secrets.openbao.auth` | section | `` | `CUSTOS_SECRETS__OPENBAO__AUTH` | OpenBao workload authentication |
+| `secrets.openbao.auth.approle` | section | `` | `CUSTOS_SECRETS__OPENBAO__AUTH__APPROLE` | Development-only AppRole settings |
+| `secrets.openbao.auth.approle.role_id` | string | `` | `CUSTOS_SECRETS__OPENBAO__AUTH__APPROLE__ROLE_ID` | OpenBao AppRole role id |
+| `secrets.openbao.auth.approle.secret_id_file` | string | `` | `CUSTOS_SECRETS__OPENBAO__AUTH__APPROLE__SECRET_ID_FILE` | Mounted AppRole secret-id file |
+| `secrets.openbao.auth.jwt` | section | `` | `CUSTOS_SECRETS__OPENBAO__AUTH__JWT` | JWT auth settings |
+| `secrets.openbao.auth.jwt.oidc_client_credentials` | section | `` | `CUSTOS_SECRETS__OPENBAO__AUTH__JWT__OIDC_CLIENT_CREDENTIALS` | OIDC client-credentials workload JWT source |
+| `secrets.openbao.auth.jwt.oidc_client_credentials.client_id` | string | `` | `CUSTOS_SECRETS__OPENBAO__AUTH__JWT__OIDC_CLIENT_CREDENTIALS__CLIENT_ID` | OIDC confidential client id |
+| `secrets.openbao.auth.jwt.oidc_client_credentials.client_secret` | secret | `` | `CUSTOS_SECRETS__OPENBAO__AUTH__JWT__OIDC_CLIENT_CREDENTIALS__CLIENT_SECRET` | OIDC confidential client secret |
+| `secrets.openbao.auth.jwt.oidc_client_credentials.scopes` | slice | `` | `CUSTOS_SECRETS__OPENBAO__AUTH__JWT__OIDC_CLIENT_CREDENTIALS__SCOPES` | Optional requested OAuth scopes |
+| `secrets.openbao.auth.jwt.oidc_client_credentials.token_url` | string | `` | `CUSTOS_SECRETS__OPENBAO__AUTH__JWT__OIDC_CLIENT_CREDENTIALS__TOKEN_URL` | OIDC token endpoint |
+| `secrets.openbao.auth.jwt.role` | string | `` | `CUSTOS_SECRETS__OPENBAO__AUTH__JWT__ROLE` | OpenBao JWT auth role |
+| `secrets.openbao.auth.jwt.token_file` | string | `` | `CUSTOS_SECRETS__OPENBAO__AUTH__JWT__TOKEN_FILE` | Projected workload JWT file |
+| `secrets.openbao.auth.method` | string | `` | `CUSTOS_SECRETS__OPENBAO__AUTH__METHOD` | jwt \| approle (approle requires dev_mode) |
+| `secrets.openbao.ca_file` | string | `` | `CUSTOS_SECRETS__OPENBAO__CA_FILE` | PEM CA bundle for OpenBao TLS |
+| `secrets.openbao.namespace` | string | `` | `CUSTOS_SECRETS__OPENBAO__NAMESPACE` | Platform OpenBao namespace (for example custos) |
+| `secrets.openbao.timeout` | duration | `0s` | `CUSTOS_SECRETS__OPENBAO__TIMEOUT` | Per-request OpenBao timeout |
 | `server` | section | `` | `CUSTOS_SERVER` | Public HTTP API listener |
 | `server.cors` | section | `` | `CUSTOS_SERVER__CORS` | Cross-origin allow-list |
 | `server.cors.allowed_origins` | slice | `` | `CUSTOS_SERVER__CORS__ALLOWED_ORIGINS` | Exact-match allowed origins (no wildcards) |

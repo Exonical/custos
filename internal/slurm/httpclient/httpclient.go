@@ -8,16 +8,14 @@ package httpclient
 
 import (
 	"context"
-	"crypto/tls"
-	"crypto/x509"
 	"fmt"
 	"net"
 	"net/http"
 	"net/netip"
 	"net/url"
-	"time"
 
 	"github.com/Exonical/custos/internal/platform/apperr"
+	"github.com/Exonical/custos/internal/platform/safehttp"
 	"github.com/Exonical/custos/internal/slurm"
 )
 
@@ -44,61 +42,16 @@ var alwaysDenied = []netip.Prefix{
 // follows redirects and never uses InsecureSkipVerify.
 func New(ep slurm.Endpoint, policy DialPolicy) (*http.Client, error) {
 	u, err := url.Parse(ep.BaseURL)
-	if err != nil || u.Host == "" {
-		return nil, apperr.New(apperr.Invalid, "slurm.endpoint_invalid",
-			"cluster endpoint is not a valid URL")
+	if err != nil || u.Host == "" || (u.Scheme != "https" && u.Scheme != "http") {
+		return nil, apperr.New(apperr.Invalid, "slurm.endpoint_invalid", "cluster endpoint is not a valid URL")
 	}
-	switch u.Scheme {
-	case "https":
-	case "http":
-		if !policy.AllowHTTP || !policy.AllowLoopback {
-			return nil, apperr.New(apperr.Invalid, "slurm.endpoint_scheme",
-				"cluster endpoint must be https (http only to loopback in dev)")
-		}
-	default:
-		return nil, apperr.New(apperr.Invalid, "slurm.endpoint_scheme",
-			"cluster endpoint must be https")
+	if u.Scheme == "http" && (!policy.AllowHTTP || !policy.AllowLoopback) {
+		return nil, apperr.New(apperr.Invalid, "slurm.endpoint_scheme", "cluster endpoint must use https")
 	}
-
-	roots, err := x509.SystemCertPool()
-	if err != nil || roots == nil {
-		roots = x509.NewCertPool()
-	}
-	if len(ep.CABundlePEM) > 0 {
-		roots = x509.NewCertPool()
-		if !roots.AppendCertsFromPEM(ep.CABundlePEM) {
-			return nil, apperr.New(apperr.Invalid, "slurm.ca_bundle_invalid",
-				"cluster CA bundle contains no parseable certificates")
-		}
-	}
-	tlsCfg := &tls.Config{
-		MinVersion: tls.VersionTLS13,
-		RootCAs:    roots,
-	}
-	if ep.ClientCert != nil {
-		tlsCfg.Certificates = []tls.Certificate{*ep.ClientCert}
-	}
-
-	dialer := &net.Dialer{Timeout: 5 * time.Second}
-	tr := &http.Transport{
-		TLSClientConfig:       tlsCfg,
-		ResponseHeaderTimeout: 30 * time.Second,
-		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			return vetDial(ctx, dialer, policy, network, addr,
-				u.Scheme == "http")
-		},
-		// http.Transport derives the TLS ServerName from the request URL
-		// host, not the dialed address, so dialing the vetted IP keeps
-		// certificate verification against the configured hostname
-		// (TestTLSServerAllowLoopback).
-	}
-	return &http.Client{
-		Transport: tr,
-		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
-			return apperr.New(apperr.Forbidden, "slurm.redirect_refused",
-				"cluster endpoint returned a redirect")
-		},
-	}, nil
+	return safehttp.NewWithCertificate(ep.BaseURL, ep.CABundlePEM, ep.ClientCert,
+		safehttp.DialPolicy{AllowPrivate: policy.AllowPrivate,
+			AllowLoopback: policy.AllowLoopback, AllowHTTP: policy.AllowHTTP,
+			DenyCIDRs: policy.DenyCIDRs})
 }
 
 // lookupIP is the resolver used by vetDial; unexported and injectable so

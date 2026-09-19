@@ -25,6 +25,19 @@ log:
 telemetry:
   exporter: none
 
+secrets:
+  file_roots: [/etc/custos/secrets]
+  openbao:
+    address: "https://openbao:8200"
+    ca_file: /etc/custos/secrets/openbao.crt
+    namespace: custos
+    timeout: 10s
+    auth:
+      method: approle
+      approle:
+        role_id: custos-local-role
+        secret_id_file: /etc/custos/secrets/openbao-secret-id
+
 validation:
   shellcheck:
     enabled: true

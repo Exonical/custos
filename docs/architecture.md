@@ -163,8 +163,9 @@ internal/
   workflowspec/           custos.io/v1alpha1 spec types + expr/ units/
                           validate/ schema/
   policies/               tenant/project resource policy evaluation
-  secrets/                SecretReference, Resolver port; file provider
-                          (OpenBao adapter in M6)
+  secrets/                values/references, platform file + OpenBao providers
+  secretrefs/             tenant connectors/references, service + postgres
+  platform/safehttp/      shared SSRF-safe external endpoint transport
   audit/                  AuditEvent, Recorder port, postgres sink
   api/                    HTTP layer only: handlers, DTO mapping, error envelope
 pkg/
@@ -182,7 +183,7 @@ docs/                     this directory; docs/adr/
 ```
 
 Not yet present (later milestones): `internal/accounting`,
-`internal/artifacts`, `internal/secrets/openbao` (M6/M7), `deploy/helm`,
+`internal/artifacts` (M7), `deploy/helm`,
 `web/` (M8).
 
 Changes from the prompt's suggestion and why:

@@ -33,6 +33,9 @@ cexec() {
 cmd_up() {
 	bash deploy/compose/init-secrets.sh
 	bash deploy/e2e/init-secrets.sh
+	# Rebuild application images so repeated local runs never reuse a stale
+	# binary after migrations/config fields change.
+	compose build migrate custos worker
 
 	# The validator sidecars share the custos/worker network namespaces
 	# (network_mode: service:*), so they must be recreated whenever their
@@ -131,6 +134,23 @@ cmd_up() {
 	printf '%s' "$token" > "$SECRETS/slurm/token"
 	chmod 600 "$SECRETS/slurm/token"
 
+	if [ -s "$SECRETS/openbao-bootstrap-token" ]; then
+		echo "e2e: storing Slurm credential in platform OpenBao..."
+		MSYS_NO_PATHCONV=1 cexec openbao env BAO_ADDR=https://openbao:8200 \
+			BAO_CACERT=/openbao/tls/openbao.crt \
+			BAO_NAMESPACE=custos \
+			BAO_TOKEN="$(cat "$SECRETS/openbao-bootstrap-token")" \
+			bao kv put kv/clusters/e2e token="$token" >/dev/null
+	fi
+
+	echo "e2e: seeding the customer-managed OpenBao stand-in..."
+	cexec openbao-byo env BAO_ADDR=http://127.0.0.1:8200 BAO_TOKEN=e2e-byo-token \
+		bao namespace create customer >/dev/null 2>&1 || true
+	cexec openbao-byo env BAO_ADDR=http://127.0.0.1:8200 BAO_TOKEN=e2e-byo-token \
+		BAO_NAMESPACE=customer bao secrets enable -path=kv kv-v2 >/dev/null 2>&1 || true
+	cexec openbao-byo env BAO_ADDR=http://127.0.0.1:8200 BAO_TOKEN=e2e-byo-token \
+		BAO_NAMESPACE=customer bao kv put kv/e2e value=byo-e2e-value >/dev/null
+
 	echo "e2e: waiting for Custos readiness..."
 	for i in $(seq 1 60); do
 		if curl -sf --ssl-no-revoke --cacert "$CA" https://127.0.0.1:8080/health/ready >/dev/null 2>&1; then
@@ -189,6 +209,39 @@ cmd_up() {
 	kcurl POST /tenants/acme/members \
 		"{\"user_id\":\"$admin_uid\",\"roles\":[\"tenant-admin\"]}" \
 		>/dev/null 2>&1 || true
+
+	echo "e2e: seeding Alice's tenant secret in OpenBao..."
+	tenant_json=$(kcurl GET /tenants/acme)
+	tenant_id=$(printf '%s' "$tenant_json" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
+	alice_resp=$(curl -sf --ssl-no-revoke --cacert "$CA" \
+		--resolve keycloak.e2e:8443:127.0.0.1 \
+		-d grant_type=password -d client_id=custos-e2e \
+		-d client_secret="$(cat "$SECRETS/keycloak-client-secret")" \
+		-d username=alice -d password=alice-e2e-password -d scope=openid \
+		"$KEYCLOAK/realms/custos/protocol/openid-connect/token")
+	alice_at=$(printf '%s' "$alice_resp" | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p')
+	alice_me=$(curl -sf --ssl-no-revoke --cacert "$CA" \
+		-H "Authorization: Bearer $alice_at" https://127.0.0.1:8080/api/v1/me)
+	alice_id=$(printf '%s' "$alice_me" | sed -n 's/.*"user_id":"\([^"]*\)".*/\1/p')
+	[ -n "$tenant_id" ] && [ -n "$alice_id" ] || die "tenant/alice id lookup failed"
+	# Idempotent safety net for reruns where Alice was provisioned before
+	# claim rules existed and the claims-sync freshness stamp is still live.
+	kcurl POST /tenants/acme/members \
+		"{\"user_id\":\"$alice_id\",\"roles\":[\"researcher\"]}" \
+		>/dev/null 2>&1 || true
+	if [ -s "$SECRETS/openbao-bootstrap-token" ]; then
+		MSYS_NO_PATHCONV=1 cexec openbao env BAO_ADDR=https://openbao:8200 \
+			BAO_CACERT=/openbao/tls/openbao.crt \
+			BAO_NAMESPACE="custos/tenants/$tenant_id" \
+			BAO_TOKEN="$(cat "$SECRETS/openbao-bootstrap-token")" \
+			bao kv put "kv/users/$alice_id/hf-token" value=e2e-hf-token >/dev/null
+		MSYS_NO_PATHCONV=1 cexec openbao env BAO_ADDR=https://openbao:8200 \
+			BAO_CACERT=/openbao/tls/openbao.crt \
+			BAO_NAMESPACE=custos \
+			BAO_TOKEN="$(cat "$SECRETS/openbao-bootstrap-token")" \
+			bao token revoke -self >/dev/null
+		rm -f "$SECRETS/openbao-bootstrap-token"
+	fi
 
 	cat <<EOF
 

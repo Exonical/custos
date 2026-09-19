@@ -123,6 +123,44 @@ func (c Config) Validate() error {
 				"must be an absolute path")
 		}
 	}
+	if b := c.Secrets.OpenBao; b != nil {
+		u, err := url.Parse(b.Address)
+		if err != nil || u.Host == "" || (u.Scheme != "https" && u.Scheme != "http") {
+			v.fail("secrets.openbao.address", "must be an absolute http(s) URL")
+		} else if u.Scheme != "https" && !c.DevMode {
+			v.fail("secrets.openbao.address", "plaintext requires dev_mode")
+		}
+		if b.Namespace == "" {
+			v.fail("secrets.openbao.namespace", "required")
+		}
+		v.durPos("secrets.openbao.timeout", b.Timeout)
+		switch b.Auth.Method {
+		case "jwt":
+			if b.Auth.JWT.Role == "" {
+				v.fail("secrets.openbao.auth.jwt.role", "required")
+			}
+			file := b.Auth.JWT.TokenFile != ""
+			oidc := b.Auth.JWT.OIDCClientCredentials != nil
+			if file == oidc {
+				v.fail("secrets.openbao.auth.jwt", "exactly one token source is required")
+			}
+			if oidc {
+				o := b.Auth.JWT.OIDCClientCredentials
+				if o.TokenURL == "" || o.ClientID == "" || o.ClientSecret.Reveal() == "" {
+					v.fail("secrets.openbao.auth.jwt.oidc_client_credentials", "token_url, client_id and client_secret are required")
+				}
+			}
+		case "approle":
+			if !c.DevMode {
+				v.fail("secrets.openbao.auth.method", "approle requires dev_mode")
+			}
+			if b.Auth.AppRole.RoleID == "" || b.Auth.AppRole.SecretIDFile == "" {
+				v.fail("secrets.openbao.auth.approle", "role_id and secret_id_file are required")
+			}
+		default:
+			v.fail("secrets.openbao.auth.method", "must be jwt or approle")
+		}
+	}
 
 	for i, cidr := range c.Slurm.DialPolicy.DenyCIDRs {
 		if _, err := netip.ParsePrefix(cidr); err != nil {
@@ -317,6 +355,11 @@ func redactValue(v reflect.Value) any {
 		return time.Duration(v.Int()).String()
 	}
 	switch v.Kind() {
+	case reflect.Pointer:
+		if v.IsNil() {
+			return nil
+		}
+		return redactValue(v.Elem())
 	case reflect.Struct:
 		out := make(map[string]any, t.NumField())
 		for i := range t.NumField() {

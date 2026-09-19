@@ -2,7 +2,7 @@
 
 ## Contract
 
-The OpenAPI 3.1 document `internal/api/openapi/openapi.yaml` is the
+The OpenAPI 3.1 document `api/openapi/v1.yaml` is the
 authoritative contract, hand-maintained, served at
 `GET /api/v1/openapi.json`. Go request/response types in `pkg/api/v1` are
 generated from it with `oapi-codegen` (types + strict server interface
@@ -159,7 +159,18 @@ GET    /api/v1/clusters/{cluster}/policies/validation          platform admin
 PUT    /api/v1/clusters/{cluster}/policies/validation          platform admin; optimistic `version`
 GET    /api/v1/tenants/{tenant}/projects/{project}/policies/resource   policy.read; includes `effective` (tenant ∩ project)
 PUT    /api/v1/tenants/{tenant}/projects/{project}/policies/resource   policy.manage at tenant level
-...    /api/v1/tenants/{tenant}/secret-references
+GET    /api/v1/tenants/{tenant}/secret-connectors
+POST   /api/v1/tenants/{tenant}/secret-connectors                 secret.connector.manage; credential is write-only
+GET    /api/v1/tenants/{tenant}/secret-connectors/{connector}
+PATCH  /api/v1/tenants/{tenant}/secret-connectors/{connector}     rotates credential when supplied
+DELETE /api/v1/tenants/{tenant}/secret-connectors/{connector}     409 CONNECTOR_IN_USE while referenced
+POST   /api/v1/tenants/{tenant}/secret-connectors/{connector}/test returns `{ok,kind,latency_ms}` only
+GET    /api/v1/tenants/{tenant}/secret-references
+POST   /api/v1/tenants/{tenant}/secret-references                 defaults connector to `default`
+GET    /api/v1/tenants/{tenant}/secret-references/{reference}
+PATCH  /api/v1/tenants/{tenant}/secret-references/{reference}
+DELETE /api/v1/tenants/{tenant}/secret-references/{reference}
+POST   /api/v1/tenants/{tenant}/secret-references/{reference}/test returns `{ok,kind,version,resolved_at}` only
 GET    /api/v1/schemas/workflow/v1alpha1                       unauthenticated JSON Schema; ETag-cached
 POST   /api/v1/tenants/{tenant}/workflows                      workflow.create on the project
 GET    /api/v1/tenants/{tenant}/workflows                      workflow.read; `?project=<uuid>` filter

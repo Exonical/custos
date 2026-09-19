@@ -55,6 +55,29 @@
       ]
     },
     {
+      "clientId": "custos-openbao",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "e2e-openbao-secret",
+      "serviceAccountsEnabled": true,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "protocol": "openid-connect",
+      "protocolMappers": [
+        {
+          "name": "openbao-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.client.audience": "custos-openbao",
+            "id.token.claim": "false",
+            "access.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
       "clientId": "custos-wrong-audience",
       "enabled": true,
       "publicClient": true,

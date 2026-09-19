@@ -2644,6 +2644,91 @@ paths:
           description: Job not found.
           content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
 
+  /tenants/{tenant}/secret-connectors:
+    parameters:
+      - $ref: "#/components/parameters/TenantSlug"
+    get:
+      operationId: listSecretConnectors
+      summary: List tenant secret connectors
+      security: [{bearerAuth: []}]
+      responses:
+        "200": {description: Connector list, content: {application/json: {schema: {type: object}}}}
+    post:
+      operationId: createSecretConnector
+      summary: Create a tenant secret connector
+      security: [{bearerAuth: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/CreateSecretConnector"}}}}
+      responses:
+        "201": {description: Connector created, content: {application/json: {schema: {$ref: "#/components/schemas/SecretConnector"}}}}
+        "422": {description: Invalid or unavailable provider, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+
+  /tenants/{tenant}/secret-connectors/{connector}:
+    parameters:
+      - $ref: "#/components/parameters/TenantSlug"
+      - {name: connector, in: path, required: true, schema: {type: string}}
+    get:
+      operationId: getSecretConnector
+      security: [{bearerAuth: []}]
+      responses: {"200": {description: Connector, content: {application/json: {schema: {$ref: "#/components/schemas/SecretConnector"}}}}}
+    patch:
+      operationId: updateSecretConnector
+      security: [{bearerAuth: []}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object}}}}
+      responses: {"200": {description: Connector updated, content: {application/json: {schema: {$ref: "#/components/schemas/SecretConnector"}}}}}
+    delete:
+      operationId: deleteSecretConnector
+      security: [{bearerAuth: []}]
+      responses: {"204": {description: Connector deleted}, "409": {description: Connector is in use}}
+
+  /tenants/{tenant}/secret-connectors/{connector}/test:
+    parameters:
+      - $ref: "#/components/parameters/TenantSlug"
+      - {name: connector, in: path, required: true, schema: {type: string}}
+    post:
+      operationId: testSecretConnector
+      security: [{bearerAuth: []}]
+      responses: {"200": {description: Connectivity result, content: {application/json: {schema: {type: object}}}}}
+
+  /tenants/{tenant}/secret-references:
+    parameters:
+      - $ref: "#/components/parameters/TenantSlug"
+    get:
+      operationId: listSecretReferences
+      security: [{bearerAuth: []}]
+      responses: {"200": {description: Reference list, content: {application/json: {schema: {type: object}}}}}
+    post:
+      operationId: createSecretReference
+      security: [{bearerAuth: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/CreateSecretReference"}}}}
+      responses: {"201": {description: Reference created, content: {application/json: {schema: {$ref: "#/components/schemas/SecretReference"}}}}, "422": {description: Invalid reference}}
+
+  /tenants/{tenant}/secret-references/{reference}:
+    parameters:
+      - $ref: "#/components/parameters/TenantSlug"
+      - {name: reference, in: path, required: true, schema: {type: string}}
+    get:
+      operationId: getSecretReference
+      security: [{bearerAuth: []}]
+      responses: {"200": {description: Reference, content: {application/json: {schema: {$ref: "#/components/schemas/SecretReference"}}}}}
+    patch:
+      operationId: updateSecretReference
+      security: [{bearerAuth: []}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object}}}}
+      responses: {"200": {description: Reference updated, content: {application/json: {schema: {$ref: "#/components/schemas/SecretReference"}}}}}
+    delete:
+      operationId: deleteSecretReference
+      security: [{bearerAuth: []}]
+      responses: {"204": {description: Reference deleted}}
+
+  /tenants/{tenant}/secret-references/{reference}/test:
+    parameters:
+      - $ref: "#/components/parameters/TenantSlug"
+      - {name: reference, in: path, required: true, schema: {type: string}}
+    post:
+      operationId: testSecretReference
+      security: [{bearerAuth: []}]
+      responses: {"200": {description: Resolution result without a value, content: {application/json: {schema: {type: object}}}}}
+
 components:
   securitySchemes:
     bearerAuth:
@@ -3388,6 +3473,65 @@ components:
           items:
             $ref: "#/components/schemas/UserLookupResult"
 
+    SecretConnector:
+      type: object
+      required: [id, tenant_id, name, kind, state, config, version]
+      properties:
+        id: {type: string, format: uuid}
+        tenant_id: {type: string, format: uuid}
+        name: {type: string}
+        kind: {type: string, enum: [platform-openbao, openbao]}
+        state: {type: string, enum: [active, disabled]}
+        config: {type: object, additionalProperties: true}
+        credential_ref: {$ref: "#/components/schemas/SecretRef"}
+        version: {type: integer, format: int64}
+
+    CreateSecretConnector:
+      type: object
+      required: [name, kind, config, credential]
+      properties:
+        name: {type: string}
+        kind: {type: string, enum: [openbao]}
+        config: {type: object, additionalProperties: true}
+        credential:
+          type: object
+          additionalProperties: {type: string}
+          writeOnly: true
+
+    SecretReference:
+      type: object
+      required: [id, tenant_id, name, connector_id, namespace, mount, path, key, kind, allowed_uses, version]
+      properties:
+        id: {type: string, format: uuid}
+        tenant_id: {type: string, format: uuid}
+        owner_id: {type: [string, "null"], format: uuid}
+        project_id: {type: [string, "null"], format: uuid}
+        name: {type: string}
+        connector_id: {type: string, format: uuid}
+        namespace: {type: string}
+        mount: {type: string}
+        path: {type: string}
+        key: {type: string}
+        secret_version: {type: [integer, "null"], minimum: 1}
+        kind: {type: string, enum: [ssh_key, slurm_token, api_token, generic, storage_credential]}
+        allowed_uses: {type: array, items: {type: string}}
+        version: {type: integer, format: int64}
+
+    CreateSecretReference:
+      type: object
+      required: [name, path, key, kind]
+      properties:
+        name: {type: string}
+        connector: {type: string, default: default}
+        owner_id: {type: string, format: uuid}
+        project_id: {type: string, format: uuid}
+        mount: {type: string}
+        path: {type: string}
+        key: {type: string}
+        secret_version: {type: integer, minimum: 1}
+        kind: {type: string, enum: [ssh_key, slurm_token, api_token, generic, storage_credential]}
+        allowed_uses: {type: array, items: {type: string}}
+
     SecretRef:
       type: object
       description: Reference to a secret value (docs/secrets.md); never the value.
@@ -3395,12 +3539,22 @@ components:
       properties:
         provider:
           type: string
-          enum: [file]
+          enum: [file, openbao]
+        namespace:
+          type: string
+          description: OpenBao namespace; required for openbao references.
+        mount:
+          type: string
+          description: OpenBao KV v2 mount; required for openbao references.
         path:
           type: string
         key:
           type: string
-          description: Optional JSON key inside the file.
+          description: Field within the secret document.
+        version:
+          type: integer
+          minimum: 1
+          description: Optional pinned OpenBao KV version.
 
     AssignmentDefaults:
       type: object

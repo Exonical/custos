@@ -40,6 +40,21 @@ resolver RESOLVER_PLACEHOLDER valid=10s ipv6=off;
 	}
 
 	server {
+		listen 8250 ssl;
+		server_name openbao-byo.e2e;
+
+		ssl_certificate     /etc/nginx/tls/openbao-byo.crt;
+		ssl_certificate_key /etc/nginx/tls/openbao-byo.key;
+		ssl_protocols       TLSv1.3;
+
+		location / {
+			set $bao http://openbao-byo:8200;
+			proxy_pass $bao$request_uri;
+			proxy_set_header Host $host;
+		}
+	}
+
+	server {
 		listen 8443 ssl;
 		server_name keycloak.e2e;
 

@@ -38,6 +38,18 @@ auth:
 
 secrets:
   file_roots: [/etc/custos/secrets]
+  openbao:
+    address: "https://openbao:8200"
+    ca_file: /etc/custos/secrets/e2e-ca.crt
+    namespace: custos
+    timeout: 10s
+    auth:
+      method: jwt
+      jwt:
+        role: custos
+        oidc_client_credentials:
+          token_url: "https://keycloak.e2e:8443/realms/custos/protocol/openid-connect/token"
+          client_id: custos-openbao
 
 slurm:
   dial_policy:

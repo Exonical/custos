@@ -30,6 +30,7 @@ import (
 	"github.com/Exonical/custos/internal/projects"
 	projectsvc "github.com/Exonical/custos/internal/projects/service"
 	"github.com/Exonical/custos/internal/scripts"
+	"github.com/Exonical/custos/internal/secretrefs"
 	"github.com/Exonical/custos/internal/tenants"
 	tenantsvc "github.com/Exonical/custos/internal/tenants/service"
 	"github.com/Exonical/custos/internal/users"
@@ -83,6 +84,7 @@ type Deps struct {
 	VLimiter       *httpx.PrincipalRateLimiter   // may be nil (no limit)
 	Workflows      *wfsvc.Service                // enables workflow routes
 	Executions     *execsvc.Service              // enables execution routes
+	SecretRefs     *secretrefs.Service           // enables connector/reference routes
 	AZ             authz.Authorizer              // required for validate routes
 }
 
@@ -129,6 +131,12 @@ func Mount(mux *http.ServeMux, deps Deps) {
 			mux.Handle("GET /api/v1/tenants/{tenant}/claim-rules/{rule}", tr(http.HandlerFunc(h.getClaimRule)))
 			mux.Handle("PATCH /api/v1/tenants/{tenant}/claim-rules/{rule}", tr(http.HandlerFunc(h.updateClaimRule)))
 			mux.Handle("DELETE /api/v1/tenants/{tenant}/claim-rules/{rule}", tr(http.HandlerFunc(h.deleteClaimRule)))
+		}
+
+		if deps.SecretRefs != nil {
+			tenantMW := tenants.Require(deps.TenantRepo, deps.Logger, deps.Audit)
+			tr := func(h http.Handler) http.Handler { return bearer(tenantMW(h)) }
+			mountSecretRoutes(mux, &secretHandlers{svc: deps.SecretRefs}, tr)
 		}
 
 		if deps.Clusters != nil {

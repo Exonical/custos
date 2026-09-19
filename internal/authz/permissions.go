@@ -45,6 +45,9 @@ const (
 	SecretReferenceRead   Action = "secret.reference.read"
 	SecretReferenceCreate Action = "secret.reference.create"
 	SecretReferenceUse    Action = "secret.reference.use"
+	SecretReferenceDelete Action = "secret.reference.delete"
+	SecretConnectorRead   Action = "secret.connector.read"
+	SecretConnectorManage Action = "secret.connector.manage"
 
 	AccountingReadSelf    Action = "accounting.read.self"
 	AccountingReadProject Action = "accounting.read.project"
@@ -64,7 +67,8 @@ var AllActions = []Action{
 	WorkflowRead, WorkflowCreate, WorkflowPublish, WorkflowExecute, WorkflowApprove,
 	ExecutionReadSelf, ExecutionReadProject, ExecutionReadTenant, ExecutionCancelSelf, ExecutionCancelAny,
 	JobSubmit, JobReadSelf, JobReadProject, JobReadTenant, JobCancelSelf, JobCancelAny,
-	SecretReferenceRead, SecretReferenceCreate, SecretReferenceUse,
+	SecretReferenceRead, SecretReferenceCreate, SecretReferenceUse, SecretReferenceDelete,
+	SecretConnectorRead, SecretConnectorManage,
 	AccountingReadSelf, AccountingReadProject, AccountingReadTenant,
 	AuditReadTenant,
 }

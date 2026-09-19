@@ -59,7 +59,7 @@ Next up: **M6** OpenBao secret storage, **M7** accounting/policy sync,
 - [API conventions](docs/api.md) — OpenAPI contract, routing, envelopes
 - [Threat model](docs/threat-model.md) — assets, actors, STRIDE threats
 - [Milestone 1 plan](docs/milestone-1.md) — foundation implementation plan
-- [Architecture Decision Records](docs/adr/README.md) — ADR-001 … ADR-016
+- [Architecture Decision Records](docs/adr/README.md) — ADR-001 … ADR-017
 
 ## Planned stack
 

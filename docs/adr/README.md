@@ -22,6 +22,7 @@ decisions get a new ADR that references the old one.
 | [ADR-014](ADR-014-cluster-credentials-file-provider.md) | Cluster credentials via `secrets.Resolver`; `file` provider until OpenBao (M6) | [secrets.md](../secrets.md), [slurm.md](../slurm.md) |
 | [ADR-015](ADR-015-structured-argv-runtime-references.md) | Structured argv + allow-listed runtime references (`$SLURM_ARRAY_TASK_ID`) in ExecutionSpec | [workflows.md](../workflows.md), [script-validation.md](../script-validation.md) |
 | [ADR-016](ADR-016-workqueue-self-reschedule.md) | Periodic handlers reschedule via `RescheduleAt`, never self-enqueue | [workers.md](../workers.md) |
+| [ADR-017](ADR-017-tenant-secret-connectors.md) | Tenant secret connectors with platform defaults, BYO OpenBao, externalized credentials, and SSRF-safe transport | [secrets.md](../secrets.md) |
 
 ## Process
 
