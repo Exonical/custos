@@ -89,7 +89,8 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "strategy": {"enum": ["auto", "engine", "native"]}
+        "strategy": {"enum": ["auto", "engine", "native"]},
+        "failurePolicy": {"enum": ["fail", "continue"]}
       }
     },
     "fanOut": {

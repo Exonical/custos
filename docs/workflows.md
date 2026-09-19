@@ -55,7 +55,7 @@ spec:
     account: null                  # resolved from project binding unless overridden
     partition: compute
     qos: normal
-    workingDirectory: "{{ run.scratch }}"
+    workingDirectory: "/scratch/{{ run.id }}"   # run.id, run.workflow, run.version
     env:
       OMP_NUM_THREADS: "{{ task.resources.cpu }}"
 
@@ -136,7 +136,12 @@ lookups in `parameters`, `run`, `task`, `item`, `array`, `tasks.<name>.*`,
 secret), plus comparison/boolean operators and integer arithmetic for `when`
 and `fanOut.count`. No function calls, no loops, no string-to-code. All
 substitutions happen into argv elements or env values, never into shell
-text. Implementation: hand-written lexer/parser in `internal/workflowspec/expr`
+text. One exception: `{{ array.taskId }}` does not render to text — it
+becomes the allow-listed runtime reference `"$SLURM_ARRAY_TASK_ID"` in
+the generated wrapper, so it is legal only as the **entire** argv
+element or env value (never embedded in literal text or arithmetic);
+static validation rejects it otherwise (`REF_ARRAY_RUNTIME_WHOLE`).
+Implementation: hand-written lexer/parser in `internal/workflowspec/expr`
 (~500 lines) rather than pulling in a general template engine; the small
 grammar is a security feature.
 
@@ -254,10 +259,17 @@ Two modes, selected per execution by the engine based on placement:
    with new attempts.
 
 The engine picks native dependencies for every maximal same-cluster
-sub-DAG with only static tasks, and engine-driven edges elsewhere. v1 ships
-engine-driven first (simplest, always correct) and adds native dependency
-batching as an optimization in Milestone 5, gated by a workflow-level
-`spec.execution.strategy: auto|engine|native` for debugging.
+sub-DAG with only static tasks, and engine-driven edges elsewhere. The
+current release runs **engine-driven for every value of
+`spec.execution.strategy`** (`auto`|`engine`|`native`, stored on the
+execution) — `native` dependency batching is a later optimization, not
+yet implemented.
+
+`spec.execution.failurePolicy: fail|continue` (default `fail`) controls
+terminal accounting: with `fail` the first task failure cancels/skips
+remaining work and the execution ends `FAILED`; with `continue` the DAG
+runs to completion and the execution ends `PARTIAL_FAILURE` when any
+task failed.
 
 ## Idempotency
 

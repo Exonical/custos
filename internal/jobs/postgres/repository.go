@@ -18,6 +18,7 @@ import (
 	"github.com/Exonical/custos/internal/platform/apperr"
 	"github.com/Exonical/custos/internal/platform/db"
 	"github.com/Exonical/custos/internal/tenants"
+	"github.com/Exonical/custos/internal/validation"
 	"github.com/Exonical/custos/internal/workflowspec"
 )
 
@@ -51,8 +52,18 @@ func scopeTenant(s tenants.Scope, tenantID uuid.UUID) uuid.UUID {
 const jobCols = `id, tenant_id, project_id, cluster_id, created_by, name,
 	state, state_reason, slurm_job_id, slurm_state, exit_code, exit_signal,
 	resource_request, execution_spec, execution_spec_digest, script_digest,
-	script_language, script_validation_id, submitted_at, started_at,
-	ended_at, last_reconciled_at, version, created_at, updated_at`
+	script_language, script_validation_id, task_execution_id,
+	submitted_at, started_at, ended_at, last_reconciled_at, version,
+	created_at, updated_at`
+
+// nilDigest returns nil for the zero digest so script_digest stores
+// NULL on command (payload-less) jobs.
+func nilDigest(d validation.Digest) []byte {
+	if d == (validation.Digest{}) {
+		return nil
+	}
+	return d[:]
+}
 
 func scanJob(row pgx.Row) (jobs.Job, error) {
 	var j jobs.Job
@@ -64,7 +75,7 @@ func scanJob(row pgx.Row) (jobs.Job, error) {
 		&j.CreatedBy, &j.Name, &state, &reason, &j.SlurmJobID,
 		&slurmState, &j.ExitCode, &j.ExitSignal, &reqJSON, &specJSON,
 		&specDigest, &scriptDigest, &lang, &j.ScriptValidationID,
-		&j.SubmittedAt,
+		&j.TaskExecutionID, &j.SubmittedAt,
 		&j.StartedAt, &j.EndedAt, &j.LastReconciledAt, &j.Version,
 		&j.CreatedAt, &j.UpdatedAt)
 	if err != nil {
@@ -87,6 +98,44 @@ func scanJob(row pgx.Row) (jobs.Job, error) {
 	copy(j.ExecutionSpecDigest[:], specDigest)
 	copy(j.ScriptDigest[:], scriptDigest)
 	return j, nil
+}
+
+const insertJobSQL = `INSERT INTO jobs (` + jobCols + `)
+	VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,
+	        $17,$18,$19,$20,$21,$22,$23,$24,$25,$26)`
+
+// Create inserts a job and runs enqueue in one transaction (workflow
+// task admissions; ad-hoc submissions use CreateWithIdempotency).
+func (r *Repository) Create(ctx context.Context, scope tenants.Scope,
+	j jobs.Job, enqueue jobs.EnqueueFunc) error {
+	specJSON, err := json.Marshal(j.ExecutionSpec)
+	if err != nil {
+		return fmt.Errorf("jobs: marshal execution_spec: %w", err)
+	}
+	reqJSON, err := json.Marshal(j.ResourceRequest)
+	if err != nil {
+		return fmt.Errorf("jobs: marshal resource_request: %w", err)
+	}
+	return db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
+		if err := applyScope(ctx, tx, scope); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, insertJobSQL,
+			j.ID, scopeTenant(scope, j.TenantID), j.ProjectID, j.ClusterID,
+			j.CreatedBy, j.Name, string(j.State), nilStr(j.StateReason),
+			j.SlurmJobID, nilStr(j.SlurmState), j.ExitCode, j.ExitSignal,
+			reqJSON, specJSON, j.ExecutionSpecDigest[:],
+			nilDigest(j.ScriptDigest), string(j.ScriptLanguage),
+			j.ScriptValidationID, j.TaskExecutionID, j.SubmittedAt,
+			j.StartedAt, j.EndedAt, j.LastReconciledAt, j.Version,
+			j.CreatedAt, j.UpdatedAt); err != nil {
+			return db.MapError(err)
+		}
+		if enqueue != nil {
+			return enqueue(tx)
+		}
+		return nil
+	})
 }
 
 // CreateWithIdempotency implements jobs.Repository.
@@ -148,15 +197,13 @@ func (r *Repository) CreateWithIdempotency(ctx context.Context,
 			}
 			return nil
 		}
-		if _, err := tx.Exec(ctx, `
-			INSERT INTO jobs (`+jobCols+`)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,
-			        $17,$18,$19,$20,$21,$22,$23,$24,$25)`,
+		if _, err := tx.Exec(ctx, insertJobSQL,
 			j.ID, tid, j.ProjectID, j.ClusterID, j.CreatedBy, j.Name,
 			string(j.State), nilStr(j.StateReason), j.SlurmJobID,
 			nilStr(j.SlurmState), j.ExitCode, j.ExitSignal, reqJSON,
-			specJSON, j.ExecutionSpecDigest[:], j.ScriptDigest[:],
-			string(j.ScriptLanguage), j.ScriptValidationID, j.SubmittedAt,
+			specJSON, j.ExecutionSpecDigest[:], nilDigest(j.ScriptDigest),
+			string(j.ScriptLanguage), j.ScriptValidationID,
+			j.TaskExecutionID, j.SubmittedAt,
 			j.StartedAt, j.EndedAt, j.LastReconciledAt, j.Version,
 			j.CreatedAt, j.UpdatedAt); err != nil {
 			return db.MapError(err)

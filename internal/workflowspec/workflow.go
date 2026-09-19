@@ -80,9 +80,10 @@ type SecretUse struct {
 }
 
 // Execution selects the engine strategy (debugging aid; v1 ships
-// engine-driven).
+// engine-driven regardless) and the failure policy.
 type Execution struct {
-	Strategy string `json:"strategy,omitempty"` // auto | engine | native
+	Strategy      string `json:"strategy,omitempty"`      // auto | engine | native
+	FailurePolicy string `json:"failurePolicy,omitempty"` // fail (default) | continue
 }
 
 // FanOut replicates a task. Count is an integer or expression string;

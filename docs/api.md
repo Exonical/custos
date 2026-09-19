@@ -181,11 +181,13 @@ GET    /api/v1/tenants/{tenant}/workflows/{workflow}/versions/{version}/validati
 POST   /api/v1/tenants/{tenant}/scripts                        workflow.create; stores bytes, returns `{digest, size}`; rate-limited
 POST   /api/v1/tenants/{tenant}/scripts/validate                workflow.create; ad-hoc editor validation (see script-validation.md); rate-limited 30/min per principal
 POST   /api/v1/tenants/{tenant}/scripts/import-sbatch           workflow.create; ad-hoc legacy import proposal; 403 IMPORT_DISABLED unless the effective policy allows it; rate-limited
-GET    /api/v1/tenants/{tenant}/workflow-executions/{execution}/tasks/{task}/execution-spec
-GET    /api/v1/tenants/{tenant}/workflow-executions/{execution}/tasks/{task}/validation
-...    /api/v1/tenants/{tenant}/workflow-executions
-POST   /api/v1/tenants/{tenant}/workflow-executions/{execution}/cancel
-GET    /api/v1/tenants/{tenant}/workflow-executions/{execution}/tasks
+POST   /api/v1/tenants/{tenant}/workflow-executions              workflow.execute; 202; body `{workflow, version?, parameters}`; `version` defaults to latest published; Idempotency-Key required
+GET    /api/v1/tenants/{tenant}/workflow-executions              execution.read.self/project/tenant; `?workflow=` and `?state=` filters
+GET    /api/v1/tenants/{tenant}/workflow-executions/{execution}  execution.read.self/project/tenant
+GET    /api/v1/tenants/{tenant}/workflow-executions/{execution}/tasks/{task}/execution-spec   frozen spec; `{task}` is the task execution UUID
+GET    /api/v1/tenants/{tenant}/workflow-executions/{execution}/tasks/{task}/validation       linked ScriptValidation
+POST   /api/v1/tenants/{tenant}/workflow-executions/{execution}/cancel    202; execution.cancel.self/any; QUEUED/RUNNING jobs get `job.cancel`, pending tasks go CANCELED
+GET    /api/v1/tenants/{tenant}/workflow-executions/{execution}/tasks     task execution rows (UUIDs, name, index, attempt, state)
 POST   /api/v1/tenants/{tenant}/projects/{project}/jobs                    job.submit; 202; Idempotency-Key required
 GET    /api/v1/tenants/{tenant}/projects/{project}/jobs                    job.read.project, or own jobs
 GET    /api/v1/tenants/{tenant}/projects/{project}/jobs/{job}

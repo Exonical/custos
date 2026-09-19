@@ -38,7 +38,9 @@ func q(v any) string {
 	return "'" + strings.ReplaceAll(fmt.Sprint(v), "'", `'\''`) + "'"
 }
 
-// wrapperTemplate is the documented v1 wrapper, verbatim.
+// wrapperTemplate is the documented v1 wrapper, verbatim. Argv
+// elements and runtime env values arrive pre-quoted ('literal' or
+// "$VAR") — the template never interpolates raw user text.
 const wrapperTemplate = `#!/bin/bash
 # custos wrapper v1 — generated; do not edit
 # execution: {{ .ExecutionID }} digest: {{ .SpecDigest }}
@@ -50,22 +52,24 @@ export CUSTOS_JOB_DIR="${SLURM_TMPDIR:-${TMPDIR:-/tmp}}/custos-${SLURM_JOB_ID}"
 mkdir -p "$CUSTOS_JOB_DIR"
 trap 'rm -rf "$CUSTOS_JOB_DIR"' EXIT
 {{ range .Modules }}module load {{ q . }}
-{{ end }}{{ range .Env }}export {{ .Name }}={{ q .Value }}
-{{ end }}
+{{ end }}{{ range .Env }}{{ if .Runtime }}export {{ .Name }}={{ .Quoted }}
+{{ else }}export {{ .Name }}={{ q .Value }}
+{{ end }}{{ end }}{{ if .HasPayload }}
 # --- payload (base64, verified) ---
 base64 -d > "$CUSTOS_JOB_DIR/payload" <<'CUSTOS_PAYLOAD_{{ .Nonce }}'
 {{ .PayloadBase64 }}
 CUSTOS_PAYLOAD_{{ .Nonce }}
-echo {{ q .PayloadDigest }}"  $CUSTOS_JOB_DIR/payload" | sha256sum -c --quiet
-chmod 0500 "$CUSTOS_JOB_DIR/payload"
+echo "{{ q .PayloadDigest }}  $CUSTOS_JOB_DIR/payload" | sha256sum -c --quiet
+chmod 0500 "$CUSTOS_JOB_DIR/payload"{{ end }}
 cd {{ q .WorkingDir }}
-{{ if .MPI }}exec srun --ntasks={{ .Tasks }} {{ q .Interpreter }} "$CUSTOS_JOB_DIR/payload" {{ range .Args }}{{ q . }} {{ end }}
-{{ else }}exec {{ q .Interpreter }} "$CUSTOS_JOB_DIR/payload" {{ range .Args }}{{ q . }} {{ end }}{{ end }}
+{{ if .MPI }}exec srun --ntasks={{ .Tasks }} {{ end }}{{ if .HasPayload }}{{ q .Interpreter }} "$CUSTOS_JOB_DIR/payload"{{ end }}{{ range .Argv }} {{ . }}{{ end }}
 `
 
 type envKV struct {
-	Name  SafeToken
-	Value string
+	Name    SafeToken
+	Value   string
+	Quoted  SafeToken // Runtime only: pre-quoted "$VAR", emit without q
+	Runtime bool
 }
 
 type wrapperData struct {
@@ -75,13 +79,14 @@ type wrapperData struct {
 	Modules       []string
 	Env           []envKV
 	Nonce         SafeToken
+	HasPayload    bool
 	PayloadBase64 string
 	PayloadDigest SafeToken
 	WorkingDir    string
 	MPI           bool
 	Tasks         SafeToken
 	Interpreter   string
-	Args          []string
+	Argv          []string // pre-quoted: 'literal' or "$VAR"
 }
 
 var tmpl = template.Must(template.New("wrapper").
@@ -103,25 +108,66 @@ func newNonce(body string) (string, error) {
 		"submission: cannot mint a collision-free nonce")
 }
 
-// Wrapper renders the wrapper script for spec embedding payload
-// (base64). Verifies sha256(payload) == spec.Payload.Digest first — the
-// admission↔bytes integrity leg.
+// renderArgv renders each classified element: literals single-quoted,
+// runtime vars as "$VAR" — both Custos-authored shell, never raw text.
+func renderArgv(spec admission.ExecutionSpec) ([]string, error) {
+	out := make([]string, 0, len(spec.Argv))
+	for _, e := range spec.Argv {
+		switch {
+		case e.Runtime != "" && e.Literal == "":
+			if !admission.ValidRuntime(e.Runtime) {
+				return nil, apperr.New(apperr.Internal, "INTERNAL",
+					"submission: unlisted runtime "+e.Runtime)
+			}
+			out = append(out, `"$`+e.Runtime+`"`)
+		case e.Literal != "" && e.Runtime == "":
+			out = append(out, q(e.Literal))
+		default:
+			return nil, apperr.New(apperr.Internal, "INTERNAL",
+				"submission: argv element sets both or neither of literal/runtime")
+		}
+	}
+	return out, nil
+}
+
+// Wrapper renders the wrapper script for spec. Script tasks embed the
+// payload (base64) after verifying sha256(payload) ==
+// spec.Payload.Digest — the admission↔bytes integrity leg. Command
+// tasks (zero payload digest) take nil payload and exec Argv directly.
 func Wrapper(spec admission.ExecutionSpec, payload []byte) (string, error) {
-	if validation.DigestOf(payload) != spec.Payload.Digest {
+	hasPayload := spec.Payload.Digest != validation.Digest{}
+	if hasPayload && validation.DigestOf(payload) != spec.Payload.Digest {
 		return "", apperr.New(apperr.Internal, "INTERNAL",
 			"submission.digest_mismatch: payload does not match spec digest")
+	}
+	if !hasPayload && len(payload) != 0 {
+		return "", apperr.New(apperr.Internal, "INTERNAL",
+			"submission: payload bytes for a payload-less spec")
 	}
 	body := base64.StdEncoding.EncodeToString(payload)
 	nonce, err := newNonce(body)
 	if err != nil {
 		return "", err
 	}
-	env := make([]envKV, 0, len(spec.Environment.Controlled)+len(spec.Environment.User))
+	argv, err := renderArgv(spec)
+	if err != nil {
+		return "", err
+	}
+	env := make([]envKV, 0, len(spec.Environment.Controlled)+
+		len(spec.Environment.User)+len(spec.Environment.Runtime))
 	for n, v := range spec.Environment.Controlled {
-		env = append(env, envKV{safeToken(n), v})
+		env = append(env, envKV{Name: safeToken(n), Value: v})
 	}
 	for n, v := range spec.Environment.User {
-		env = append(env, envKV{safeToken(n), v})
+		env = append(env, envKV{Name: safeToken(n), Value: v})
+	}
+	for n, rt := range spec.Environment.Runtime {
+		if !admission.ValidRuntime(rt) {
+			return "", apperr.New(apperr.Internal, "INTERNAL",
+				"submission: unlisted runtime env "+n)
+		}
+		env = append(env, envKV{Name: safeToken(n),
+			Quoted: SafeToken(`"$` + rt + `"`), Runtime: true})
 	}
 	var modules []string
 	for _, s := range spec.Software {
@@ -134,12 +180,14 @@ func Wrapper(spec admission.ExecutionSpec, payload []byte) (string, error) {
 		Modules:       modules,
 		Env:           env,
 		Nonce:         SafeToken(nonce),
+		HasPayload:    hasPayload,
 		PayloadBase64: body,
 		PayloadDigest: safeToken(hex.EncodeToString(spec.Payload.Digest[:])),
 		WorkingDir:    spec.WorkingDir,
 		MPI:           spec.Resources.Tasks > 1,
 		Tasks:         safeToken(fmt.Sprint(spec.Resources.Tasks)),
 		Interpreter:   string(spec.Payload.Interpreter),
+		Argv:          argv,
 	}
 	var b strings.Builder
 	if err := tmpl.Execute(&b, d); err != nil {

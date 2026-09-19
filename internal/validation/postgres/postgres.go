@@ -233,6 +233,25 @@ func (s *ValidationStore) Latest(ctx context.Context, scope tenants.Scope,
 	return sv, err
 }
 
+// Get returns one ScriptValidation by id, or NotFound.
+func (s *ValidationStore) Get(ctx context.Context, scope tenants.Scope,
+	_, id uuid.UUID) (validation.ScriptValidation, error) {
+	var sv validation.ScriptValidation
+	err := db.WithTx(ctx, s.pool, func(tx pgx.Tx) error {
+		if err := applyScope(ctx, tx, scope); err != nil {
+			return err
+		}
+		var err error
+		sv, err = scanSV(tx.QueryRow(ctx,
+			`SELECT `+svCols+` FROM script_validations WHERE id=$1`, id))
+		return err
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return validation.ScriptValidation{}, errNotFound
+	}
+	return sv, err
+}
+
 // ListByWorkflowVersion returns validations for one workflow version,
 // newest first.
 func (s *ValidationStore) ListByWorkflowVersion(ctx context.Context,

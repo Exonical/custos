@@ -107,16 +107,21 @@ type Job struct {
 	ResourceRequest     workflowspec.Resources
 	ExecutionSpec       admission.ExecutionSpec
 	ExecutionSpecDigest validation.Digest
-	ScriptDigest        validation.Digest
-	ScriptLanguage      workflowspec.Language
-	ScriptValidationID  *uuid.UUID
-	SubmittedAt         *time.Time
-	StartedAt           *time.Time
-	EndedAt             *time.Time
-	LastReconciledAt    *time.Time
-	Version             int
-	CreatedAt           time.Time
-	UpdatedAt           time.Time
+	// ScriptDigest is zero for command (payload-less) tasks — persisted
+	// as NULL. Payload-bearing jobs always set it.
+	ScriptDigest       validation.Digest
+	ScriptLanguage     workflowspec.Language
+	ScriptValidationID *uuid.UUID
+	// TaskExecutionID links a workflow-task job back to its
+	// task_executions row (nil for ad-hoc submissions).
+	TaskExecutionID  *uuid.UUID
+	SubmittedAt      *time.Time
+	StartedAt        *time.Time
+	EndedAt          *time.Time
+	LastReconciledAt *time.Time
+	Version          int
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }
 
 // SlurmJobIDRef returns the neutral JobID for the stored slurm_job_id.

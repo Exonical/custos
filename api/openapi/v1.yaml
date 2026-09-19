@@ -2107,6 +2107,231 @@ paths:
           description: Admission denied.
           content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
 
+  /tenants/{tenant}/workflow-executions:
+    post:
+      summary: Execute a published workflow version (workflow.execute; Idempotency-Key required)
+      operationId: executeWorkflow
+      description: >
+        Creates a PENDING WorkflowExecution pinned to the version's spec
+        hash and enqueues the engine. The idempotency key scopes replay
+        to (tenant, key); a reused key with a different body is a 409.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+        - $ref: "#/components/parameters/Idempotency-Key"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkflowExecuteRequest"
+      responses:
+        "202":
+          description: Execution accepted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowExecution"
+        "400":
+          description: Missing/invalid Idempotency-Key or malformed body.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "403":
+          description: Requires workflow.execute on the project.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "404":
+          description: Workflow not found.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "409":
+          description: Idempotency-Key reused with a different body, no published version, or the version is not published.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+    get:
+      summary: List workflow executions (execution.read.self|tenant)
+      operationId: listWorkflowExecutions
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - name: workflow
+          in: query
+          description: Workflow uuid filter.
+          schema: {type: string, format: uuid}
+        - name: state
+          in: query
+          description: Execution state filter.
+          schema: {type: string}
+      responses:
+        "200":
+          description: Execution list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowExecutionList"
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "403":
+          description: Requires execution.read.self.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+
+  /tenants/{tenant}/workflow-executions/{execution}:
+    get:
+      summary: Get a workflow execution (execution.read.self|project|tenant)
+      operationId: getWorkflowExecution
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+        - name: execution
+          in: path
+          required: true
+          description: Execution uuid.
+          schema: {type: string, format: uuid}
+      responses:
+        "200":
+          description: The execution.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowExecution"
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "403":
+          description: Requires an execution.read.* permission.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "404":
+          description: Execution not found.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+
+  /tenants/{tenant}/workflow-executions/{execution}/cancel:
+    post:
+      summary: Cancel an execution (execution.cancel.self|any)
+      operationId: cancelWorkflowExecution
+      description: >
+        Moves the execution to CANCELING; the engine enqueues
+        job.cancel for active task jobs and cancels the rest.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+        - name: execution
+          in: path
+          required: true
+          description: Execution uuid.
+          schema: {type: string, format: uuid}
+      responses:
+        "202":
+          description: Cancellation accepted.
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "403":
+          description: Requires an execution.cancel.* permission.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "404":
+          description: Execution not found.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "409":
+          description: Execution is already terminal.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+
+  /tenants/{tenant}/workflow-executions/{execution}/tasks:
+    get:
+      summary: List task executions (execution.read.self|project|tenant)
+      operationId: listTaskExecutions
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+        - name: execution
+          in: path
+          required: true
+          description: Execution uuid.
+          schema: {type: string, format: uuid}
+      responses:
+        "200":
+          description: Task executions.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskExecutionList"
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "404":
+          description: Execution not found.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+
+  /tenants/{tenant}/workflow-executions/{execution}/tasks/{task}/execution-spec:
+    get:
+      summary: Get the task's frozen ExecutionSpec (execution.read.*)
+      operationId: getTaskExecutionSpec
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+        - name: execution
+          in: path
+          required: true
+          description: Execution uuid.
+          schema: {type: string, format: uuid}
+        - name: task
+          in: path
+          required: true
+          description: Task execution uuid.
+          schema: {type: string, format: uuid}
+      responses:
+        "200":
+          description: The frozen ExecutionSpec.
+          content:
+            application/json:
+              schema:
+                type: object
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "404":
+          description: Task execution or frozen spec not found.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+
+  /tenants/{tenant}/workflow-executions/{execution}/tasks/{task}/validation:
+    get:
+      summary: Get the task's recorded ScriptValidation (execution.read.*)
+      operationId: getTaskExecutionValidation
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+        - name: execution
+          in: path
+          required: true
+          description: Execution uuid.
+          schema: {type: string, format: uuid}
+        - name: task
+          in: path
+          required: true
+          description: Task execution uuid.
+          schema: {type: string, format: uuid}
+      responses:
+        "200":
+          description: The recorded ScriptValidation.
+          content:
+            application/json:
+              schema:
+                type: object
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "404":
+          description: Task execution or validation not found.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+
   /tenants/{tenant}/policies/validation:
     get:
       summary: Get the tenant validation policy (policy.read)
@@ -3632,6 +3857,86 @@ components:
         version: {type: integer, format: int64}
         createdAt: {type: string, format: date-time}
         publishedAt: {type: string, format: date-time, nullable: true}
+
+    WorkflowExecuteRequest:
+      type: object
+      required: [workflow]
+      properties:
+        workflow:
+          type: string
+          format: uuid
+          description: Workflow uuid.
+        version:
+          type: string
+          format: uuid
+          description: Version uuid; defaults to the latest published version.
+        parameters:
+          type: object
+          additionalProperties: true
+          description: Runtime parameter values validated against spec.parameters.
+
+    WorkflowExecution:
+      type: object
+      required: [id, tenantId, projectId, workflowId, workflowVersionId, state, requestedBy, version]
+      properties:
+        id: {type: string, format: uuid}
+        tenantId: {type: string, format: uuid}
+        projectId: {type: string, format: uuid}
+        workflowId: {type: string, format: uuid}
+        workflowVersionId: {type: string, format: uuid}
+        specHash: {type: string}
+        parameters: {type: object}
+        strategy: {type: string, enum: [auto, engine, native]}
+        state:
+          type: string
+          enum: [PENDING, VALIDATING, QUEUED, RUNNING, SUCCEEDED, FAILED, PARTIAL_FAILURE, CANCELING, CANCELED]
+        stateReason: {type: string}
+        requestedBy: {type: string, format: uuid}
+        createdAt: {type: string, format: date-time}
+        startedAt: {type: string, format: date-time, nullable: true}
+        endedAt: {type: string, format: date-time, nullable: true}
+        updatedAt: {type: string, format: date-time}
+        version: {type: integer, format: int64}
+
+    WorkflowExecutionList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkflowExecution"
+        next_cursor: {type: string, nullable: true}
+
+    TaskExecution:
+      type: object
+      required: [id, executionId, taskName, index, count, attempt, state, version]
+      properties:
+        id: {type: string, format: uuid}
+        executionId: {type: string, format: uuid}
+        taskName: {type: string}
+        index: {type: integer}
+        count: {type: integer}
+        attempt: {type: integer}
+        state:
+          type: string
+          enum: [PENDING, BLOCKED, READY, ADMITTING, SUBMITTING, QUEUED, RUNNING, COMPLETED, FAILED, SKIPPED, CANCELED]
+        stateReason: {type: string}
+        jobId: {type: string, format: uuid, nullable: true}
+        validationId: {type: string, format: uuid, nullable: true}
+        executionSpecDigest: {type: string}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+        version: {type: integer, format: int64}
+
+    TaskExecutionList:
+      type: object
+      required: [tasks]
+      properties:
+        tasks:
+          type: array
+          items:
+            $ref: "#/components/schemas/TaskExecution"
 
     ScriptUploadRequest:
       type: object

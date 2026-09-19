@@ -25,10 +25,11 @@ const (
 
 // Value is a typed evaluation result.
 type Value struct {
-	Kind Kind
-	Int  int64
-	Str  string
-	Bool bool
+	Kind    Kind
+	Int     int64
+	Str     string
+	Bool    bool
+	Runtime string // Kind==Runtime: an allow-listed Slurm runtime var
 }
 
 // Kind tags a Value.
@@ -39,6 +40,10 @@ const (
 	Int Kind = iota
 	String
 	Bool
+	// Runtime marks a whole-element runtime reference
+	// ({{ array.taskId }} → SLURM_ARRAY_TASK_ID). It is only legal as
+	// the entire argv element or env value — no operator accepts it.
+	Runtime
 )
 
 // Path is a dotted reference ("parameters.molecule").
@@ -426,6 +431,10 @@ func eval(n *node, s Scope) (Value, error) {
 }
 
 func apply(op string, l, r Value) (Value, error) {
+	if l.Kind == Runtime || r.Kind == Runtime {
+		return Value{}, &EvalError{op +
+			" on a runtime reference ({{ array.taskId }} must be the whole value)"}
+	}
 	switch op {
 	case "==", "!=":
 		if l.Kind != r.Kind {

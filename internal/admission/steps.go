@@ -145,9 +145,49 @@ type BuildInput struct {
 	Allocate func() *Denial // nil → allow
 }
 
+// CheckArgv enforces the argv/payload invariant: a spec is either a
+// script task (Payload.Digest set; Argv = extra arguments) or a
+// command task (no payload; Argv non-empty with Argv[0] a literal
+// program). Every element is exactly one of literal/runtime and
+// runtime is allow-listed.
+func CheckArgv(spec ExecutionSpec) *Denial {
+	hasPayload := spec.Payload.Digest != validation.Digest{}
+	if !hasPayload && len(spec.Argv) == 0 {
+		return deny("ARGV_REQUIRED", "argv",
+			"spec has neither a payload nor argv")
+	}
+	if !hasPayload && spec.Argv[0].Literal == "" {
+		return deny("ARGV_PROGRAM", "argv",
+			"argv[0] must be a literal program name")
+	}
+	for i, e := range spec.Argv {
+		switch {
+		case e.Literal != "" && e.Runtime != "":
+			return deny("ARGV_ELEMENT", "argv",
+				fmt.Sprintf("argv[%d] sets both literal and runtime", i))
+		case e.Literal == "" && e.Runtime == "":
+			return deny("ARGV_ELEMENT", "argv",
+				fmt.Sprintf("argv[%d] sets neither literal nor runtime", i))
+		case e.Runtime != "" && !ValidRuntime(e.Runtime):
+			return deny("ARGV_RUNTIME", "argv",
+				fmt.Sprintf("argv[%d] runtime %q is not allow-listed", i, e.Runtime))
+		}
+	}
+	for name, rt := range spec.Environment.Runtime {
+		if !ValidRuntime(rt) {
+			return deny("ARGV_RUNTIME", "environment",
+				"env "+name+" runtime "+rt+" is not allow-listed")
+		}
+	}
+	return nil
+}
+
 // Build chains the pure admission steps in the documented order and
 // freezes the spec on success.
 func Build(in BuildInput) (ExecutionSpec, *Denial) {
+	if d := CheckArgv(in.Spec); d != nil {
+		return ExecutionSpec{}, d
+	}
 	if d := CheckResourcePolicy(in.Request, in.Policy); d != nil {
 		return ExecutionSpec{}, d
 	}

@@ -85,8 +85,13 @@ moved script validation into the durable pipeline
 (panic/timeout → `CUSTOS900`, fail closed) under the effective
 `ValidationPolicy`, persist a `script_validations` row, and store its ID
 on `jobs.script_validation_id`. External ShellCheck runs via the
-loopback-only `custos-validator` sidecar (127.0.0.1:8481). The rest
-lands with the workflow milestones.
+loopback-only `custos-validator` sidecar (127.0.0.1:8481). M5-C adds the
+execution engine handlers: `execution.advance` (DAG evaluation, unblock/
+skip/retry/cancel, execution terminal accounting) and `task.admit`
+(validation currency → `ExecutionSpec` freeze → linked `jobs` row +
+`job.submit`, all in one transaction). Task-linked job transitions also
+enqueue `execution.advance` from inside the jobs worker. The rest lands
+with the workflow milestones.
 
 | Kind | Trigger | Handler outline |
 | --- | --- | --- |

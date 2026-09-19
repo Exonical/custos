@@ -77,7 +77,26 @@ type SecretEnvRef struct {
 type EnvSet struct {
 	Controlled map[string]string `json:"controlled,omitempty"`
 	User       map[string]string `json:"user,omitempty"`
+	// Runtime maps an env name to an allow-listed Slurm runtime
+	// variable (RuntimeSlurmArrayTaskID); the wrapper exports
+	// NAME="$VAR" — Custos-authored text, never user text.
+	Runtime    map[string]string `json:"runtime,omitempty"`
 	SecretRefs []SecretEnvRef    `json:"secret_refs,omitempty"`
+}
+
+// RuntimeSlurmArrayTaskID is the only runtime value an argv element or
+// env value may reference (what {{ array.taskId }} renders to).
+const RuntimeSlurmArrayTaskID = "SLURM_ARRAY_TASK_ID"
+
+// ValidRuntime reports whether s is an allow-listed runtime variable.
+func ValidRuntime(s string) bool { return s == RuntimeSlurmArrayTaskID }
+
+// ArgvElement is one rendered argv word: either a literal (emitted
+// single-quoted) or a runtime variable reference (emitted as "$VAR",
+// Custos-authored). Exactly one field is set.
+type ArgvElement struct {
+	Literal string `json:"literal,omitempty"`
+	Runtime string `json:"runtime,omitempty"`
 }
 
 // PayloadRef points at the stored script; admission never holds bytes.
@@ -125,7 +144,11 @@ type ExecutionSpec struct {
 	Software    []ResolvedSoftware `json:"software,omitempty"`
 	Environment EnvSet             `json:"environment"`
 
+	// Payload is the script payload; zero Digest means a command task —
+	// Argv then carries the program with Argv[0] a literal. Script tasks
+	// set Payload and may add extra arguments in Argv.
 	Payload    PayloadRef    `json:"payload"`
+	Argv       []ArgvElement `json:"argv,omitempty"`
 	Inputs     []ArtifactRef `json:"inputs,omitempty"`
 	Outputs    []ArtifactRef `json:"outputs,omitempty"`
 	WorkingDir string        `json:"working_dir,omitempty"`

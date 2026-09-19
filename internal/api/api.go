@@ -20,6 +20,7 @@ import (
 	"github.com/Exonical/custos/internal/authn"
 	"github.com/Exonical/custos/internal/authz"
 	clustersvc "github.com/Exonical/custos/internal/clusters/service"
+	execsvc "github.com/Exonical/custos/internal/executions/service"
 	jobssvc "github.com/Exonical/custos/internal/jobs/service"
 	"github.com/Exonical/custos/internal/platform/apperr"
 	"github.com/Exonical/custos/internal/platform/health"
@@ -81,6 +82,7 @@ type Deps struct {
 	VMetrics       *pipeline.Metrics             // may be nil
 	VLimiter       *httpx.PrincipalRateLimiter   // may be nil (no limit)
 	Workflows      *wfsvc.Service                // enables workflow routes
+	Executions     *execsvc.Service              // enables execution routes
 	AZ             authz.Authorizer              // required for validate routes
 }
 
@@ -221,6 +223,25 @@ func Mount(mux *http.ServeMux, deps Deps) {
 			mux.Handle("POST "+tb+"/validate", tr(http.HandlerFunc(wh.taskValidate)))
 			mux.Handle("POST "+tb+"/import-sbatch", tr(http.HandlerFunc(wh.taskImportSbatch)))
 			mux.Handle("POST "+tb+"/preview-submission", tr(http.HandlerFunc(wh.preview)))
+		}
+
+		if deps.Executions != nil {
+			eh := &executionHandlers{svc: deps.Executions}
+			tenantMW := tenants.Require(deps.TenantRepo, deps.Logger, deps.Audit)
+			tr := func(h http.Handler) http.Handler { return bearer(tenantMW(h)) }
+			base := "/api/v1/tenants/{tenant}/workflow-executions"
+			mux.Handle("POST "+base, tr(http.HandlerFunc(eh.execute)))
+			mux.Handle("GET "+base, tr(http.HandlerFunc(eh.list)))
+			mux.Handle("GET "+base+"/{execution}", tr(http.HandlerFunc(eh.get)))
+			mux.Handle("POST "+base+"/{execution}/cancel",
+				tr(http.HandlerFunc(eh.cancel)))
+			mux.Handle("GET "+base+"/{execution}/tasks",
+				tr(http.HandlerFunc(eh.tasks)))
+			tb := base + "/{execution}/tasks/{task}"
+			mux.Handle("GET "+tb+"/execution-spec",
+				tr(http.HandlerFunc(eh.taskSpec)))
+			mux.Handle("GET "+tb+"/validation",
+				tr(http.HandlerFunc(eh.taskValidation)))
 		}
 
 		if deps.Users != nil {

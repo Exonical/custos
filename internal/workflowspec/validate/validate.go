@@ -91,11 +91,18 @@ func checkDocument(w workflowspec.Workflow) []FieldError {
 		errs = append(errs, fe("spec.tasks", "TASKS_REQUIRED",
 			"at least one task is required"))
 	}
-	if w.Spec.Execution != nil &&
-		!slices.Contains([]string{"auto", "engine", "native"},
-			w.Spec.Execution.Strategy) && w.Spec.Execution.Strategy != "" {
-		errs = append(errs, fe("spec.execution.strategy",
-			"EXECUTION_STRATEGY", "strategy must be auto|engine|native"))
+	if e := w.Spec.Execution; e != nil {
+		if !slices.Contains([]string{"auto", "engine", "native"},
+			e.Strategy) && e.Strategy != "" {
+			errs = append(errs, fe("spec.execution.strategy",
+				"EXECUTION_STRATEGY", "strategy must be auto|engine|native"))
+		}
+		if e.FailurePolicy != "" && e.FailurePolicy != "fail" &&
+			e.FailurePolicy != "continue" {
+			errs = append(errs, fe("spec.execution.failurePolicy",
+				"EXECUTION_FAILURE_POLICY",
+				"failurePolicy must be fail|continue"))
+		}
 	}
 	if p := w.Spec.Placement; p != nil && len(p.Requirements) > 0 {
 		errs = append(errs, fe("spec.placement.requirements",
@@ -361,8 +368,29 @@ func checkExprs(w workflowspec.Workflow, _ map[string]bool) []FieldError {
 		base := fmt.Sprintf("spec.tasks[%d]", i)
 		sc := taskScope{task: t, declared: declared, params: params,
 			depClosure: trans[t.Name], secrets: w.Spec.Secrets}
-		parse := func(src, path string, bare bool) {
-			var refs []expr.Path
+		// arrayRuntimeOK reports whether a template's only array.taskId
+		// use is a sole `{{ array.taskId }}` interpolation — a runtime
+		// reference must be the whole argv element or env value.
+		hasArrayTaskID := func(refs []expr.Path) bool {
+			for _, r := range refs {
+				if r.String() == "array.taskId" {
+					return true
+				}
+			}
+			return false
+		}
+		arrayRuntimeOK := func(tpl *expr.Template, refs []expr.Path) bool {
+			if !hasArrayTaskID(refs) {
+				return true
+			}
+			e, ok := tpl.SoleExpr()
+			if !ok {
+				return false
+			}
+			p, ok := e.SoleRef()
+			return ok && p.String() == "array.taskId"
+		}
+		parse := func(src, path string, bare, allowRuntime bool) {
 			if bare {
 				e, err := expr.BareExpr(src)
 				if err != nil {
@@ -370,29 +398,42 @@ func checkExprs(w workflowspec.Workflow, _ map[string]bool) []FieldError {
 						err.Error()))
 					return
 				}
-				refs = e.Refs()
-			} else {
-				tpl, err := expr.ParseTemplate(src)
-				if err != nil {
-					errs = append(errs, fe(path, "EXPR_PARSE",
-						err.Error()))
-					return
+				refs := e.Refs()
+				for _, r := range refs {
+					if r.String() == "array.taskId" {
+						errs = append(errs, fe(path,
+							"REF_ARRAY_RUNTIME_WHOLE",
+							"array.taskId renders a runtime value and is only valid as a whole argv element or env value"))
+					}
 				}
-				refs = tpl.Refs()
+				checkRefs(refs, sc, path)
+				return
+			}
+			tpl, err := expr.ParseTemplate(src)
+			if err != nil {
+				errs = append(errs, fe(path, "EXPR_PARSE",
+					err.Error()))
+				return
+			}
+			refs := tpl.Refs()
+			if !allowRuntime && hasArrayTaskID(refs) ||
+				!arrayRuntimeOK(tpl, refs) {
+				errs = append(errs, fe(path,
+					"REF_ARRAY_RUNTIME_WHOLE",
+					"array.taskId renders a runtime value and is only valid as a whole argv element or env value"))
 			}
 			checkRefs(refs, sc, path)
 		}
 		for j, c := range t.Command {
-			parse(c, fmt.Sprintf("%s.command[%d]", base, j), false)
+			parse(c, fmt.Sprintf("%s.command[%d]", base, j), false, true)
 		}
 		for j, a := range t.Args {
-			parse(a, fmt.Sprintf("%s.args[%d]", base, j), false)
+			parse(a, fmt.Sprintf("%s.args[%d]", base, j), false, true)
 		}
 		envScope := sc
 		envScope.inEnv = true
 		for k, v := range t.Env {
 			sc2 := envScope
-			var refs []expr.Path
 			tpl, err := expr.ParseTemplate(v)
 			if err != nil {
 				errs = append(errs, fe(
@@ -400,16 +441,22 @@ func checkExprs(w workflowspec.Workflow, _ map[string]bool) []FieldError {
 					err.Error()))
 				continue
 			}
-			refs = tpl.Refs()
+			refs := tpl.Refs()
+			if !arrayRuntimeOK(tpl, refs) {
+				errs = append(errs, fe(
+					fmt.Sprintf("%s.env.%s", base, k),
+					"REF_ARRAY_RUNTIME_WHOLE",
+					"array.taskId renders a runtime value and is only valid as a whole env value"))
+			}
 			checkRefs(refs, sc2, fmt.Sprintf("%s.env.%s", base, k))
 		}
 		if t.When != "" {
-			parse(t.When, base+".when", true)
+			parse(t.When, base+".when", true, false)
 		}
 		if t.FanOut != nil {
 			switch c := t.FanOut.Count.(type) {
 			case string:
-				parse(c, base+".fanOut.count", true)
+				parse(c, base+".fanOut.count", true, false)
 			case float64, int64, int, nil:
 			default:
 				errs = append(errs, fe(base+".fanOut.count",
@@ -417,13 +464,13 @@ func checkExprs(w workflowspec.Workflow, _ map[string]bool) []FieldError {
 			}
 		}
 		if t.WorkingDirectory != "" {
-			parse(t.WorkingDirectory, base+".workingDirectory", false)
+			parse(t.WorkingDirectory, base+".workingDirectory", false, false)
 		}
 		if t.Stdout != "" {
-			parse(t.Stdout, base+".stdout", false)
+			parse(t.Stdout, base+".stdout", false, false)
 		}
 		if t.Stderr != "" {
-			parse(t.Stderr, base+".stderr", false)
+			parse(t.Stderr, base+".stderr", false, false)
 		}
 	}
 	if d := w.Spec.Defaults; d != nil {

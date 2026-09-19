@@ -12,8 +12,11 @@ import (
 
 	"github.com/Exonical/custos/internal/audit"
 	"github.com/Exonical/custos/internal/audit/pgaudit"
+	"github.com/Exonical/custos/internal/authz"
 	clusterpg "github.com/Exonical/custos/internal/clusters/postgres"
 	clustersync "github.com/Exonical/custos/internal/clusters/sync"
+	"github.com/Exonical/custos/internal/executions/engine"
+	execpg "github.com/Exonical/custos/internal/executions/postgres"
 	jobpg "github.com/Exonical/custos/internal/jobs/postgres"
 	jobssvc "github.com/Exonical/custos/internal/jobs/service"
 	jobsworker "github.com/Exonical/custos/internal/jobs/worker"
@@ -22,8 +25,13 @@ import (
 	"github.com/Exonical/custos/internal/platform/log"
 	"github.com/Exonical/custos/internal/platform/otel"
 	"github.com/Exonical/custos/internal/platform/workqueue"
+	policypg "github.com/Exonical/custos/internal/policies/postgres"
+	policiesvc "github.com/Exonical/custos/internal/policies/service"
+	projectpg "github.com/Exonical/custos/internal/projects/postgres"
+	projectsvc "github.com/Exonical/custos/internal/projects/service"
 	scriptpg "github.com/Exonical/custos/internal/scripts/postgres"
 	tenantpg "github.com/Exonical/custos/internal/tenants/postgres"
+	wfpg "github.com/Exonical/custos/internal/workflows/postgres"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/sync/errgroup"
 )
@@ -98,6 +106,31 @@ func cmdWorker(parent context.Context, configPath string, lookupEnv config.Looku
 	q.Register(jobssvc.KindCancel, jobsworker.Cancel(jdeps))
 	q.Register(jobsworker.KindSweep, jobsworker.Sweep(jdeps))
 	q.Register(jobsworker.KindIdemExpire, jobsworker.IdempotencyExpire(jdeps))
+
+	// Workflow execution engine (docs/workflows.md §Engine strategy).
+	vdeps, err := newValidationDeps(cfg, pool, clusterRepo, prov, recorder)
+	if err != nil {
+		logger.ErrorContext(ctx, "validation setup", "error", err)
+		return 1
+	}
+	tenantRepo := tenantpg.New(pool)
+	projectRepo := projectpg.New(pool)
+	execDeps := engine.Deps{
+		Execs:       execpg.New(pool),
+		Workflows:   wfpg.New(pool),
+		Policies:    policiesvc.NewService(policypg.New(pool), authz.RBAC{}, recorder),
+		VPolicy:     vdeps.VPolicy,
+		Clusters:    clusterRepo,
+		Projects:    projectsvc.NewService(projectRepo, projectRepo, projectRepo, tenantRepo, clusterRepo, authz.RBAC{}, recorder),
+		Pipeline:    vdeps.Pipeline,
+		Validations: vdeps.Store,
+		Scripts:     scriptpg.New(pool),
+		Jobs:        jobpg.New(pool),
+		Audit:       recorder,
+		Metrics:     vdeps.Metrics,
+	}
+	q.Register(engine.KindAdvance, engine.Advance(execDeps))
+	q.Register(engine.KindAdmit, engine.Admit(execDeps))
 	if err := jobsworker.BootstrapSweep(ctx, pool, clusterRepo); err != nil {
 		logger.ErrorContext(ctx, "jobs.sweep bootstrap", "error", err)
 		return 1

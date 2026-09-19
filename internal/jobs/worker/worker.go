@@ -26,6 +26,7 @@ import (
 	"github.com/Exonical/custos/internal/slurm"
 	"github.com/Exonical/custos/internal/submission"
 	"github.com/Exonical/custos/internal/tenants"
+	"github.com/Exonical/custos/internal/validation"
 )
 
 // Work kinds.
@@ -100,17 +101,25 @@ func Submit(d Deps) workqueue.Handler {
 			return adopt(ctx, d, j, *found, wantComment)
 		}
 
-		payload, err := d.Scripts.Get(ctx,
-			tenants.TenantScope(j.TenantID), j.TenantID, j.ScriptDigest)
-		if err != nil {
-			if apperr.Is(err, apperr.Internal) {
-				return integrityFailure(ctx, d, j, err)
+		// Payload-bearing specs fetch and verify the script bytes;
+		// command (argv-only) specs have neither digest nor bytes.
+		var payload []byte
+		if j.ExecutionSpec.Payload.Digest != (validation.Digest{}) {
+			if j.ScriptDigest != j.ExecutionSpec.Payload.Digest {
+				return integrityFailure(ctx, d, j,
+					fmt.Errorf("script digest does not match spec payload digest"))
 			}
-			return err
-		}
-		if j.ScriptDigest != j.ExecutionSpec.Payload.Digest {
+			payload, err = d.Scripts.Get(ctx,
+				tenants.TenantScope(j.TenantID), j.TenantID, j.ScriptDigest)
+			if err != nil {
+				if apperr.Is(err, apperr.Internal) {
+					return integrityFailure(ctx, d, j, err)
+				}
+				return err
+			}
+		} else if len(j.ExecutionSpec.Argv) == 0 {
 			return integrityFailure(ctx, d, j,
-				fmt.Errorf("script digest does not match spec payload digest"))
+				fmt.Errorf("spec has neither payload nor argv"))
 		}
 		wrapper, err := submission.Wrapper(j.ExecutionSpec, payload)
 		if err != nil {
@@ -554,7 +563,29 @@ func transition(ctx context.Context, d Deps, j jobs.Job,
 			"invalid job state transition "+string(j.State)+" -> "+
 				string(*p.State))
 	}
-	return d.Jobs.Transition(ctx, tenants.PlatformScope(), j.ID, j.Version, p)
+	out, err := d.Jobs.Transition(ctx, tenants.PlatformScope(), j.ID,
+		j.Version, p)
+	if err != nil {
+		return out, err
+	}
+	// Workflow task jobs drive their execution forward.
+	if j.TaskExecutionID != nil {
+		var execID uuid.UUID
+		if qerr := d.Exec.QueryRow(ctx, `
+			SELECT execution_id FROM task_executions WHERE id=$1`,
+			*j.TaskExecutionID).Scan(&execID); qerr != nil {
+			return out, fmt.Errorf("job.task_execution link: %w", qerr)
+		}
+		if _, qerr := workqueue.Enqueue(ctx, d.Exec, workqueue.EnqueueRequest{
+			Kind:     "execution.advance",
+			Key:      "execution:" + execID.String(),
+			TenantID: &j.TenantID,
+			Payload:  map[string]string{"execution_id": execID.String()},
+		}); qerr != nil {
+			return out, qerr
+		}
+	}
+	return out, nil
 }
 
 func applyExit(p *jobs.Patch, sj slurm.Job) {

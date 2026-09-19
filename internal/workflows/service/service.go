@@ -394,7 +394,7 @@ func (s *Service) buildContext(ctx context.Context, scope tenants.Scope,
 			if err != nil {
 				return admission.Binding{}, validation.ClusterSnapshot{}, false
 			}
-			return b, clusterSnapshot(&c), true
+			return b, workflows.ClusterSnapshot(&c), true
 		},
 	}, nil
 }
@@ -425,98 +425,16 @@ func (s *Service) ValidateBody(ctx context.Context, p authn.Principal,
 	return wfvalidate.Contextual(spec, vc)
 }
 
-func clusterSnapshot(c *clusters.Cluster) validation.ClusterSnapshot {
-	var snap validation.ClusterSnapshot
-	if c == nil || c.Capabilities == nil {
-		return snap
-	}
-	snap.GRESTypes = c.Capabilities.GRESTypes
-	snap.QoS = c.Capabilities.QoSNames
-	snap.MaxWalltime = map[string]time.Duration{}
-	for _, pt := range c.Capabilities.Partitions {
-		snap.Partitions = append(snap.Partitions, pt.Name)
-		if pt.MaxTime != nil {
-			snap.MaxWalltime[pt.Name] = *pt.MaxTime
-		}
-	}
-	return snap
-}
-
 // --- script-bearing tasks ---------------------------------------------------
 
-// taskSnapshot resolves a task's validation input: script bytes,
-// effective resources/env/software and the placement cluster.
+// taskSnapshot resolves a task's validation input via the shared
+// internal/workflows helper (same code path the engine's task.admit
+// uses).
 func (s *Service) taskSnapshot(ctx context.Context, scope tenants.Scope,
 	w workflows.Workflow, spec workflowspec.Workflow,
 	task workflowspec.Task) (validation.Input, *clusters.Cluster, error) {
-	if task.Script == nil {
-		return validation.Input{}, nil, apperr.New(apperr.Invalid,
-			"TASK_NO_SCRIPT", "task has no script payload")
-	}
-	digest, err := validation.ParseDigest(task.Script.Digest)
-	if err != nil {
-		return validation.Input{}, nil, apperr.New(apperr.Invalid,
-			"SCRIPT_REF", "script ref must be sha256:<hex>")
-	}
-	body, err := s.d.Scripts.Get(ctx, scope, w.TenantID, digest)
-	if err != nil {
-		if apperr.Is(err, apperr.NotFound) {
-			return validation.Input{}, nil, apperr.New(apperr.Validation,
-				"SCRIPT_UNKNOWN", "script digest is not stored in this tenant")
-		}
-		return validation.Input{}, nil, err
-	}
-	var res workflowspec.Resources
-	if !task.Resources.Empty() {
-		var resErrs []workflowspec.FieldError
-		res, resErrs = task.Resources.Resolve("")
-		if len(resErrs) > 0 {
-			return validation.Input{}, nil, fieldErrs(resErrs)
-		}
-	}
-	env := map[string]string{}
-	if spec.Spec.Defaults != nil {
-		for k, v := range spec.Spec.Defaults.Env {
-			env[k] = v
-		}
-	}
-	for k, v := range task.Env {
-		env[k] = v
-	}
-	clusterName := ""
-	if spec.Spec.Placement != nil {
-		clusterName = spec.Spec.Placement.Cluster
-	}
-	if task.Placement != nil && task.Placement.Cluster != "" {
-		clusterName = task.Placement.Cluster
-	}
-	var (
-		cluster *clusters.Cluster
-		snap    *validation.ClusterSnapshot
-	)
-	if clusterName != "" {
-		c, err := s.d.Clusters.GetByNameOrID(ctx, clusterName)
-		if err != nil {
-			if apperr.Is(err, apperr.NotFound) {
-				return validation.Input{}, nil, apperr.New(
-					apperr.Validation, "CLUSTER_UNKNOWN",
-					"cluster is not registered")
-			}
-			return validation.Input{}, nil, err
-		}
-		cluster = &c
-		s := clusterSnapshot(cluster)
-		snap = &s
-	}
-	lang := task.Script.Language
-	if lang == "" {
-		lang = workflowspec.LanguageBash
-	}
-	return validation.Input{
-		Language: lang, Script: body, Digest: digest,
-		Resources: res, Environment: env, Software: task.Software,
-		Cluster: snap,
-	}, cluster, nil
+	return workflows.TaskSnapshot(ctx, scope, s.d.Scripts, s.d.Clusters,
+		w.TenantID, spec, task)
 }
 
 // runTaskValidation executes the pipeline for one task and persists

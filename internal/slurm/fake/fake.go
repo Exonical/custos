@@ -381,14 +381,24 @@ func (c *Cluster) GetAssociations(_ context.Context,
 
 // GetJobRecords implements slurm.Accounting (returns jobs as records).
 func (c *Cluster) GetJobRecords(_ context.Context,
-	_ slurm.JobRecordFilter) ([]slurm.JobRecord, error) {
+	f slurm.JobRecordFilter) ([]slurm.JobRecord, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if err := c.inject(); err != nil {
 		return nil, err
 	}
+	names := map[string]bool{}
+	for _, n := range f.Names {
+		names[n] = true
+	}
 	var out []slurm.JobRecord
 	for _, j := range c.jobs {
+		if len(names) > 0 && !names[j.job.Name] {
+			continue
+		}
+		if f.Since != nil && j.job.SubmitTime.Before(*f.Since) {
+			continue
+		}
 		out = append(out, slurm.JobRecord{
 			ID: j.job.ID, Name: j.job.Name, User: j.job.UserName,
 			Account: j.job.Account, Partition: j.job.Partition,

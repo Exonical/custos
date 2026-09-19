@@ -21,6 +21,8 @@ import (
 	clusterpg "github.com/Exonical/custos/internal/clusters/postgres"
 	clustersvc "github.com/Exonical/custos/internal/clusters/service"
 	clustersync "github.com/Exonical/custos/internal/clusters/sync"
+	execpg "github.com/Exonical/custos/internal/executions/postgres"
+	execsvc "github.com/Exonical/custos/internal/executions/service"
 	jobpg "github.com/Exonical/custos/internal/jobs/postgres"
 	jobssvc "github.com/Exonical/custos/internal/jobs/service"
 	"github.com/Exonical/custos/internal/platform/config"
@@ -38,14 +40,6 @@ import (
 	tenantsvc "github.com/Exonical/custos/internal/tenants/service"
 	"github.com/Exonical/custos/internal/users"
 	userpg "github.com/Exonical/custos/internal/users/postgres"
-	"github.com/Exonical/custos/internal/validation"
-	"github.com/Exonical/custos/internal/validation/envcheck"
-	"github.com/Exonical/custos/internal/validation/pipeline"
-	vpolicy "github.com/Exonical/custos/internal/validation/policy"
-	vpolicypg "github.com/Exonical/custos/internal/validation/postgres"
-	"github.com/Exonical/custos/internal/validation/sbatchscan"
-	"github.com/Exonical/custos/internal/validation/shellcheck"
-	"github.com/Exonical/custos/internal/validation/shsyntax"
 	wfpg "github.com/Exonical/custos/internal/workflows/postgres"
 	wfsvc "github.com/Exonical/custos/internal/workflows/service"
 )
@@ -155,30 +149,13 @@ func cmdServe(parent context.Context, configPath string, lookupEnv config.Lookup
 
 	// Validation pipeline: in-process validators always; ShellCheck via
 	// the loopback sidecar when enabled (docs/script-validation.md).
-	validators := []validation.ScriptValidator{
-		shsyntax.Validator{}, sbatchscan.Validator{}, envcheck.Validator{},
+	vdeps, err := newValidationDeps(cfg, pool, clusterRepo, prov, recorder)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "%v\n", err)
+		return 1
 	}
-	if cfg.Validation.Shellcheck.Enabled {
-		sc, err := shellcheck.New(shellcheck.Config{
-			Endpoint: cfg.Validation.Shellcheck.Endpoint,
-			Timeout:  cfg.Validation.Shellcheck.Timeout,
-		})
-		if err != nil {
-			_, _ = fmt.Fprintf(stderr, "shellcheck config: %v\n", err)
-			return 1
-		}
-		validators = append(validators, sc)
-	}
-	pipe := pipeline.New(validators)
-	pipe.UnavailableSeverity = validation.Severity(
-		cfg.Validation.UnavailableSeverity)
-	vpolStore := vpolicypg.NewPolicyStore(pool)
-	vstore := vpolicypg.NewValidationStore(pool)
-	vpolSvc := vpolicy.NewService(vpolicy.Deps{
-		Store: vpolStore, Clusters: clusterRepo,
-		AZ: authz.RBAC{}, Audit: recorder,
-	})
-	vMetrics := pipeline.NewMetrics(prov.Meter)
+	pipe, vpolSvc, vstore, vMetrics := vdeps.Pipeline, vdeps.VPolicy,
+		vdeps.Store, vdeps.Metrics
 
 	// Jobs: the synchronous admission pipeline; actual Slurm submission
 	// happens in the worker (docs/workers.md).
@@ -210,6 +187,14 @@ func cmdServe(parent context.Context, configPath string, lookupEnv config.Lookup
 		Audit:       recorder,
 	})
 
+	execSvc := execsvc.New(execsvc.Deps{
+		Repo:        execpg.New(pool),
+		Workflows:   wfpg.New(pool),
+		Validations: vstore,
+		AZ:          authz.RBAC{},
+		Audit:       recorder,
+	})
+
 	mux := http.NewServeMux()
 	api.Mount(mux, api.Deps{
 		Health:         reg,
@@ -235,6 +220,7 @@ func cmdServe(parent context.Context, configPath string, lookupEnv config.Lookup
 		VMetrics:       vMetrics,
 		VLimiter:       httpx.NewPrincipalRateLimiter(30, 10, 0),
 		Workflows:      wfSvc,
+		Executions:     execSvc,
 		AZ:             authz.RBAC{},
 	})
 
