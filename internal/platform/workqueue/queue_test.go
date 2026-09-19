@@ -171,6 +171,65 @@ func TestRetryThenDone(t *testing.T) {
 	}
 }
 
+// TestRescheduleRerunsSameRow covers the periodic-handler contract: a
+// handler returning RescheduleAt moves its own leased row back to
+// pending — no new row, no dedupe loss — and runs again.
+func TestRescheduleRerunsSameRow(t *testing.T) {
+	pool := dbtest.Pool(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var calls int32
+	next := time.Now().Add(200 * time.Millisecond)
+	q := workqueue.New(pool, testCfg(), logger())
+	q.Register("periodic", func(_ context.Context, _ workqueue.Item) error {
+		if atomic.AddInt32(&calls, 1) == 1 {
+			return workqueue.RescheduleAt(next)
+		}
+		return nil
+	})
+	runQueue(ctx, q)
+	if _, err := workqueue.Enqueue(ctx, pool, workqueue.EnqueueRequest{
+		Kind: "periodic", Key: "p1"}); err != nil {
+		t.Fatal(err)
+	}
+
+	// After the first run: same row is pending at ~next, attempt reset.
+	waitFor(t, "first run rescheduled", func() bool {
+		return atomic.LoadInt32(&calls) >= 1
+	})
+	waitFor(t, "pending again", func() bool {
+		s, _, _ := itemState(t, pool, "p1")
+		return s == "pending"
+	})
+	state, attempt, runAt := itemState(t, pool, "p1")
+	if state != "pending" {
+		t.Fatalf("state = %s, want pending", state)
+	}
+	if attempt != 0 {
+		t.Fatalf("attempt = %d, want 0 after reschedule", attempt)
+	}
+	if d := runAt.Sub(next); d < -time.Second || d > 5*time.Second {
+		t.Fatalf("run_at %v not within window of %v", runAt, next)
+	}
+	var n int
+	if err := pool.QueryRow(ctx,
+		"SELECT count(*) FROM work_items WHERE kind='periodic' AND key='p1'").
+		Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("rows = %d, want 1 (same row rescheduled)", n)
+	}
+
+	// The handler runs a second time and the item completes.
+	waitFor(t, "second run", func() bool { return atomic.LoadInt32(&calls) >= 2 })
+	waitFor(t, "done", func() bool {
+		s, _, _ := itemState(t, pool, "p1")
+		return s == "done"
+	})
+}
+
 func TestPermanentGoesDead(t *testing.T) {
 	pool := dbtest.Pool(t)
 	ctx, cancel := context.WithCancel(context.Background())

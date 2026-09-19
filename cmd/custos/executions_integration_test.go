@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -355,7 +356,7 @@ func TestAPIExecutions(t *testing.T) {
 	}
 	wdeps := jobsworker.Deps{
 		Jobs: jobRepo, Scripts: scripts, Clusters: clusterRepo,
-		Factory: fakeFactory{fc}, Exec: pool, Audit: rec,
+		Factory: fakeFactory{fc}, Exec: pool, Execs: execRepo, Audit: rec,
 	}
 	handlers := map[string]workqueue.Handler{
 		engine.KindAdvance:       engine.Advance(execDeps),
@@ -394,9 +395,16 @@ func TestAPIExecutions(t *testing.T) {
 					fc.Advance(j.ID.ID, slurm.JobCompleted)
 				}
 			}
-			if err := h(ctx, workqueue.Item{
+			err = h(ctx, workqueue.Item{
 				Kind: kind, Payload: json.RawMessage(payload),
-			}); err != nil {
+			})
+			// Reschedule means "run the same item later"; the pump
+			// drains pending rows itself, so it counts as success here.
+			var rs workqueue.Reschedule
+			if errors.As(err, &rs) {
+				err = nil
+			}
+			if err != nil {
 				t.Fatalf("%s handler: %v", kind, err)
 			}
 			if _, err := pool.Exec(ctx, `

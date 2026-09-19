@@ -19,6 +19,7 @@ import (
 
 	"github.com/Exonical/custos/internal/audit"
 	"github.com/Exonical/custos/internal/clusters"
+	"github.com/Exonical/custos/internal/executions"
 	"github.com/Exonical/custos/internal/jobs"
 	"github.com/Exonical/custos/internal/platform/apperr"
 	"github.com/Exonical/custos/internal/platform/workqueue"
@@ -46,6 +47,7 @@ type Deps struct {
 	Clusters clusters.Repository
 	Factory  slurm.Factory
 	Exec     workqueue.Execer // pool: out-of-transaction enqueues
+	Execs    executions.Repository
 	Audit    audit.Recorder
 	Metrics  *Metrics // optional
 }
@@ -260,7 +262,7 @@ func Reconcile(d Deps) workqueue.Handler {
 		sid, ok := j.SlurmJobIDRef()
 		if !ok {
 			// Submit still in flight; poll again soon.
-			return enqueueReconcile(ctx, d, j.ID, time.Now(), 30*time.Second)
+			return workqueue.RescheduleAt(time.Now().Add(30 * time.Second))
 		}
 		c, err := d.Clusters.GetByNameOrID(ctx, j.ClusterID.String())
 		if err != nil {
@@ -277,13 +279,19 @@ func Reconcile(d Deps) workqueue.Handler {
 		if err != nil {
 			return err
 		}
-		return applyObserved(ctx, d, j, sj)
+		// Self-reschedule: the leased item itself becomes the next run.
+		return applyObserved(ctx, d, j, sj, func(d time.Duration) error {
+			return workqueue.RescheduleAt(time.Now().Add(d))
+		})
 	}
 }
 
 // applyObserved maps an observed slurm.Job onto a guarded transition
-// and reschedules while non-terminal. Shared by reconcile and sweep.
-func applyObserved(ctx context.Context, d Deps, j jobs.Job, sj slurm.Job) error {
+// and reschedules while non-terminal. Shared by reconcile and sweep:
+// resched requeues the job — reconcile reschedules its own leased item,
+// sweep enqueues a separate job.reconcile item.
+func applyObserved(ctx context.Context, d Deps, j jobs.Job, sj slurm.Job,
+	resched func(time.Duration) error) error {
 	state, ok := jobs.MapSlurmState(sj.State)
 	reason := string(sj.State)
 	if !ok {
@@ -325,7 +333,7 @@ func applyObserved(ctx context.Context, d Deps, j jobs.Job, sj slurm.Job) error 
 		d.Metrics.terminal(ctx, state)
 		return nil
 	}
-	return enqueueReconcile(ctx, d, nj.ID, now, reconcileInterval(nj))
+	return resched(reconcileInterval(nj))
 }
 
 // reconcileInterval grows from 5s to 60s based on job age.
@@ -395,7 +403,7 @@ func lostOrRetry(ctx context.Context, d Deps, j jobs.Job,
 			"job vanished from scheduler for over 10 minutes")
 		return nil
 	}
-	return enqueueReconcile(ctx, d, j.ID, time.Now(), 30*time.Second)
+	return workqueue.RescheduleAt(time.Now().Add(30 * time.Second))
 }
 
 // --- job.cancel ---------------------------------------------------------
@@ -502,16 +510,14 @@ func Sweep(d Deps) workqueue.Handler {
 				}
 				continue
 			}
-			if err := applyObserved(ctx, d, j, sj); err != nil {
+			if err := applyObserved(ctx, d, j, sj,
+				func(delay time.Duration) error {
+					return enqueueReconcile(ctx, d, j.ID, time.Now(), delay)
+				}); err != nil {
 				return err
 			}
 		}
-		_, err = workqueue.Enqueue(ctx, d.Exec, workqueue.EnqueueRequest{
-			Kind:  KindSweep,
-			Key:   it.Key,
-			RunAt: time.Now().Add(sweepInterval),
-		})
-		return err
+		return workqueue.RescheduleAt(time.Now().Add(sweepInterval))
 	}
 }
 
@@ -545,12 +551,7 @@ func IdempotencyExpire(d Deps) workqueue.Handler {
 		if _, err := d.Jobs.ExpireIdempotency(ctx, time.Now()); err != nil {
 			return err
 		}
-		_, err := workqueue.Enqueue(ctx, d.Exec, workqueue.EnqueueRequest{
-			Kind:  KindIdemExpire,
-			Key:   "singleton",
-			RunAt: time.Now().Add(idemExpireEvery),
-		})
-		return err
+		return workqueue.RescheduleAt(time.Now().Add(idemExpireEvery))
 	}
 }
 
@@ -568,14 +569,16 @@ func transition(ctx context.Context, d Deps, j jobs.Job,
 	if err != nil {
 		return out, err
 	}
-	// Workflow task jobs drive their execution forward.
+	// Workflow task jobs drive their execution forward. The lookup must
+	// go through the executions repository — task_executions is under
+	// FORCE RLS, so a bare QueryRow on the pool sees zero rows.
 	if j.TaskExecutionID != nil {
-		var execID uuid.UUID
-		if qerr := d.Exec.QueryRow(ctx, `
-			SELECT execution_id FROM task_executions WHERE id=$1`,
-			*j.TaskExecutionID).Scan(&execID); qerr != nil {
+		task, qerr := d.Execs.GetTaskByJob(ctx, tenants.PlatformScope(),
+			j.ID)
+		if qerr != nil {
 			return out, fmt.Errorf("job.task_execution link: %w", qerr)
 		}
+		execID := task.ExecutionID
 		if _, qerr := workqueue.Enqueue(ctx, d.Exec, workqueue.EnqueueRequest{
 			Kind:     "execution.advance",
 			Key:      "execution:" + execID.String(),

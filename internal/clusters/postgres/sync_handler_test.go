@@ -51,7 +51,7 @@ func newFx(t *testing.T, cluster slurm.Cluster, openErr error) *fx {
 	repo := clusterpg.New(pool)
 	return &fx{
 		pool: pool, repo: repo, trepo: tenantpg.New(pool), factory: factory,
-		handler: clustersync.Handler(repo, factory, pool,
+		handler: clustersync.Handler(repo, factory,
 			60*time.Second, nil),
 		ctx: context.Background(),
 	}
@@ -87,6 +87,17 @@ func item(id uuid.UUID) workqueue.Item {
 	return workqueue.Item{Kind: "cluster.sync", Key: "cluster:" + id.String()}
 }
 
+// rescheduleAt asserts the handler returned workqueue.RescheduleAt —
+// the queue then moves the leased row back to pending at At.
+func rescheduleAt(t *testing.T, err error) time.Time {
+	t.Helper()
+	var rs workqueue.Reschedule
+	if !errors.As(err, &rs) {
+		t.Fatalf("handler error = %v, want workqueue.Reschedule", err)
+	}
+	return rs.At
+}
+
 // pendingSyncs returns run_at values of queued cluster.sync items for id.
 func (f *fx) pendingSyncs(t *testing.T, id uuid.UUID) []time.Time {
 	t.Helper()
@@ -117,26 +128,19 @@ func TestSyncSuccessChain(t *testing.T) {
 	now := time.Now()
 
 	h := f.handler
-	if err := h(f.ctx, item(c.ID)); err != nil {
-		t.Fatal(err)
-	}
+	at := rescheduleAt(t, h(f.ctx, item(c.ID)))
 	got, _ := f.repo.GetByNameOrID(f.ctx, c.ID.String())
 	// one success from unreachable -> degraded (needs 2)
 	if got.State != clusters.StateDegraded || got.ConsecSuccesses != 1 {
 		t.Fatalf("after 1 ok: %+v", got)
 	}
-	// re-enqueued near base interval (±10% jitter of 60s)
-	runs := f.pendingSyncs(t, c.ID)
-	if len(runs) != 1 {
-		t.Fatalf("re-enqueue: %v", runs)
-	}
-	d := runs[0].Sub(now)
-	if d < 50*time.Second || d > 70*time.Second {
+	// rescheduled near base interval (±10% jitter of 60s)
+	if d := at.Sub(now); d < 50*time.Second || d > 70*time.Second {
 		t.Fatalf("next run %v not near 60s", d)
 	}
 
-	if err := h(f.ctx, item(c.ID)); err != nil {
-		t.Fatal(err)
+	if at := rescheduleAt(t, h(f.ctx, item(c.ID))); at.Before(time.Now()) {
+		t.Fatalf("second run rescheduled in the past: %v", at)
 	}
 	got, _ = f.repo.GetByNameOrID(f.ctx, c.ID.String())
 	if got.State != clusters.StateActive || got.ConsecSuccesses != 2 {
@@ -157,18 +161,13 @@ func TestSyncFailureBackoff(t *testing.T) {
 
 	// inject a persistent failure: every Ping fails
 	fc.FailNext(10, slurm.ErrUnavailable)
+	var at time.Time
 	for i, want := range []clusters.State{
 		clusters.StateDegraded, clusters.StateDegraded, clusters.StateUnreachable,
 	} {
-		// simulate the queue consuming the previous re-enqueue: dedupe
-		// would otherwise keep the earlier (shorter) run_at forever.
-		if _, err := f.pool.Exec(f.ctx,
-			`DELETE FROM work_items WHERE kind='cluster.sync'`); err != nil {
-			t.Fatal(err)
-		}
-		if err := f.handler(f.ctx, item(c.ID)); err != nil {
-			t.Fatalf("run %d returned err (slurm errors must not propagate): %v", i, err)
-		}
+		// Slurm errors are recorded, not propagated: the handler still
+		// reschedules (the next run is the retry).
+		at = rescheduleAt(t, f.handler(f.ctx, item(c.ID)))
 		got, _ := f.repo.GetByNameOrID(f.ctx, c.ID.String())
 		if got.State != want {
 			t.Fatalf("run %d: state %v want %v", i+1, got.State, want)
@@ -179,12 +178,7 @@ func TestSyncFailureBackoff(t *testing.T) {
 		t.Fatalf("failure record: %+v", got)
 	}
 	// unreachable -> backoff 5x interval (300s ±10%)
-	runs := f.pendingSyncs(t, c.ID)
-	if len(runs) != 1 {
-		t.Fatalf("expected 1 queued run, got %v", runs)
-	}
-	d := runs[0].Sub(now)
-	if d < 240*time.Second || d > 360*time.Second {
+	if d := at.Sub(now); d < 240*time.Second || d > 360*time.Second {
 		t.Fatalf("backoff run_at %v not ~5x interval", d)
 	}
 }
@@ -203,19 +197,15 @@ func TestSyncDisabledStopsChain(t *testing.T) {
 	}
 }
 
-func TestSyncSlurmErrorReturnsNil(t *testing.T) {
+func TestSyncSlurmErrorReschedules(t *testing.T) {
 	f := newFx(t, nil, errors.New("open refused"))
 	c := f.mkCluster(t, "serr", clusters.VisibilityAssigned, clusters.StateActive)
-	if err := f.handler(f.ctx, item(c.ID)); err != nil {
-		t.Fatalf("slurm error must return nil, got %v", err)
-	}
+	// The slurm error is recorded, not propagated; the handler still
+	// asks for its next run.
+	rescheduleAt(t, f.handler(f.ctx, item(c.ID)))
 	got, _ := f.repo.GetByNameOrID(f.ctx, c.ID.String())
 	if got.ConsecFailures != 1 || got.LastError == "" {
 		t.Fatalf("failure not recorded: %+v", got)
-	}
-	// still re-enqueued
-	if runs := f.pendingSyncs(t, c.ID); len(runs) != 1 {
-		t.Fatalf("no re-enqueue after slurm error: %v", runs)
 	}
 }
 
@@ -234,9 +224,7 @@ func TestSyncAllTenantsAutoAssign(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := f.handler(f.ctx, item(c.ID)); err != nil {
-		t.Fatal(err)
-	}
+	rescheduleAt(t, f.handler(f.ctx, item(c.ID)))
 	as, _, _ := f.repo.ListAssignments(f.ctx, ps, c.ID, clusters.Page{})
 	got := map[uuid.UUID]string{}
 	for _, a := range as {
@@ -254,9 +242,7 @@ func TestSyncAllTenantsAutoAssign(t *testing.T) {
 		`UPDATE tenants SET state='deleting' WHERE id=$1`, tb.ID); err != nil {
 		t.Fatal(err)
 	}
-	if err := f.handler(f.ctx, item(c.ID)); err != nil {
-		t.Fatal(err)
-	}
+	rescheduleAt(t, f.handler(f.ctx, item(c.ID)))
 	as, _, _ = f.repo.ListAssignments(f.ctx, ps, c.ID, clusters.Page{})
 	got = map[uuid.UUID]string{}
 	for _, a := range as {

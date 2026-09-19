@@ -8,6 +8,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -209,9 +210,16 @@ func runSubmit(f *fx, t *testing.T, id uuid.UUID) error {
 
 func runReconcile(f *fx, t *testing.T, id uuid.UUID) error {
 	t.Helper()
-	return jobsworker.Reconcile(f.wdeps())(f.ctx, workqueue.Item{
+	err := jobsworker.Reconcile(f.wdeps())(f.ctx, workqueue.Item{
 		Kind: jobsworker.KindReconcile, Key: "job:" + id.String(),
 		Payload: json.RawMessage(`{"job_id":"` + id.String() + `"}`)})
+	// A non-terminal job reschedules its own item; that is an expected
+	// outcome, not a failure.
+	var rs workqueue.Reschedule
+	if errors.As(err, &rs) {
+		return nil
+	}
+	return err
 }
 
 func jobOf(f *fx, t *testing.T, id uuid.UUID) jobs.Job {

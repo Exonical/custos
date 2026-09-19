@@ -84,7 +84,7 @@ func cmdWorker(parent context.Context, configPath string, lookupEnv config.Looku
 	}
 	clusterRepo := clusterpg.New(pool)
 	q.Register(clustersync.Kind, clustersync.Handler(clusterRepo,
-		sdeps.Factory, pool, cfg.Worker.ClusterSyncInterval,
+		sdeps.Factory, cfg.Worker.ClusterSyncInterval,
 		clustersync.NewMetrics(prov.Meter)))
 	if err := clustersync.Bootstrap(ctx, pool, clusterRepo); err != nil {
 		logger.ErrorContext(ctx, "cluster.sync bootstrap", "error", err)
@@ -98,6 +98,7 @@ func cmdWorker(parent context.Context, configPath string, lookupEnv config.Looku
 		Clusters: clusterRepo,
 		Factory:  sdeps.Factory,
 		Exec:     pool,
+		Execs:    execpg.New(pool),
 		Audit:    recorder,
 		Metrics:  jobsworker.NewMetrics(prov.Meter, jobpg.New(pool)),
 	}

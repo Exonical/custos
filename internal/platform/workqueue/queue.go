@@ -123,6 +123,18 @@ func mapErr(err error) error {
 	return err
 }
 
+// Reschedule is returned by a handler to run the same item again at At.
+// Periodic handlers use it instead of Enqueue: the leased row is moved
+// back to pending in place, so the (kind, key) dedupe index is never
+// involved and the chain survives.
+type Reschedule struct{ At time.Time }
+
+// Error implements error.
+func (r Reschedule) Error() string { return "reschedule at " + r.At.String() }
+
+// RescheduleAt returns a Reschedule for time t.
+func RescheduleAt(t time.Time) error { return Reschedule{At: t} }
+
 // Permanent marks a handler error as non-retryable: the item goes
 // straight to the dead state.
 type Permanent struct{ Err error }
@@ -487,6 +499,11 @@ func (q *Queue) execute(kind string, kc *kindCfg, it Item) {
 	kindAttr := metric.WithAttributes(attribute.String("kind", kind))
 	q.duration.Record(out, q.now().Sub(start).Seconds(), kindAttr)
 	if err != nil {
+		var rs Reschedule
+		if errors.As(err, &rs) {
+			q.reschedule(out, it, rs.At)
+			return
+		}
 		q.fail(out, kc, it, err)
 		return
 	}
@@ -503,6 +520,29 @@ func (q *Queue) execute(kind string, kc *kindCfg, it Item) {
 	}
 	q.itemsTotal.Add(out, 1, metric.WithAttributes(
 		attribute.String("kind", kind), attribute.String("result", "done")))
+}
+
+// reschedule returns a leased item to pending at a new run_at: the same
+// row is reused, so the (kind, key) dedupe index never sees a duplicate.
+func (q *Queue) reschedule(ctx context.Context, it Item, at time.Time) {
+	tag, err := q.pool.Exec(ctx, `
+		UPDATE work_items
+		SET state='pending', run_at=$3, leased_by=NULL, leased_until=NULL,
+		    attempt=0, last_error=NULL, updated_at=now()
+		WHERE id=$1 AND leased_by=$2 AND state='leased'`,
+		it.ID, q.instance, at)
+	if err != nil {
+		q.logger.Error("mark rescheduled failed", "id", it.ID, "error", err)
+		return
+	}
+	if tag.RowsAffected() == 0 {
+		q.logger.Warn("lease lost on reschedule", "id", it.ID,
+			"kind", it.Kind)
+		return
+	}
+	q.itemsTotal.Add(ctx, 1, metric.WithAttributes(
+		attribute.String("kind", it.Kind),
+		attribute.String("result", "rescheduled")))
 }
 
 func callHandler(ctx context.Context, h Handler, it Item) (err error) {

@@ -39,6 +39,18 @@ The partial unique index gives **enqueue-time deduplication**: enqueueing
 `job.reconcile` for a job that already has a pending reconcile is a no-op
 (`ON CONFLICT DO NOTHING`, optionally pulling `run_at` earlier).
 
+**Self-rescheduling handlers** (`cluster.sync`, `job.reconcile`,
+`jobs.sweep`, `idempotency.expire`) must return
+`workqueue.RescheduleAt(t)` to schedule their next run. A handler's own
+item is still `leased` while it runs, so an `Enqueue` with the same
+`(kind, key)` dedupes to nothing and silently ends the periodic chain.
+`RescheduleAt` instead moves the same row back to `pending` in place
+(`run_at=t`, lease cleared, `attempt=0`, `last_error=NULL`), which never
+touches the dedupe index; it is counted as `rescheduled`, not
+`done`/`failed`. Cross-kind enqueue (`job.submit` → `job.reconcile`,
+`task.admit` → `job.submit`, job transition → `execution.advance`) still
+uses `Enqueue` — the target row is different, so dedupe is correct.
+
 ## Lease loop
 
 ```text

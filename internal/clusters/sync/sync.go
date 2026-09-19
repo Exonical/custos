@@ -109,7 +109,7 @@ func nextInterval(base time.Duration, st clusters.State) time.Duration {
 // recorded via RecordSyncResult and the handler returns nil — the next
 // scheduled run is the retry; only infrastructure (DB) errors propagate.
 func Handler(repo clusters.Repository, factory slurm.Factory,
-	ex workqueue.Execer, interval time.Duration, m *Metrics) workqueue.Handler {
+	interval time.Duration, m *Metrics) workqueue.Handler {
 	return func(ctx context.Context, it workqueue.Item) error {
 		id, err := uuid.Parse(it.Key[len(keyPrefix):])
 		if err != nil {
@@ -158,13 +158,10 @@ func Handler(repo clusters.Repository, factory slurm.Factory,
 		if m != nil {
 			m.record(ctx, c.Name, result, state)
 		}
-		// Self-reschedule: the next run is the retry.
-		_, err = workqueue.Enqueue(ctx, ex, workqueue.EnqueueRequest{
-			Kind:  Kind,
-			Key:   it.Key,
-			RunAt: now.Add(nextInterval(interval, state)),
-		})
-		return err
+		// Self-reschedule: the next run is the retry. RescheduleAt keeps
+		// the same row; Enqueue with this (kind,key) would be deduped
+		// against the still-leased item.
+		return workqueue.RescheduleAt(now.Add(nextInterval(interval, state)))
 	}
 }
 
