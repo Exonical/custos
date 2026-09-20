@@ -9,7 +9,7 @@ work itself.
 
 ## Status
 
-**Milestones 1–5 implemented.** The `custos` binary serves, works and
+**Milestones 1–6 implemented.** The `custos` binary serves, works and
 migrates today:
 
 - **M1** — foundation binary on hardened PostgreSQL (SCRAM-only, TLS
@@ -23,13 +23,18 @@ migrates today:
 - **M5** — validation pipeline with persisted results, ValidationPolicy,
   ShellCheck sidecar, workflow versions with a publish gate, and the
   execution engine (`execution.advance`, `task.admit`, structured argv).
+- **M6** — secrets: OpenBao provider with tenant namespaces and one-use
+  child tokens, a default connector per tenant plus bring-your-own
+  OpenBao connectors, metadata-only `SecretReference` objects, and
+  submit-time delivery to jobs as environment values or response-wrapped
+  tokens.
 
 An end-to-end stack (`scripts/e2e.sh`, `deploy/e2e/`) runs the whole
-thing against a real Slurm 26.05 cluster and Keycloak 26.7 under Podman;
-`test/e2e` exercises authentication through workflow cancellation.
+thing against a real Slurm 26.05 cluster, Keycloak 26.7 and OpenBao
+under Podman; `test/e2e` exercises authentication through secret
+delivery and workflow cancellation.
 
-Next up: **M6** OpenBao secret storage, **M7** accounting/policy sync,
-**M8** the Next.js UI.
+Next up: **M7** accounting/policy sync, **M8** the Next.js UI.
 
 ## Documentation
 
