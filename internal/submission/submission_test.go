@@ -272,9 +272,20 @@ func TestCheckArgvRejects(t *testing.T) {
 func TestSpecNoSecrets(t *testing.T) {
 	spec := mkSpec(payload)
 	spec.Environment.SecretRefs = []admission.SecretEnvRef{
-		{Name: "TOKEN", Ref: "bao://kv/x#key"}}
+		{Name: "TOKEN", ReferenceID: uuid.New(), Mode: "env", Handle: "token"}}
 	b, _ := json.Marshal(spec)
 	if strings.Contains(string(b), "secret-value") {
 		t.Fatal("secret value leaked")
+	}
+	wrapper, err := submission.Wrapper(spec, payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(wrapper, "TOKEN") || strings.Contains(wrapper, "secret-value") {
+		t.Fatalf("secret metadata leaked into wrapper: %s", wrapper)
+	}
+	sub := submission.JobSubmission(spec, wrapper)
+	if sub.Environment["TOKEN"] != "[SECRET]" {
+		t.Fatalf("preview marker = %q", sub.Environment["TOKEN"])
 	}
 }

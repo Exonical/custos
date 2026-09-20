@@ -80,6 +80,51 @@ func TestLoginKVVersionAndChildToken(t *testing.T) {
 	}
 }
 
+func TestWrapReference(t *testing.T) {
+	var policy, create bool
+	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/auth/jwt/login":
+			_ = json.NewEncoder(w).Encode(map[string]any{"auth": map[string]any{
+				"client_token": "parent", "lease_duration": 3600}})
+		case "/v1/sys/policies/acl/ref-id":
+			policy = true
+			if r.Header.Get("X-Vault-Namespace") != "custos/tenants/t1" {
+				t.Error("policy namespace")
+			}
+			w.WriteHeader(http.StatusNoContent)
+		case "/v1/auth/token/create-orphan":
+			create = true
+			if r.Header.Get("X-Vault-Wrap-TTL") != "1h" {
+				t.Error("missing wrap TTL")
+			}
+			var body map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Error(err)
+			}
+			if body["num_uses"] != float64(2) || body["no_parent"] != true || body["ttl"] != "30m0s" {
+				t.Errorf("token body: %#v", body)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"wrap_info": map[string]any{"token": "wrapped-only"}})
+		case "/v1/auth/token/revoke-self":
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			http.NotFound(w, r)
+		}
+	})
+	p, _ := provider(t, h)
+	v, err := p.WrapReference(context.Background(), secrets.Reference{Provider: "openbao",
+		Namespace: "custos/tenants/t1", Mount: "kv", Path: "users/u/token", Key: "value"},
+		"ref-id", 30*time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer v.Wipe()
+	if string(v.Reveal()) != "wrapped-only" || !policy || !create {
+		t.Fatal("incomplete wrapped-token flow")
+	}
+}
+
 func TestRenewAndRelogin(t *testing.T) {
 	var login, renew atomic.Int32
 	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

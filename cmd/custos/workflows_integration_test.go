@@ -391,16 +391,15 @@ func TestAPIWorkflows(t *testing.T) {
 		t.Fatalf("job name not custos-controlled: %q %v", name, js)
 	}
 
-	// Secrets fail closed at the static gate.
-	code, verr := call(tokR, "POST", wbase+"/versions",
+	// Secret declarations are accepted in drafts; publish/contextual
+	// validation resolves the named SecretReference.
+	code, secretDraft := call(tokR, "POST", wbase+"/versions",
 		"apiVersion: custos.io/v1alpha1\nkind: Workflow\n"+
 			"metadata: {name: pipe}\nspec:\n"+
 			"  secrets: {tok: {ref: x, use: env, envName: T}}\n"+
 			"  tasks: [{name: a, command: [\"true\"]}]\n")
-	if code != 422 || !strings.Contains(
-		func() string { b, _ := json.Marshal(verr); return string(b) }(),
-		"SECRETS_NOT_AVAILABLE") {
-		t.Fatalf("secrets should fail closed: %d %v", code, verr)
+	if code != 201 {
+		t.Fatalf("secret draft: %d %v", code, secretDraft)
 	}
 
 	// Shell task: publish denied until cluster + tenant allow it.

@@ -36,6 +36,8 @@ import (
 	projectpg "github.com/Exonical/custos/internal/projects/postgres"
 	projectsvc "github.com/Exonical/custos/internal/projects/service"
 	scriptpg "github.com/Exonical/custos/internal/scripts/postgres"
+	"github.com/Exonical/custos/internal/secretrefs"
+	secretpg "github.com/Exonical/custos/internal/secretrefs/postgres"
 	"github.com/Exonical/custos/internal/secrets"
 	"github.com/Exonical/custos/internal/slurm"
 	"github.com/Exonical/custos/internal/slurm/fake"
@@ -105,13 +107,16 @@ func TestAPIJobs(t *testing.T) {
 	vpolSvc := vpolicy.NewService(vpolicy.Deps{
 		Store: vpolicypg.NewPolicyStore(pool), Clusters: clusterRepo,
 		AZ: authz.RBAC{}, Audit: rec})
+	secretRepo := secretpg.New(pool)
+	secretSvc := secretrefs.NewService(secretRepo,
+		secretrefs.NewRuntime(secretRepo, nil, nil), authz.RBAC{}, rec, nil, "", trepo)
 	jobSvc := jobssvc.New(jobssvc.Deps{
 		Jobs: jobRepo, Scripts: scriptpg.New(pool),
 		Projects: projectSvc, Policies: policySvc, Clusters: clusterRepo,
 		Pipeline:    pipe,
 		VPolicy:     vpolSvc,
 		Validations: vpolicypg.NewValidationStore(pool),
-		AZ:          authz.RBAC{}, Audit: rec,
+		AZ:          authz.RBAC{}, Audit: rec, Secrets: secretSvc,
 	})
 	clusterSvc := clustersvc.New(clustersvc.Deps{
 		Repository: clusterRepo, Tenants: trepo,
@@ -193,13 +198,19 @@ func TestAPIJobs(t *testing.T) {
 		t.Fatalf("me: %d", code)
 	}
 	ur, _ := me["user_id"].(string)
+	tokB := token("user-b")
+	code, meB := call(tokB, "GET", "/api/v1/me", nil, "")
+	if code != 200 {
+		t.Fatalf("me bob: %d", code)
+	}
+	ub, _ := meB["user_id"].(string)
 	code, meA := call(adminTok, "GET", "/api/v1/me", nil, "")
 	if code != 200 {
 		t.Fatalf("me admin: %d", code)
 	}
 	ua, _ := meA["user_id"].(string)
 	for uid, roles := range map[string][]string{
-		ur: {"researcher"}, ua: {"tenant-admin"},
+		ur: {"researcher"}, ub: {"researcher"}, ua: {"tenant-admin"},
 	} {
 		if code, resp := call(adminTok, "POST", "/api/v1/tenants/j-tenant/members",
 			map[string]any{"user_id": uid, "roles": roles}, ""); code != 201 {
@@ -248,11 +259,33 @@ func TestAPIJobs(t *testing.T) {
 			"default_partition":  "gpu"}, ""); code != 201 {
 		t.Fatalf("binding: %d %v", code, resp)
 	}
-	if code, resp := call(adminTok, "POST",
-		"/api/v1/tenants/j-tenant/projects/jproj/members",
-		map[string]any{"user_id": ur, "roles": []string{"project-member"}},
-		""); code != 201 {
-		t.Fatalf("pmember: %d %v", code, resp)
+	for _, uid := range []string{ur, ub} {
+		if code, resp := call(adminTok, "POST",
+			"/api/v1/tenants/j-tenant/projects/jproj/members",
+			map[string]any{"user_id": uid, "roles": []string{"project-member"}},
+			""); code != 201 {
+			t.Fatalf("pmember: %d %v", code, resp)
+		}
+	}
+
+	var projectID uuid.UUID
+	if err := pool.QueryRow(context.Background(),
+		`SELECT id FROM projects WHERE tenant_id=$1 AND slug='jproj'`, tid).Scan(&projectID); err != nil {
+		t.Fatal(err)
+	}
+	ownerID := uuid.MustParse(ur)
+	connector := secretrefs.Connector{ID: uuid.Must(uuid.NewV7()), TenantID: tid,
+		Name: "default", Kind: "platform-openbao", State: "active",
+		Config: map[string]any{}, CreatedBy: ownerID}
+	if err := secretRepo.CreateConnector(context.Background(), tenants.TenantScope(tid), connector); err != nil {
+		t.Fatal(err)
+	}
+	ref := secretrefs.Reference{ID: uuid.Must(uuid.NewV7()), TenantID: tid,
+		OwnerID: &ownerID, Name: "owned-token", ConnectorID: connector.ID,
+		Namespace: "custos/tenants/" + tid.String(), Mount: "kv", Path: "x",
+		Key: "value", Kind: "generic", AllowedUses: []string{"workflow_env"}, CreatedBy: ownerID}
+	if err := secretRepo.CreateReference(context.Background(), tenants.TenantScope(tid), ref); err != nil {
+		t.Fatal(err)
 	}
 
 	base := "/api/v1/tenants/j-tenant/projects/jproj/jobs"
@@ -261,6 +294,19 @@ func TestAPIJobs(t *testing.T) {
 		"resources": map[string]any{"nodes": 1, "walltime": "1h"},
 		"script": map[string]any{"language": "bash",
 			"body": "#!/bin/bash\necho hi\n"},
+	}
+
+	forbiddenBody := map[string]any{
+		"name": "forbidden", "cluster": cid.String(),
+		"resources": map[string]any{"nodes": 1, "walltime": "1h"},
+		"script":    map[string]any{"language": "bash", "body": "echo hi"},
+		"secrets": map[string]any{"token": map[string]any{
+			"ref": "owned-token", "use": "env", "envName": "TOKEN"}},
+	}
+	if code, er := call(tokB, "POST", base, forbiddenBody, "secret-forbidden"); code != http.StatusForbidden {
+		t.Fatalf("secret forbidden: %d %v", code, er)
+	} else if body, _ := er["error"].(map[string]any); body["code"] != "SECRET_FORBIDDEN" {
+		t.Fatalf("secret forbidden code: %v", er)
 	}
 
 	// Missing Idempotency-Key -> 400.

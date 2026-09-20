@@ -45,7 +45,9 @@ file-provider fixture and platform OpenBao; seed the TLS-fronted BYO OpenBao;
 wait for Custos readiness; grant `platform-admin`; seed tenant `acme` and its
 claim rules; then write Alice's fixture value in her new tenant namespace.
 `TestE2E` exercises both cluster providers, the automatic default connector,
-a BYO connector, owner isolation, path/namespace validation, and SSRF denial.
+a BYO connector, owner isolation, path/namespace validation, SSRF denial,
+workflow env delivery, platform-OpenBao wrapped-token delivery, value-free
+execution metadata/audit, and execute-time denial for another user.
 
 Then, with the env it prints:
 

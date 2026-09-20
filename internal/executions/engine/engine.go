@@ -66,20 +66,21 @@ type JobStore interface {
 
 // Deps wires the engine handlers.
 type Deps struct {
-	Execs           executions.Repository
-	Workflows       workflows.Repository
-	SecretReference func(context.Context, uuid.UUID, string) bool
-	Policies        *policiessvc.Service
-	VPolicy         *vpolicy.Service
-	Clusters        clusters.Repository
-	Projects        *projectsvc.Service
-	Pipeline        *pipeline.Pipeline
-	Validations     ValidationStore
-	Scripts         scripts.Store
-	Jobs            JobStore
-	Audit           audit.Recorder // may be nil
-	Metrics         *pipeline.Metrics
-	Now             func() time.Time // tests may override; nil → time.Now
+	Execs              executions.Repository
+	Workflows          workflows.Repository
+	SecretReference    func(context.Context, uuid.UUID, string) (wfvalidate.SecretReferenceInfo, bool)
+	AuthorizeSecretUse func(context.Context, uuid.UUID, uuid.UUID, uuid.UUID, string) error
+	Policies           *policiessvc.Service
+	VPolicy            *vpolicy.Service
+	Clusters           clusters.Repository
+	Projects           *projectsvc.Service
+	Pipeline           *pipeline.Pipeline
+	Validations        ValidationStore
+	Scripts            scripts.Store
+	Jobs               JobStore
+	Audit              audit.Recorder // may be nil
+	Metrics            *pipeline.Metrics
+	Now                func() time.Time // tests may override; nil → time.Now
 }
 
 func (d Deps) now() time.Time {
@@ -203,6 +204,17 @@ func validateStage(ctx context.Context, d Deps,
 	}
 	if errs := wfvalidate.Contextual(spec, vc); len(errs) > 0 {
 		return fail(errs[0].Code)
+	}
+	for _, use := range spec.Spec.Secrets {
+		if d.AuthorizeSecretUse == nil ||
+			d.AuthorizeSecretUse(ctx, e.TenantID, e.ProjectID, e.RequestedBy, use.Ref) != nil {
+			d.record(ctx, audit.Event{Actor: audit.Actor{Type: audit.ActorSystem, ID: "custos"},
+				Action: "secret.accessed", Result: audit.ResultDeny,
+				Target:   audit.Target{Type: "workflow_execution", ID: e.ID.String()},
+				TenantID: &e.TenantID, Reason: "SECRET_FORBIDDEN",
+				Details: map[string]any{"purpose": use.Use}})
+			return fail("SECRET_FORBIDDEN")
+		}
 	}
 	params, perrs := wfvalidate.ResolveParameters(
 		spec.Spec.Parameters, e.Parameters)
@@ -360,8 +372,11 @@ func buildContext(ctx context.Context, d Deps,
 	return wfvalidate.Context{
 		ShellAllowed:   vpol.AllowShellTasks,
 		ResourcePolicy: pol,
-		SecretReference: func(name string) bool {
-			return d.SecretReference != nil && d.SecretReference(ctx, e.TenantID, name)
+		SecretReference: func(name string) (wfvalidate.SecretReferenceInfo, bool) {
+			if d.SecretReference == nil {
+				return wfvalidate.SecretReferenceInfo{}, false
+			}
+			return d.SecretReference(ctx, e.TenantID, name)
 		},
 		Cluster: func(name string) (admission.Binding,
 			validation.ClusterSnapshot, bool) {

@@ -169,13 +169,13 @@ kind: Workflow
 metadata: { name: x }
 spec: { tasks: [{name: a, command: ["{{ array.taskId }}"]}] }`,
 			"REF_ARRAY_SCOPE"},
-		{"secrets fail closed", `
+		{"secret use invalid", `
 apiVersion: custos.io/v1alpha1
 kind: Workflow
 metadata: { name: x }
 spec:
-  secrets: { tok: { ref: "x", use: env, envName: T } }
-  tasks: [{name: a, command: ["true"]}]`, "SECRETS_NOT_AVAILABLE"},
+  secrets: { tok: { ref: "x", use: nope, envName: T } }
+  tasks: [{name: a, command: ["true"]}]`, "SECRET_USE_INVALID"},
 		{"placement requirements", `
 apiVersion: custos.io/v1alpha1
 kind: Workflow

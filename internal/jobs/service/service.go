@@ -7,6 +7,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -23,11 +24,13 @@ import (
 	"github.com/Exonical/custos/internal/projects"
 	projectsvc "github.com/Exonical/custos/internal/projects/service"
 	"github.com/Exonical/custos/internal/scripts"
+	"github.com/Exonical/custos/internal/secretrefs"
 	"github.com/Exonical/custos/internal/tenants"
 	"github.com/Exonical/custos/internal/validation"
 	"github.com/Exonical/custos/internal/validation/pipeline"
 	vpolicy "github.com/Exonical/custos/internal/validation/policy"
 	"github.com/Exonical/custos/internal/workflowspec"
+	wfvalidate "github.com/Exonical/custos/internal/workflowspec/validate"
 )
 
 // KindSubmit is the workqueue kind that runs the submit handler.
@@ -52,6 +55,7 @@ type Deps struct {
 	Metrics     *pipeline.Metrics  // may be nil
 	AZ          authz.Authorizer
 	Audit       audit.Recorder
+	Secrets     *secretrefs.Service
 }
 
 // Service is the jobs application service.
@@ -85,6 +89,7 @@ type SubmitInput struct {
 	Resources  workflowspec.Resources
 	Script     ScriptInput
 	Env        map[string]string
+	Secrets    map[string]workflowspec.SecretUse
 	WorkingDir string
 	Args       []string
 	Stdout     string
@@ -167,6 +172,52 @@ func (s *Service) Submit(ctx context.Context, p authn.Principal,
 	if err := in.Resources.Validate(); err != nil {
 		return Result{}, nil, apperr.New(apperr.Invalid, "RESOURCE_INVALID",
 			err.Error())
+	}
+	var secretRefs []admission.SecretEnvRef
+	var wrappedHandles []string
+	if len(in.Secrets) > 0 {
+		if s.d.Secrets == nil {
+			return Result{}, nil, apperr.New(apperr.Internal, "INTERNAL", "secret service unavailable")
+		}
+		probe := workflowspec.Workflow{Spec: workflowspec.Spec{Secrets: in.Secrets,
+			Tasks: []workflowspec.Task{{Name: "adhoc", Type: "batch", Env: in.Env}}}}
+		for _, fe := range wfvalidate.Static(probe) {
+			if len(fe.Path) >= len("spec.secrets") && fe.Path[:len("spec.secrets")] == "spec.secrets" {
+				return Result{}, nil, apperr.New(apperr.Validation, fe.Code, fe.Message)
+			}
+		}
+		handles := make([]string, 0, len(in.Secrets))
+		for handle := range in.Secrets {
+			handles = append(handles, handle)
+		}
+		slices.Sort(handles)
+		for _, handle := range handles {
+			use := in.Secrets[handle]
+			x, err := s.d.Secrets.AuthorizeUse(ctx, p, tc, projectID, use.Ref)
+			if err != nil {
+				return Result{}, nil, apperr.New(apperr.Forbidden,
+					"SECRET_FORBIDDEN", "secret reference use is forbidden")
+			}
+			info, ok := s.d.Secrets.ReferenceInfo(ctx, tenantID, use.Ref)
+			if !ok {
+				return Result{}, nil, apperr.New(apperr.Validation,
+					"SECRET_REFERENCE_NOT_FOUND", "secret reference not found")
+			}
+			vc := wfvalidate.Context{SecretReference: func(string) (wfvalidate.SecretReferenceInfo, bool) {
+				return info, true
+			}}
+			one := workflowspec.Workflow{Spec: workflowspec.Spec{Secrets: map[string]workflowspec.SecretUse{handle: use}}}
+			if errs := wfvalidate.Contextual(one, vc); len(errs) > 0 {
+				return Result{}, nil, apperr.New(apperr.Validation, errs[0].Code, errs[0].Message)
+			}
+			name := workflowspec.SecretEnvName(handle, use)
+			if use.Use == "wrapped_token" {
+				name = "CUSTOS_SECRET_" + name + "_WRAP_TOKEN"
+				wrappedHandles = append(wrappedHandles, handle)
+			}
+			secretRefs = append(secretRefs, admission.SecretEnvRef{Name: name,
+				ReferenceID: x.ID, Mode: use.Use, Handle: handle})
+		}
 	}
 
 	// 2. Script: store inline bodies (limits checked inside Put) or
@@ -298,7 +349,7 @@ func (s *Service) Submit(ctx context.Context, p authn.Principal,
 		},
 		Partition:   in.Partition,
 		QoS:         in.QoS,
-		Environment: admission.EnvSet{User: in.Env},
+		Environment: admission.EnvSet{User: in.Env, SecretRefs: secretRefs},
 		Payload: admission.PayloadRef{
 			ScriptID:    jobID,
 			Digest:      digest,
@@ -311,6 +362,7 @@ func (s *Service) Submit(ctx context.Context, p authn.Principal,
 		Security: admission.SecurityContext{
 			SlurmUser:         cluster.ServiceUser,
 			ImpersonationMode: string(cluster.IdentityMode),
+			WrappedTokenRefs:  wrappedHandles,
 		},
 	}
 	built, denial := admission.Build(admission.BuildInput{

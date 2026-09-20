@@ -199,7 +199,7 @@ GET    /api/v1/tenants/{tenant}/workflow-executions/{execution}/tasks/{task}/exe
 GET    /api/v1/tenants/{tenant}/workflow-executions/{execution}/tasks/{task}/validation       linked ScriptValidation
 POST   /api/v1/tenants/{tenant}/workflow-executions/{execution}/cancel    202; execution.cancel.self/any; QUEUED/RUNNING jobs get `job.cancel`, pending tasks go CANCELED
 GET    /api/v1/tenants/{tenant}/workflow-executions/{execution}/tasks     task execution rows (UUIDs, name, index, attempt, state)
-POST   /api/v1/tenants/{tenant}/projects/{project}/jobs                    job.submit; 202; Idempotency-Key required
+POST   /api/v1/tenants/{tenant}/projects/{project}/jobs                    job.submit; 202; Idempotency-Key required; optional `secrets` map uses the workflow `{ref,use,envName?}` shape and is authorized synchronously
 GET    /api/v1/tenants/{tenant}/projects/{project}/jobs                    job.read.project, or own jobs
 GET    /api/v1/tenants/{tenant}/projects/{project}/jobs/{job}
 POST   /api/v1/tenants/{tenant}/projects/{project}/jobs/{job}/cancel       202; job.cancel.self/any

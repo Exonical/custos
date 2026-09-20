@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 
 	"github.com/Exonical/custos/internal/audit"
 	"github.com/Exonical/custos/internal/authn"
@@ -17,6 +19,7 @@ import (
 	"github.com/Exonical/custos/internal/platform/apperr"
 	"github.com/Exonical/custos/internal/secrets"
 	"github.com/Exonical/custos/internal/tenants"
+	wfvalidate "github.com/Exonical/custos/internal/workflowspec/validate"
 )
 
 var pathRE = regexp.MustCompile(`^[A-Za-z0-9_./-]+$`)
@@ -37,11 +40,26 @@ type Service struct {
 	audit      audit.Recorder
 	platform   CredentialStore
 	platformNS string
+	members    tenants.Repository
+	delivered  metric.Int64Counter
 }
 
 // NewService wires the tenant secret application service.
-func NewService(repo Repository, runtime *Runtime, az authz.Authorizer, rec audit.Recorder, platform CredentialStore, platformNS string) *Service {
-	return &Service{repo: repo, runtime: runtime, az: az, audit: rec, platform: platform, platformNS: strings.TrimSuffix(platformNS, "/")}
+func NewService(repo Repository, runtime *Runtime, az authz.Authorizer, rec audit.Recorder, platform CredentialStore, platformNS string, members ...tenants.Repository) *Service {
+	s := &Service{repo: repo, runtime: runtime, az: az, audit: rec,
+		platform: platform, platformNS: strings.TrimSuffix(platformNS, "/")}
+	if len(members) > 0 {
+		s.members = members[0]
+	}
+	return s
+}
+
+// SetMeterProvider registers secret delivery metrics.
+func (s *Service) SetMeterProvider(mp metric.MeterProvider) {
+	if mp != nil {
+		s.delivered, _ = mp.Meter("custos/secrets").Int64Counter(
+			"custos_secrets_delivered_total")
+	}
 }
 
 // CreateConnector is the connector creation input; Credential is write-only.
@@ -491,12 +509,165 @@ func (s *Service) DeleteReference(ctx context.Context, p authn.Principal, tc ten
 	return nil
 }
 
-// ReferenceExists is the workflow contextual-validation lookup hook.
-//
-//nolint:revive // Public service methods mirror authorized API operations.
-func (s *Service) ReferenceExists(ctx context.Context, tenantID uuid.UUID, name string) bool {
-	_, err := s.repo.GetReferenceByName(ctx, tenants.TenantScope(tenantID), tenantID, name)
-	return err == nil
+// ReferenceInfo is the workflow contextual-validation lookup hook.
+func (s *Service) ReferenceInfo(ctx context.Context, tenantID uuid.UUID,
+	name string) (wfvalidate.SecretReferenceInfo, bool) {
+	x, err := s.repo.GetReferenceByName(ctx, tenants.TenantScope(tenantID), tenantID, name)
+	if err != nil {
+		return wfvalidate.SecretReferenceInfo{}, false
+	}
+	c, err := s.repo.GetConnector(ctx, tenants.TenantScope(tenantID), tenantID,
+		x.ConnectorID.String())
+	if err != nil {
+		return wfvalidate.SecretReferenceInfo{}, false
+	}
+	return wfvalidate.SecretReferenceInfo{ID: x.ID.String(), Kind: x.Kind,
+		AllowedUses: x.AllowedUses, ConnectorKind: c.Kind}, true
+}
+
+func (s *Service) authorizeLoaded(ctx context.Context, p authn.Principal,
+	tc tenants.TenantContext, projectID uuid.UUID, x Reference) error {
+	if err := s.require(ctx, p, authz.SecretReferenceUse, tc.Tenant.ID, x.OwnerID); err != nil {
+		return apperr.New(apperr.Forbidden, "SECRET_FORBIDDEN", "secret reference use is forbidden")
+	}
+	owned := x.OwnerID != nil && *x.OwnerID == p.UserID
+	project := x.ProjectID != nil && *x.ProjectID == projectID
+	if !owned && !project && !s.isManager(ctx, p, tc.Tenant.ID) {
+		return apperr.New(apperr.Forbidden, "SECRET_FORBIDDEN", "secret reference use is forbidden")
+	}
+	return nil
+}
+
+// AuthorizeUse resolves a name and checks owner/admin/project use authority.
+func (s *Service) AuthorizeUse(ctx context.Context, p authn.Principal,
+	tc tenants.TenantContext, projectID uuid.UUID, name string) (Reference, error) {
+	x, err := s.repo.GetReferenceByName(ctx, tenants.ScopeFor(&tc), tc.Tenant.ID, name)
+	if err != nil {
+		return x, err
+	}
+	return x, s.authorizeLoaded(ctx, p, tc, projectID, x)
+}
+
+// AuthorizeUserUse performs the same check in a worker for a persisted requester.
+func (s *Service) AuthorizeUserUse(ctx context.Context, tenantID, projectID,
+	userID uuid.UUID, name string) (Reference, error) {
+	if s.members == nil {
+		return Reference{}, apperr.New(apperr.Internal, "INTERNAL", "secret membership repository unavailable")
+	}
+	t, err := s.members.GetBySlugOrID(ctx, tenants.PlatformScope(), tenantID.String())
+	if err != nil {
+		return Reference{}, err
+	}
+	m, err := s.members.GetMembership(ctx, tenants.TenantScope(tenantID), tenantID, userID)
+	if err != nil {
+		return Reference{}, apperr.New(apperr.Forbidden, "SECRET_FORBIDDEN", "secret reference use is forbidden")
+	}
+	tc := tenants.TenantContext{Tenant: t, Membership: &m}
+	ctx = tenants.WithTenantContext(ctx, tc)
+	x, err := s.repo.GetReferenceByName(ctx, tenants.TenantScope(tenantID), tenantID, name)
+	if err != nil {
+		return x, err
+	}
+	return x, s.authorizeLoaded(ctx, authn.Principal{UserID: userID, Kind: authn.KindUser}, tc, projectID, x)
+}
+
+// DeliveryRequest identifies one submit-time secret access.
+type DeliveryRequest struct {
+	TenantID    uuid.UUID
+	ReferenceID uuid.UUID
+	Mode        string
+	Walltime    time.Duration
+	JobID       uuid.UUID
+	ExecutionID *uuid.UUID
+	TaskID      *uuid.UUID
+}
+
+// DeliveredSecret carries one in-memory value and non-secret wrapped-token metadata.
+type DeliveredSecret struct {
+	Value         secrets.Value
+	Reference     Reference
+	ConnectorKind string
+	Address       string
+	Namespace     string
+	Path          string
+	Key           string
+}
+
+type referenceWrapper interface {
+	Address() string
+	WrapReference(context.Context, secrets.Reference, string, time.Duration) (secrets.Value, error)
+}
+
+func (s *Service) deliveryResult(ctx context.Context, req DeliveryRequest,
+	x Reference, connectorKind, result string) {
+	if s.delivered != nil {
+		s.delivered.Add(ctx, 1, metric.WithAttributes(
+			attribute.String("mode", req.Mode), attribute.String("result", result)))
+	}
+	if s.audit == nil {
+		return
+	}
+	purpose := req.Mode
+	if purpose == "env" {
+		purpose = "workflow_env"
+	}
+	details := map[string]any{"reference_id": x.ID.String(), "purpose": purpose,
+		"job_id": req.JobID.String(), "connector_kind": connectorKind, "result": result}
+	if req.ExecutionID != nil {
+		details["execution_id"] = req.ExecutionID.String()
+	}
+	if req.TaskID != nil {
+		details["task_id"] = req.TaskID.String()
+	}
+	_ = s.audit.Record(ctx, audit.Event{Actor: audit.Actor{Type: audit.ActorSystem, ID: "custos"},
+		TenantID: &req.TenantID, Action: "secret.accessed",
+		Target: audit.Target{Type: "secret-reference", ID: x.ID.String()},
+		Result: result, Details: details})
+}
+
+// Deliver resolves an env value or mints a wrapped token immediately before submit.
+func (s *Service) Deliver(ctx context.Context, req DeliveryRequest) (DeliveredSecret, error) {
+	x, err := s.repo.GetReference(ctx, tenants.TenantScope(req.TenantID),
+		req.TenantID, req.ReferenceID.String())
+	if err != nil {
+		s.deliveryResult(ctx, req, x, "unknown", "error")
+		return DeliveredSecret{}, err
+	}
+	c, err := s.repo.GetConnector(ctx, tenants.TenantScope(req.TenantID),
+		req.TenantID, x.ConnectorID.String())
+	if err != nil {
+		s.deliveryResult(ctx, req, x, "unknown", "error")
+		return DeliveredSecret{}, err
+	}
+	out := DeliveredSecret{Reference: x, ConnectorKind: c.Kind,
+		Namespace: x.Namespace, Path: x.Mount + "/data/" + x.Path, Key: x.Key}
+	switch req.Mode {
+	case "env":
+		out.Value, err = s.runtime.Resolve(ctx, req.TenantID, x)
+	case "wrapped_token":
+		if c.Kind != "platform-openbao" {
+			err = apperr.New(apperr.Validation, "WRAPPED_TOKEN_UNSUPPORTED_CONNECTOR",
+				"wrapped tokens require the platform OpenBao connector")
+			break
+		}
+		wrapper, ok := s.platform.(referenceWrapper)
+		if !ok {
+			err = apperr.New(apperr.Unavailable, "SECRETS_UNAVAILABLE",
+				"platform OpenBao wrapping is unavailable")
+			break
+		}
+		out.Address = wrapper.Address()
+		out.Value, err = wrapper.WrapReference(ctx, x.SecretReference(),
+			"ref-"+x.ID.String(), req.Walltime+15*time.Minute)
+	default:
+		err = apperr.New(apperr.Validation, "SECRET_USE_INVALID", "invalid secret delivery mode")
+	}
+	result := "allow"
+	if err != nil {
+		result = "error"
+	}
+	s.deliveryResult(ctx, req, x, c.Kind, result)
+	return out, err
 }
 
 //nolint:revive // Public service methods mirror authorized API operations.
@@ -514,6 +685,13 @@ func (s *Service) TestReference(ctx context.Context, p authn.Principal, tc tenan
 	}
 	v.Wipe()
 	now := time.Now().UTC()
-	s.record(ctx, p, tc.Tenant.ID, "secret.accessed", "secret-reference", x.ID.String(), map[string]any{"purpose": "test"})
+	connectorKind := "unknown"
+	if c, e := s.repo.GetConnector(ctx, tenants.ScopeFor(&tc), tc.Tenant.ID,
+		x.ConnectorID.String()); e == nil {
+		connectorKind = c.Kind
+	}
+	s.record(ctx, p, tc.Tenant.ID, "secret.accessed", "secret-reference", x.ID.String(),
+		map[string]any{"reference_id": x.ID.String(), "purpose": "test",
+			"connector_kind": connectorKind, "result": "allow"})
 	return x, now, nil
 }

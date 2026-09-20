@@ -446,6 +446,53 @@ func (p *Provider) Resolve(ctx context.Context, ref secrets.Reference) (secrets.
 	return secrets.NewValue(raw), nil
 }
 
+// Address returns the configured platform address for wrapped-token delivery.
+func (p *Provider) Address() string { return p.cfg.Address }
+
+// WrapReference creates a narrowly scoped child token and returns a one-use
+// response-wrapping token instead of the child token itself.
+func (p *Provider) WrapReference(ctx context.Context, ref secrets.Reference,
+	policyName string, ttl time.Duration) (secrets.Value, error) {
+	if err := p.validateRef(ref); err != nil {
+		return secrets.Value{}, err
+	}
+	if !p.childIsolation || ref.Namespace == p.cfg.Namespace {
+		return secrets.Value{}, apperr.New(apperr.Validation,
+			"WRAPPED_TOKEN_UNSUPPORTED_CONNECTOR", "wrapped tokens require a tenant platform connector")
+	}
+	if ttl > 24*time.Hour {
+		ttl = 24 * time.Hour
+	}
+	if ttl <= 0 {
+		ttl = 15 * time.Minute
+	}
+	dataPath := path.Join(ref.Mount, "data", ref.Path)
+	metadataPath := path.Join(ref.Mount, "metadata", ref.Path)
+	policy := fmt.Sprintf("path %q { capabilities = [\"read\"] }\npath %q { capabilities = [\"read\"] }", dataPath, metadataPath)
+	if err := p.request(ctx, http.MethodPut, ref.Namespace,
+		"sys/policies/acl/"+policyName, p.parentToken(),
+		map[string]any{"policy": policy}, nil); err != nil {
+		return secrets.Value{}, err
+	}
+	body := map[string]any{"policies": []string{policyName},
+		"ttl": ttl.String(), "num_uses": 2, "no_parent": true}
+	var out struct {
+		WrapInfo struct {
+			Token string `json:"token"`
+		} `json:"wrap_info"`
+	}
+	if err := p.requestWithHeaders(ctx, http.MethodPost, ref.Namespace,
+		"auth/token/create-orphan", p.parentToken(), body, &out,
+		map[string]string{"X-Vault-Wrap-TTL": "1h"}); err != nil {
+		return secrets.Value{}, err
+	}
+	if out.WrapInfo.Token == "" {
+		return secrets.Value{}, apperr.New(apperr.Unavailable,
+			"SECRETS_UNAVAILABLE", "OpenBao wrapping response invalid")
+	}
+	return secrets.NewValue([]byte(out.WrapInfo.Token)), nil
+}
+
 func (p *Provider) validateRef(ref secrets.Reference) error {
 	if (ref.Provider != "" && ref.Provider != "openbao") || ref.Namespace == "" || ref.Mount == "" || ref.Path == "" || ref.Key == "" {
 		return apperr.New(apperr.Validation, "SECRET_REFERENCE_INVALID", "invalid OpenBao secret reference")
@@ -568,6 +615,11 @@ func (p *Provider) Close() error {
 }
 
 func (p *Provider) request(ctx context.Context, method, namespace, endpoint, token string, body any, out any) error {
+	return p.requestWithHeaders(ctx, method, namespace, endpoint, token, body, out, nil)
+}
+
+func (p *Provider) requestWithHeaders(ctx context.Context, method, namespace,
+	endpoint, token string, body, out any, headers map[string]string) error {
 	var r io.Reader
 	if body != nil {
 		b, err := json.Marshal(body)
@@ -587,6 +639,9 @@ func (p *Provider) request(ctx context.Context, method, namespace, endpoint, tok
 	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
+	}
+	for name, value := range headers {
+		req.Header.Set(name, value)
 	}
 	resp, err := p.client.Do(req)
 	if err != nil {

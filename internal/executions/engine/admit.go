@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/google/uuid"
@@ -180,10 +181,39 @@ func admitTask(ctx context.Context, d Deps,
 	if err != nil {
 		return denyFail("TEMPLATE", "argv", err.Error())
 	}
-	env, err := renderEnv(st.Env, sc)
+	secretInfo := map[string]wfvalidate.SecretReferenceInfo{}
+	for handle, use := range spec.Spec.Secrets {
+		if d.SecretReference == nil {
+			return denyFail("SECRET_REFERENCE_NOT_FOUND", "secrets", "secret lookup unavailable")
+		}
+		info, ok := d.SecretReference(ctx, e.TenantID, use.Ref)
+		if !ok {
+			return denyFail("SECRET_REFERENCE_NOT_FOUND", "secrets."+handle, "secret reference not found")
+		}
+		secretInfo[handle] = info
+	}
+	env, err := renderEnv(st.Env, sc, spec.Spec.Secrets, secretInfo)
 	if err != nil {
 		return denyFail("TEMPLATE", "env", err.Error())
 	}
+	var wrapped []string
+	for handle, use := range spec.Spec.Secrets {
+		if use.Use != "wrapped_token" {
+			continue
+		}
+		id, err := uuid.Parse(secretInfo[handle].ID)
+		if err != nil {
+			return denyFail("SECRET_REFERENCE_NOT_FOUND", "secrets."+handle, "secret reference id invalid")
+		}
+		env.SecretRefs = append(env.SecretRefs, admission.SecretEnvRef{
+			Name:        "CUSTOS_SECRET_" + workflowspec.SecretEnvName(handle, use) + "_WRAP_TOKEN",
+			ReferenceID: id, Mode: use.Use, Handle: handle})
+		wrapped = append(wrapped, handle)
+	}
+	slices.Sort(wrapped)
+	slices.SortFunc(env.SecretRefs, func(a, b admission.SecretEnvRef) int {
+		return strings.Compare(a.Handle, b.Handle)
+	})
 	literal := func(src, field string) (string, error) {
 		return renderLiteral(src, sc, field)
 	}
@@ -283,6 +313,7 @@ func admitTask(ctx context.Context, d Deps,
 			SlurmUser:         cluster.ServiceUser,
 			ImpersonationMode: string(cluster.IdentityMode),
 			ShellTask:         st.Type == "shell",
+			WrappedTokenRefs:  wrapped,
 		},
 	}
 	if st.Script != nil {
@@ -502,8 +533,9 @@ func renderArgv(elems []string, sc admitScope) (
 }
 
 // renderEnv renders env values into User literals and Runtime refs.
-func renderEnv(env map[string]string, sc admitScope) (
-	admission.EnvSet, error) {
+func renderEnv(env map[string]string, sc admitScope,
+	uses map[string]workflowspec.SecretUse,
+	infos map[string]wfvalidate.SecretReferenceInfo) (admission.EnvSet, error) {
 	out := admission.EnvSet{
 		User:    map[string]string{},
 		Runtime: map[string]string{},
@@ -512,6 +544,21 @@ func renderEnv(env map[string]string, sc admitScope) (
 		tpl, err := expr.ParseTemplate(s)
 		if err != nil {
 			return out, fmt.Errorf("env %s: %w", k, err)
+		}
+		if e, ok := tpl.SoleExpr(); ok {
+			if p, sole := e.SoleRef(); sole && len(p) == 2 && p[0] == "secrets" {
+				handle := p[1]
+				use, exists := uses[handle]
+				info, found := infos[handle]
+				id, parseErr := uuid.Parse(info.ID)
+				if !exists || !found || use.Use != "env" || parseErr != nil {
+					return out, fmt.Errorf("env %s: invalid secret reference", k)
+				}
+				out.SecretRefs = append(out.SecretRefs, admission.SecretEnvRef{
+					Name: workflowspec.SecretEnvName(handle, use), ReferenceID: id,
+					Mode: "env", Handle: handle})
+				continue
+			}
 		}
 		parts, err := tpl.RenderParts(sc)
 		if err != nil {

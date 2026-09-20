@@ -28,8 +28,7 @@ YAML is accepted at the API and converted to canonical JSON
 
 **v1 limitations (fail closed, all verified by validation):**
 `placement.requirements` and `fanOut.from` are rejected as reserved;
-`spec.secrets` is rejected with `SECRETS_NOT_AVAILABLE` until the
-SecretReference store ships (M6); `software` requirements are accepted
+`software` requirements are accepted
 but left unresolved until the software-environment catalog lands (M7);
 `stageIn`/`stageOut`/`interactive` task types are reserved.
 
@@ -59,8 +58,9 @@ spec:
     env:
       OMP_NUM_THREADS: "{{ task.resources.cpu }}"
 
-  secrets:                         # references by handle; resolved by tenant SecretReference name
+  secrets:                         # tenant SecretReference names
     hfToken: { ref: hf-token, use: env, envName: HF_TOKEN }
+    license: { ref: license-key, use: wrapped_token }
 
   tasks:
     - name: prepare
@@ -132,8 +132,8 @@ hatch, gated accordingly.
 
 Mustache-like `{{ }}` with a **restricted expression language**: dotted
 lookups in `parameters`, `run`, `task`, `item`, `array`, `tasks.<name>.*`,
-`secrets.<handle>` (only inside `env` values of tasks that declared the
-secret), plus comparison/boolean operators and integer arithmetic for `when`
+`secrets.<handle>` (only as the entire env value and only for `use: env`),
+plus comparison/boolean operators and integer arithmetic for `when`
 and `fanOut.count`. No function calls, no loops, no string-to-code. All
 substitutions happen into argv elements or env values, never into shell
 text. One exception: `{{ array.taskId }}` does not render to text — it
@@ -168,10 +168,12 @@ Order:
    nodes, partitions, qos) **and** against the target cluster's
    capabilities when placement is explicit (partition exists, GRES type
    exists, within partition limits).
-7. Secrets: every `secrets.*.ref` resolves to a `SecretReference` in the
-   same tenant that the caller may `secret.reference.use`. Until the
-   SecretReference store ships (M6) any `spec.secrets` entry fails
-   closed with `SECRETS_NOT_AVAILABLE`.
+7. Secrets: every `secrets.*.ref` resolves in the same tenant. Env delivery
+   requires a generic reference allowing `workflow_env`; wrapped delivery
+   requires `wrapped_token` and the platform OpenBao connector. At execution,
+   the persisted requester must still have `secret.reference.use` as owner,
+   tenant-admin, or through a reference scoped to the execution project;
+   otherwise validation ends `FAILED/SECRET_FORBIDDEN`.
 8. Placement: named cluster is bound to the project; requirements
    expressible.
 

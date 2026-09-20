@@ -42,12 +42,13 @@ type jobSubmitDTO struct {
 		Language workflowspec.Language `json:"language"`
 		Body     string                `json:"body"`
 	} `json:"script,omitempty"`
-	ScriptRef  string            `json:"script_ref,omitempty"`
-	Env        map[string]string `json:"env,omitempty"`
-	WorkingDir string            `json:"working_dir,omitempty"`
-	Args       []string          `json:"args,omitempty"`
-	Stdout     string            `json:"stdout,omitempty"`
-	Stderr     string            `json:"stderr,omitempty"`
+	ScriptRef  string                            `json:"script_ref,omitempty"`
+	Env        map[string]string                 `json:"env,omitempty"`
+	Secrets    map[string]workflowspec.SecretUse `json:"secrets,omitempty"`
+	WorkingDir string                            `json:"working_dir,omitempty"`
+	Args       []string                          `json:"args,omitempty"`
+	Stdout     string                            `json:"stdout,omitempty"`
+	Stderr     string                            `json:"stderr,omitempty"`
 }
 
 func jobDTO(j jobs.Job) map[string]any {
@@ -134,7 +135,7 @@ func (h *jobHandlers) submit(w http.ResponseWriter, r *http.Request) {
 	}
 	sin := jobssvc.SubmitInput{
 		Name: in.Name, Cluster: in.Cluster, Partition: in.Partition,
-		QoS: in.QoS, Resources: in.Resources, Env: in.Env,
+		QoS: in.QoS, Resources: in.Resources, Env: in.Env, Secrets: in.Secrets,
 		WorkingDir: in.WorkingDir, Args: in.Args,
 		Stdout: in.Stdout, Stderr: in.Stderr,
 	}

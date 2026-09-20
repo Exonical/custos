@@ -69,8 +69,10 @@ type ResolvedSoftware struct {
 // SecretEnvRef names a secret-injected variable; the value never
 // appears in the spec.
 type SecretEnvRef struct {
-	Name string `json:"name"`
-	Ref  string `json:"ref"`
+	Name        string    `json:"name"`
+	ReferenceID uuid.UUID `json:"reference_id"`
+	Mode        string    `json:"mode"` // env | wrapped_token
+	Handle      string    `json:"handle"`
 }
 
 // EnvSet is the classified environment.

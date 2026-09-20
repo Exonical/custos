@@ -7,6 +7,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -29,6 +30,7 @@ import (
 	"github.com/Exonical/custos/internal/validation/sbatchimport"
 	"github.com/Exonical/custos/internal/workflows"
 	"github.com/Exonical/custos/internal/workflowspec"
+	"github.com/Exonical/custos/internal/workflowspec/expr"
 	wfvalidate "github.com/Exonical/custos/internal/workflowspec/validate"
 )
 
@@ -46,7 +48,7 @@ type ValidationStore interface {
 // Deps wires the service.
 type Deps struct {
 	Repo            workflows.Repository
-	SecretReference func(context.Context, uuid.UUID, string) bool
+	SecretReference func(context.Context, uuid.UUID, string) (wfvalidate.SecretReferenceInfo, bool)
 	Projects        *projectsvc.Service
 	Policies        *policiessvc.Service
 	Clusters        clusters.Repository
@@ -384,8 +386,11 @@ func (s *Service) buildContext(ctx context.Context, scope tenants.Scope,
 	return wfvalidate.Context{
 		ShellAllowed:   vpol.AllowShellTasks,
 		ResourcePolicy: pol,
-		SecretReference: func(name string) bool {
-			return s.d.SecretReference != nil && s.d.SecretReference(ctx, w.TenantID, name)
+		SecretReference: func(name string) (wfvalidate.SecretReferenceInfo, bool) {
+			if s.d.SecretReference == nil {
+				return wfvalidate.SecretReferenceInfo{}, false
+			}
+			return s.d.SecretReference(ctx, w.TenantID, name)
 		},
 		Cluster: func(name string) (admission.Binding,
 			validation.ClusterSnapshot, bool) {
@@ -740,9 +745,55 @@ func (s *Service) PreviewSubmission(ctx context.Context, p authn.Principal,
 		return Preview{}, err
 	}
 	env := map[string]string{}
+	var secretRefs []admission.SecretEnvRef
+	var wrapped []string
 	for k, val := range task.Env {
+		tpl, parseErr := expr.ParseTemplate(val)
+		if parseErr == nil {
+			if e, ok := tpl.SoleExpr(); ok {
+				if path, sole := e.SoleRef(); sole && len(path) == 2 && path[0] == "secrets" {
+					handle := path[1]
+					use := spec.Spec.Secrets[handle]
+					info, found := s.d.SecretReference(ctx, w.TenantID, use.Ref)
+					id, idErr := uuid.Parse(info.ID)
+					if !found || idErr != nil {
+						return Preview{}, apperr.New(apperr.Validation,
+							"SECRET_REFERENCE_NOT_FOUND", "secret reference not found")
+					}
+					secretRefs = append(secretRefs, admission.SecretEnvRef{
+						Name: workflowspec.SecretEnvName(handle, use), ReferenceID: id,
+						Mode: "env", Handle: handle})
+					continue
+				}
+			}
+		}
 		env[k] = val
 	}
+	for handle, use := range spec.Spec.Secrets {
+		if use.Use != "wrapped_token" {
+			continue
+		}
+		info, found := s.d.SecretReference(ctx, w.TenantID, use.Ref)
+		id, idErr := uuid.Parse(info.ID)
+		if !found || idErr != nil {
+			return Preview{}, apperr.New(apperr.Validation,
+				"SECRET_REFERENCE_NOT_FOUND", "secret reference not found")
+		}
+		secretRefs = append(secretRefs, admission.SecretEnvRef{
+			Name:        "CUSTOS_SECRET_" + workflowspec.SecretEnvName(handle, use) + "_WRAP_TOKEN",
+			ReferenceID: id, Mode: use.Use, Handle: handle})
+		wrapped = append(wrapped, handle)
+	}
+	slices.Sort(wrapped)
+	slices.SortFunc(secretRefs, func(a, b admission.SecretEnvRef) int {
+		if a.Handle < b.Handle {
+			return -1
+		}
+		if a.Handle > b.Handle {
+			return 1
+		}
+		return 0
+	})
 	specID := uuid.Must(uuid.NewV7())
 	espec := admission.ExecutionSpec{
 		ID:          specID,
@@ -757,7 +808,7 @@ func (s *Service) PreviewSubmission(ctx context.Context, p authn.Principal,
 		},
 		Partition:   task.Partition,
 		QoS:         task.QoS,
-		Environment: admission.EnvSet{User: env},
+		Environment: admission.EnvSet{User: env, SecretRefs: secretRefs},
 		Payload: admission.PayloadRef{
 			ScriptID:    specID,
 			Digest:      in.Digest,
@@ -770,6 +821,7 @@ func (s *Service) PreviewSubmission(ctx context.Context, p authn.Principal,
 		Security: admission.SecurityContext{
 			SlurmUser:         cluster.ServiceUser,
 			ImpersonationMode: string(cluster.IdentityMode),
+			WrappedTokenRefs:  wrapped,
 		},
 	}
 	built, denial := admission.Build(admission.BuildInput{

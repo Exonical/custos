@@ -2,11 +2,21 @@ package validate
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/Exonical/custos/internal/admission"
 	"github.com/Exonical/custos/internal/validation"
 	"github.com/Exonical/custos/internal/workflowspec"
 )
+
+// SecretReferenceInfo is the non-secret metadata required by validation and
+// admission.
+type SecretReferenceInfo struct {
+	ID            string
+	Kind          string
+	AllowedUses   []string
+	ConnectorKind string
+}
 
 // Context supplies everything steps 5-8 need from the outside world;
 // the workflows service builds it per request.
@@ -21,9 +31,8 @@ type Context struct {
 	// binding and the cluster's capability snapshot; ok=false means no
 	// enabled binding exists.
 	Cluster func(name string) (admission.Binding, validation.ClusterSnapshot, bool)
-	// SecretReference resolves a tenant SecretReference name. It validates
-	// bindings for M6-B while static validation keeps spec.secrets fail-closed.
-	SecretReference func(name string) bool
+	// SecretReference resolves non-secret tenant SecretReference metadata.
+	SecretReference func(name string) (SecretReferenceInfo, bool)
 	// DefaultCluster is the placement used when neither the task nor
 	// the workflow names one ("" → no capability checks possible).
 	DefaultCluster string
@@ -35,9 +44,33 @@ func Contextual(w workflowspec.Workflow, ctx Context) []FieldError {
 	var errs []FieldError
 	if ctx.SecretReference != nil {
 		for handle, use := range w.Spec.Secrets {
-			if !ctx.SecretReference(use.Ref) {
-				errs = append(errs, FieldError{Path: "spec.secrets." + handle + ".ref",
+			info, ok := ctx.SecretReference(use.Ref)
+			base := "spec.secrets." + handle
+			if !ok {
+				errs = append(errs, FieldError{Path: base + ".ref",
 					Code: "SECRET_REFERENCE_NOT_FOUND", Message: "secret reference not found"})
+				continue
+			}
+			switch use.Use {
+			case "env":
+				if info.Kind != "generic" {
+					errs = append(errs, FieldError{Path: base + ".use",
+						Code: "SECRET_ENV_KIND", Message: "env delivery requires a generic secret"})
+				}
+				if !slices.Contains(info.AllowedUses, "workflow_env") {
+					errs = append(errs, FieldError{Path: base + ".use",
+						Code: "SECRET_USE_NOT_ALLOWED", Message: "reference does not allow workflow_env"})
+				}
+			case "wrapped_token":
+				if !slices.Contains(info.AllowedUses, "wrapped_token") {
+					errs = append(errs, FieldError{Path: base + ".use",
+						Code: "SECRET_USE_NOT_ALLOWED", Message: "reference does not allow wrapped_token"})
+				}
+				if info.ConnectorKind != "platform-openbao" {
+					errs = append(errs, FieldError{Path: base + ".use",
+						Code:    "WRAPPED_TOKEN_UNSUPPORTED_CONNECTOR",
+						Message: "wrapped tokens require the platform OpenBao connector"})
+				}
 			}
 		}
 	}

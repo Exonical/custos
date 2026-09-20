@@ -81,7 +81,7 @@
       "additionalProperties": false,
       "properties": {
         "ref": {"type": "string"},
-        "use": {"enum": ["env"]},
+        "use": {"enum": ["env", "wrapped_token"]},
         "envName": {"type": "string"}
       }
     },

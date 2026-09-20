@@ -5,6 +5,8 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"strings"
+	"unicode"
 
 	"gopkg.in/yaml.v3"
 
@@ -75,8 +77,25 @@ type Defaults struct {
 // SecretUse binds a SecretReference to a consumption mode.
 type SecretUse struct {
 	Ref     string `json:"ref"`
-	Use     string `json:"use"` // "env"
+	Use     string `json:"use"` // env | wrapped_token
 	EnvName string `json:"envName,omitempty"`
+}
+
+// SecretEnvName returns the explicit envName or the handle converted to
+// upper snake case.
+func SecretEnvName(handle string, use SecretUse) string {
+	if use.EnvName != "" {
+		return use.EnvName
+	}
+	var b strings.Builder
+	for _, r := range handle {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_' {
+			b.WriteRune(unicode.ToUpper(r))
+		} else {
+			b.WriteByte('_')
+		}
+	}
+	return b.String()
 }
 
 // Execution selects the engine strategy (debugging aid; v1 ships

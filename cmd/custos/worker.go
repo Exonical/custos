@@ -90,6 +90,7 @@ func cmdWorker(parent context.Context, configPath string, lookupEnv config.Looku
 		defer func() { _ = sdeps.OpenBao.Close() }()
 	}
 	secretRepo := secretpg.New(pool)
+	tenantRepo := tenantpg.New(pool)
 	secretRuntime := secretrefs.NewRuntime(secretRepo, &secretrefs.ConnectorFactory{
 		Platform: sdeps.OpenBao,
 		Policy: safehttp.DialPolicy{AllowPrivate: sdeps.Policy.AllowPrivate,
@@ -102,7 +103,8 @@ func cmdWorker(parent context.Context, configPath string, lookupEnv config.Looku
 		platformNS = cfg.Secrets.OpenBao.Namespace
 	}
 	secretSvc := secretrefs.NewService(secretRepo, secretRuntime, authz.RBAC{},
-		recorder, sdeps.OpenBao, platformNS)
+		recorder, sdeps.OpenBao, platformNS, tenantRepo)
+	secretSvc.SetMeterProvider(prov.Meter)
 	clusterRepo := clusterpg.New(pool)
 	q.Register(clustersync.Kind, clustersync.Handler(clusterRepo,
 		sdeps.Factory, cfg.Worker.ClusterSyncInterval,
@@ -122,6 +124,7 @@ func cmdWorker(parent context.Context, configPath string, lookupEnv config.Looku
 		Execs:    execpg.New(pool),
 		Audit:    recorder,
 		Metrics:  jobsworker.NewMetrics(prov.Meter, jobpg.New(pool)),
+		Secrets:  secretSvc,
 	}
 	q.Register(jobssvc.KindSubmit, jobsworker.Submit(jdeps))
 	q.Register(jobsworker.KindReconcile, jobsworker.Reconcile(jdeps))
@@ -135,22 +138,26 @@ func cmdWorker(parent context.Context, configPath string, lookupEnv config.Looku
 		logger.ErrorContext(ctx, "validation setup", "error", err)
 		return 1
 	}
-	tenantRepo := tenantpg.New(pool)
 	projectRepo := projectpg.New(pool)
 	execDeps := engine.Deps{
 		Execs:           execpg.New(pool),
 		Workflows:       wfpg.New(pool),
-		SecretReference: secretSvc.ReferenceExists,
-		Policies:        policiesvc.NewService(policypg.New(pool), authz.RBAC{}, recorder),
-		VPolicy:         vdeps.VPolicy,
-		Clusters:        clusterRepo,
-		Projects:        projectsvc.NewService(projectRepo, projectRepo, projectRepo, tenantRepo, clusterRepo, authz.RBAC{}, recorder),
-		Pipeline:        vdeps.Pipeline,
-		Validations:     vdeps.Store,
-		Scripts:         scriptpg.New(pool),
-		Jobs:            jobpg.New(pool),
-		Audit:           recorder,
-		Metrics:         vdeps.Metrics,
+		SecretReference: secretSvc.ReferenceInfo,
+		AuthorizeSecretUse: func(ctx context.Context, tenantID, projectID,
+			userID uuid.UUID, name string) error {
+			_, err := secretSvc.AuthorizeUserUse(ctx, tenantID, projectID, userID, name)
+			return err
+		},
+		Policies:    policiesvc.NewService(policypg.New(pool), authz.RBAC{}, recorder),
+		VPolicy:     vdeps.VPolicy,
+		Clusters:    clusterRepo,
+		Projects:    projectsvc.NewService(projectRepo, projectRepo, projectRepo, tenantRepo, clusterRepo, authz.RBAC{}, recorder),
+		Pipeline:    vdeps.Pipeline,
+		Validations: vdeps.Store,
+		Scripts:     scriptpg.New(pool),
+		Jobs:        jobpg.New(pool),
+		Audit:       recorder,
+		Metrics:     vdeps.Metrics,
 	}
 	q.Register(engine.KindAdvance, engine.Advance(execDeps))
 	q.Register(engine.KindAdmit, engine.Admit(execDeps))

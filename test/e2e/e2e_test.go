@@ -20,6 +20,7 @@ func TestE2E(t *testing.T) {
 		wfID, wfVerID              string
 		execID                     string
 		execBody                   map[string]any
+		secretRefName              string
 	)
 	// Per-run suffix so re-runs against the same stack don't collide on
 	// unique resource names (workflows).
@@ -84,9 +85,18 @@ func TestE2E(t *testing.T) {
 		tokBob = token(t, "bob", "")
 		status, body := api(t, http.MethodGet, "/tenants/acme",
 			nil, tokBob, nil)
+		if status == http.StatusOK {
+			_, bobMe := api(t, http.MethodGet, "/me", nil, tokBob, nil)
+			bobID, _ := bobMe["user_id"].(string)
+			status, body = api(t, http.MethodDelete,
+				"/tenants/acme/members/"+bobID, nil, tokAdmin, nil)
+			if status != http.StatusNoContent {
+				t.Fatalf("remove bob from prior run: HTTP %d: %v", status, body)
+			}
+			status, body = api(t, http.MethodGet, "/tenants/acme", nil, tokBob, nil)
+		}
 		if status != http.StatusNotFound {
-			t.Fatalf("bob /tenants/acme: HTTP %d (want 404): %v",
-				status, body)
+			t.Fatalf("bob /tenants/acme: HTTP %d (want 404): %v", status, body)
 		}
 	})
 
@@ -219,9 +229,11 @@ func TestE2E(t *testing.T) {
 	})
 
 	t.Run("03c_secret_connectors_and_references", func(t *testing.T) {
+		secretRefName = "hf-token" + runSfx
 		status, refs := api(t, http.MethodPost, "/tenants/acme/secret-references",
-			map[string]any{"name": "hf-token" + runSfx, "path": "users/" + aliceID + "/hf-token",
-				"key": "value", "kind": "api_token", "allowed_uses": []string{"workflow_env"}},
+			map[string]any{"name": secretRefName, "path": "users/" + aliceID + "/hf-token",
+				"key": "value", "kind": "generic",
+				"allowed_uses": []string{"workflow_env", "wrapped_token"}},
 			tokAlice, nil)
 		want(t, status, refs, http.StatusCreated, "create default secret reference")
 		refID, _ := refs["id"].(string)
@@ -577,6 +589,108 @@ func TestE2E(t *testing.T) {
 		if replay["id"] != execBody["id"] {
 			t.Fatalf("replay returned %v, want %v",
 				replay["id"], execBody["id"])
+		}
+	})
+
+	t.Run("08b_workflow_secret_delivery", func(t *testing.T) {
+		upload := func(script string) string {
+			s, body := api(t, http.MethodPost, "/tenants/acme/scripts",
+				map[string]any{"language": "bash", "script": script}, tokAlice, nil)
+			want(t, s, body, http.StatusOK, "upload secret workflow script")
+			return body["digest"].(string)
+		}
+		create := func(name, mode, script string) (string, string) {
+			status, wf := api(t, http.MethodPost, "/tenants/acme/workflows",
+				map[string]any{"project": projectID, "name": name}, tokAlice, nil)
+			want(t, status, wf, http.StatusCreated, "create secret workflow")
+			wid := wf["id"].(string)
+			use := map[string]any{"ref": secretRefName, "use": mode}
+			task := map[string]any{"name": "run", "type": "batch",
+				"resources": map[string]any{"tasks": 1, "walltime": "2m"},
+				"script":    map[string]any{"ref": upload(script), "language": "bash"}}
+			if mode == "env" {
+				use["envName"] = "HF_TOKEN"
+				task["env"] = map[string]any{"HF_TOKEN": "{{ secrets.hf }}"}
+			}
+			doc := map[string]any{"apiVersion": "custos.io/v1alpha1", "kind": "Workflow",
+				"metadata": map[string]any{"name": name}, "spec": map[string]any{
+					"placement": map[string]any{"cluster": "e2e"},
+					"defaults":  map[string]any{"partition": "debug", "qos": "normal"},
+					"secrets":   map[string]any{"hf": use}, "tasks": []any{task}}}
+			status, ver := api(t, http.MethodPost,
+				"/tenants/acme/workflows/"+wid+"/versions", doc, tokAlice, nil)
+			want(t, status, ver, http.StatusCreated, "create secret workflow version")
+			vid := ver["id"].(string)
+			status, body := api(t, http.MethodPost,
+				fmt.Sprintf("/tenants/acme/workflows/%s/versions/%s/publish", wid, vid),
+				nil, tokAlice, nil)
+			want(t, status, body, http.StatusOK, "publish secret workflow")
+			return wid, vid
+		}
+		execute := func(tok, wid, vid, suffix string) string {
+			status, ex := api(t, http.MethodPost, "/tenants/acme/workflow-executions",
+				map[string]any{"workflow": wid, "version": vid}, tok,
+				map[string]string{"Idempotency-Key": "secret-" + suffix + runSfx})
+			want(t, status, ex, http.StatusAccepted, "execute secret workflow")
+			return ex["id"].(string)
+		}
+
+		envID, envVer := create("secret-env"+runSfx, "env",
+			`test -n "$HF_TOKEN" && echo ok`)
+		envExec := execute(tokAlice, envID, envVer, "env")
+		poll(t, "env-secret execution SUCCEEDED", 180*time.Second, func() bool {
+			_, body := api(t, http.MethodGet,
+				"/tenants/acme/workflow-executions/"+envExec, nil, tokAlice, nil)
+			return body["state"] == "SUCCEEDED"
+		})
+
+		wrapID, wrapVer := create("secret-wrap"+runSfx, "wrapped_token", "sleep 2")
+		wrapExec := execute(tokAlice, wrapID, wrapVer, "wrap")
+		poll(t, "wrapped-secret execution SUCCEEDED", 180*time.Second, func() bool {
+			_, body := api(t, http.MethodGet,
+				"/tenants/acme/workflow-executions/"+wrapExec, nil, tokAlice, nil)
+			return body["state"] == "SUCCEEDED"
+		})
+		_, tasks := api(t, http.MethodGet,
+			"/tenants/acme/workflow-executions/"+wrapExec+"/tasks", nil, tokAlice, nil)
+		items := tasks["tasks"].([]any)
+		taskID := items[0].(map[string]any)["id"].(string)
+		status, frozen := api(t, http.MethodGet,
+			fmt.Sprintf("/tenants/acme/workflow-executions/%s/tasks/%s/execution-spec", wrapExec, taskID),
+			nil, tokAlice, nil)
+		want(t, status, frozen, http.StatusOK, "wrapped execution spec")
+		security := frozen["security"].(map[string]any)
+		if refs, _ := security["wrapped_token_refs"].([]any); len(refs) != 1 || refs[0] != "hf" {
+			t.Fatalf("wrapped_token_refs: %v", security)
+		}
+		auditOut := cexec(t, "postgres", "sh", "-c",
+			`PGPASSWORD=$(cat /run/secrets/postgres-superuser-password) psql -U postgres -d custos -tAc "SELECT count(*) FROM audit_events WHERE action='secret.accessed' AND details->>'purpose'='wrapped_token'"`)
+		if strings.TrimSpace(auditOut) == "0" {
+			t.Fatal("wrapped_token secret.accessed audit event missing")
+		}
+		leaks := cexec(t, "postgres", "sh", "-c",
+			`PGPASSWORD=$(cat /run/secrets/postgres-superuser-password) psql -U postgres -d custos -tAc "SELECT (SELECT count(*) FROM audit_events WHERE details::text LIKE '%e2e-hf-token%') + (SELECT count(*) FROM jobs j WHERE row_to_json(j)::text LIKE '%e2e-hf-token%')"`)
+		if strings.TrimSpace(leaks) != "0" {
+			t.Fatalf("secret value persisted in jobs/audit: %s", leaks)
+		}
+
+		_, bobMe := api(t, http.MethodGet, "/me", nil, tokBob, nil)
+		bobID := bobMe["user_id"].(string)
+		status, body := api(t, http.MethodPost, "/tenants/acme/members",
+			map[string]any{"user_id": bobID, "roles": []string{"researcher"}}, tokAdmin, nil)
+		if status != http.StatusCreated && status != http.StatusConflict {
+			t.Fatalf("add bob: HTTP %d: %v", status, body)
+		}
+		bobExec := execute(tokBob, envID, envVer, "bob")
+		poll(t, "bob secret execution forbidden", 60*time.Second, func() bool {
+			_, body := api(t, http.MethodGet,
+				"/tenants/acme/workflow-executions/"+bobExec, nil, tokBob, nil)
+			return body["state"] == "FAILED" && body["stateReason"] == "SECRET_FORBIDDEN"
+		})
+		status, body = api(t, http.MethodDelete,
+			"/tenants/acme/members/"+bobID, nil, tokAdmin, nil)
+		if status != http.StatusNoContent {
+			t.Fatalf("remove bob: HTTP %d: %v", status, body)
 		}
 	})
 

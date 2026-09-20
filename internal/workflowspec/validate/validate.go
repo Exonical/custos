@@ -25,6 +25,7 @@ func fe(path, code, msg string) FieldError {
 }
 
 var nameRe = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`)
+var envNameRe = regexp.MustCompile(`^[A-Z_][A-Z0-9_]*$`)
 
 // Task types of docs/workflows.md §Task types.
 const (
@@ -109,10 +110,76 @@ func checkDocument(w workflowspec.Workflow) []FieldError {
 			"PLACEMENT_REQUIREMENTS_UNSUPPORTED",
 			"requirement-based placement is reserved for a later version"))
 	}
-	if len(w.Spec.Secrets) > 0 {
-		errs = append(errs, fe("spec.secrets",
-			"SECRETS_NOT_AVAILABLE",
-			"secret references are unavailable until the secrets store ships (M6)"))
+	envNames := map[string]string{}
+	for i, task := range w.Spec.Tasks {
+		for name := range task.Env {
+			if strings.HasPrefix(name, "CUSTOS_SECRET_") || name == "CUSTOS_BAO_ADDR" ||
+				name == "CUSTOS_BAO_NAMESPACE" {
+				errs = append(errs, fe(fmt.Sprintf("spec.tasks[%d].env.%s", i, name),
+					"SECRET_ENV_CONTROLLED", "environment name is reserved for secret delivery"))
+			}
+		}
+	}
+	for handle, use := range w.Spec.Secrets {
+		base := "spec.secrets." + handle
+		if use.Ref == "" {
+			errs = append(errs, fe(base+".ref", "SECRET_REFERENCE_REQUIRED",
+				"secret reference name is required"))
+		}
+		if use.Use != "env" && use.Use != "wrapped_token" {
+			errs = append(errs, fe(base+".use", "SECRET_USE_INVALID",
+				"secret use must be env or wrapped_token"))
+			continue
+		}
+		if use.Use == "wrapped_token" && use.EnvName != "" {
+			errs = append(errs, fe(base+".envName", "SECRET_ENV_NAME_UNUSED",
+				"envName is only valid with use: env"))
+			continue
+		}
+		if use.Use != "env" {
+			continue
+		}
+		name := workflowspec.SecretEnvName(handle, use)
+		if !envNameRe.MatchString(name) {
+			errs = append(errs, fe(base+".envName", "SECRET_ENV_NAME_INVALID",
+				"secret envName must match ^[A-Z_][A-Z0-9_]*$"))
+		}
+		if strings.HasPrefix(name, "CUSTOS_") {
+			errs = append(errs, fe(base+".envName", "SECRET_ENV_CONTROLLED",
+				"secret envName collides with a Custos-controlled variable"))
+		}
+		if previous, ok := envNames[name]; ok {
+			errs = append(errs, fe(base+".envName", "SECRET_ENV_COLLISION",
+				"secret envName also belongs to "+previous))
+		} else {
+			envNames[name] = handle
+		}
+	}
+	isHandle := func(value, handle string) bool {
+		tpl, err := expr.ParseTemplate(value)
+		if err != nil {
+			return false
+		}
+		e, ok := tpl.SoleExpr()
+		if !ok {
+			return false
+		}
+		p, ok := e.SoleRef()
+		return ok && len(p) == 2 && p[0] == "secrets" && p[1] == handle
+	}
+	for name, handle := range envNames {
+		for i, task := range w.Spec.Tasks {
+			if value, exists := task.Env[name]; exists && !isHandle(value, handle) {
+				errs = append(errs, fe(fmt.Sprintf("spec.tasks[%d].env.%s", i, name),
+					"SECRET_ENV_COLLISION", "environment name collides with secret "+handle))
+			}
+		}
+		if w.Spec.Defaults != nil {
+			if value, exists := w.Spec.Defaults.Env[name]; exists && !isHandle(value, handle) {
+				errs = append(errs, fe("spec.defaults.env."+name,
+					"SECRET_ENV_COLLISION", "environment name collides with secret "+handle))
+			}
+		}
 	}
 	return errs
 }
@@ -390,6 +457,21 @@ func checkExprs(w workflowspec.Workflow, _ map[string]bool) []FieldError {
 			p, ok := e.SoleRef()
 			return ok && p.String() == "array.taskId"
 		}
+		secretWholeOK := func(tpl *expr.Template, refs []expr.Path) bool {
+			var secret bool
+			for _, r := range refs {
+				secret = secret || len(r) > 0 && r[0] == "secrets"
+			}
+			if !secret {
+				return true
+			}
+			e, ok := tpl.SoleExpr()
+			if !ok {
+				return false
+			}
+			p, ok := e.SoleRef()
+			return ok && len(p) == 2 && p[0] == "secrets"
+		}
 		parse := func(src, path string, bare, allowRuntime bool) {
 			if bare {
 				e, err := expr.BareExpr(src)
@@ -422,6 +504,10 @@ func checkExprs(w workflowspec.Workflow, _ map[string]bool) []FieldError {
 					"REF_ARRAY_RUNTIME_WHOLE",
 					"array.taskId renders a runtime value and is only valid as a whole argv element or env value"))
 			}
+			if !secretWholeOK(tpl, refs) {
+				errs = append(errs, fe(path, "REF_SECRET_WHOLE",
+					"secrets.<handle> must be the whole env value"))
+			}
 			checkRefs(refs, sc, path)
 		}
 		for j, c := range t.Command {
@@ -447,6 +533,10 @@ func checkExprs(w workflowspec.Workflow, _ map[string]bool) []FieldError {
 					fmt.Sprintf("%s.env.%s", base, k),
 					"REF_ARRAY_RUNTIME_WHOLE",
 					"array.taskId renders a runtime value and is only valid as a whole env value"))
+			}
+			if !secretWholeOK(tpl, refs) {
+				errs = append(errs, fe(fmt.Sprintf("%s.env.%s", base, k),
+					"REF_SECRET_WHOLE", "secrets.<handle> must be the whole env value"))
 			}
 			checkRefs(refs, sc2, fmt.Sprintf("%s.env.%s", base, k))
 		}
@@ -483,9 +573,24 @@ func checkExprs(w workflowspec.Workflow, _ map[string]bool) []FieldError {
 					"spec.defaults.env."+k, "EXPR_PARSE", err.Error()))
 				continue
 			}
-			for _, r := range tpl.Refs() {
+			refs := tpl.Refs()
+			for _, r := range refs {
 				errs = append(errs, checkRef(r, sc,
 					"spec.defaults.env."+k)...)
+			}
+			for _, r := range refs {
+				if len(r) > 0 && r[0] == "secrets" {
+					e, ok := tpl.SoleExpr()
+					p, sole := expr.Path(nil), false
+					if ok {
+						p, sole = e.SoleRef()
+					}
+					if !sole || len(p) != 2 || p[0] != "secrets" {
+						errs = append(errs, fe("spec.defaults.env."+k,
+							"REF_SECRET_WHOLE", "secrets.<handle> must be the whole env value"))
+					}
+					break
+				}
 			}
 		}
 		if d.WorkingDirectory != "" {

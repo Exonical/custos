@@ -198,7 +198,8 @@ func Wrapper(spec admission.ExecutionSpec, payload []byte) (string, error) {
 
 // JobSubmission maps an ExecutionSpec + wrapper to the neutral Slurm
 // submission. Pure: every field comes from the spec, never payload text.
-// SecretRefs are resolved later (M6) and are not part of Environment.
+// SecretRefs appear only as [SECRET] preview markers; the worker replaces them
+// immediately before SubmitJob.
 func JobSubmission(spec admission.ExecutionSpec, wrapper string) slurm.JobSubmission {
 	env := make(map[string]string,
 		len(spec.Environment.Controlled)+len(spec.Environment.User))
@@ -207,6 +208,9 @@ func JobSubmission(spec admission.ExecutionSpec, wrapper string) slurm.JobSubmis
 	}
 	for n, v := range spec.Environment.User {
 		env[n] = v
+	}
+	for _, ref := range spec.Environment.SecretRefs {
+		env[ref.Name] = "[SECRET]"
 	}
 	sub := slurm.JobSubmission{
 		Name:        "custos-" + spec.ID.String(),

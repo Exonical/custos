@@ -8,9 +8,8 @@
 - Values are read at use time, held only for the operation, and wiped where the
   type allows. They never enter PostgreSQL, logs, audit details, metrics,
   traces, or API responses.
-- M6-A implements providers, connectors, references, cluster credentials, and
-  safe connectivity tests. Job delivery is M6-B and remains fail-closed with
-  `SECRETS_NOT_AVAILABLE`.
+- M6 implements providers, connectors, references, cluster credentials, and
+  submit-time environment or response-wrapped-token delivery.
 
 ## Platform OpenBao
 
@@ -138,10 +137,65 @@ secret-dependent work closed; resolution failures retain durable-work backoff. R
 `custos_secrets_resolve_total{kind,result}` with bounded connector kinds and
 results; labels never contain tenant, path, connector, or secret identifiers.
 
-## Delivery to jobs (M6-B)
+## Delivery to jobs
 
-Environment injection and response-wrapped short-lived tokens are deliberately
-not implemented in M6-A. Workflow `spec.secrets` names are available to the
-contextual lookup hook, but static validation continues to reject every use
-with `SECRETS_NOT_AVAILABLE`. Jobs never receive the platform token, cluster
-credentials, connector credentials, or database credentials.
+Workflow and ad-hoc requests declare handles:
+
+```yaml
+secrets:
+  hf:
+    ref: hf-token
+    use: env                 # env | wrapped_token
+    envName: HF_TOKEN        # env only; defaults to HF
+```
+
+`envName` must match `^[A-Z_][A-Z0-9_]*$` and cannot collide with a
+Custos-controlled variable. An env-mode reference must be `kind: generic` and
+allow `workflow_env`. The template `{{ secrets.hf }}` is legal only as an
+entire task env value; values cannot be interpolated into argv, paths, or larger
+strings. Wrapped handles are not template values. They require
+`allowed_uses: [wrapped_token]` and the `platform-openbao` connector.
+
+Admission freezes only env name, handle, mode, and reference UUID in the
+`ExecutionSpec`; `Security.WrappedTokenRefs` lists wrapped handles. Values are
+resolved by `job.submit` immediately before the slurmrestd request and exist
+only in `JobSubmission.Environment`. Preview responses show `[SECRET]`. Lost
+submit adoption happens before resolution, so retries never fetch a second
+value after Slurm already accepted the job. Values are wiped after the request.
+Transient provider failures keep the job `SUBMITTING`; forbidden/missing
+references fail it with `SECRET_UNAVAILABLE`.
+
+Env delivery places the raw value in the Slurm environment. Sites must account
+for its visibility to the job owner through Slurm inspection and to privileged
+node administrators.
+
+Wrapped delivery creates an idempotent `ref-<reference-id>` policy allowing
+read of exactly the reference's KV data and metadata paths. The child token TTL
+is job walltime plus 15 minutes, capped at 24 hours, with two uses and no
+parent. OpenBao response-wraps it for one hour. Custos submits:
+
+```text
+CUSTOS_SECRET_<HANDLE>_WRAP_TOKEN
+CUSTOS_SECRET_<HANDLE>_PATH
+CUSTOS_SECRET_<HANDLE>_KEY
+CUSTOS_BAO_ADDR
+CUSTOS_BAO_NAMESPACE
+```
+
+The `bao` CLI is a site prerequisite on compute nodes. A job may unwrap once:
+
+```sh
+export BAO_ADDR="$CUSTOS_BAO_ADDR" BAO_NAMESPACE="$CUSTOS_BAO_NAMESPACE"
+child_json=$(BAO_TOKEN="$CUSTOS_SECRET_HF_WRAP_TOKEN" bao unwrap -format=json)
+child_token=$(printf '%s' "$child_json" | jq -r '.auth.client_token')
+BAO_TOKEN="$child_token" bao read -format=json "$CUSTOS_SECRET_HF_PATH" |
+  jq -r --arg key "$CUSTOS_SECRET_HF_KEY" '.data.data[$key]'
+```
+
+Without `bao`, call `POST /v1/sys/wrapping/unwrap` with the wrapping token in
+`X-Vault-Token`, then use the returned child token against the delivered path.
+The wrap TTL limits the theft window; the per-reference policy limits impact.
+Jobs never receive the platform token, cluster credentials, connector
+credentials, or database credentials. Each delivery emits a value-free
+`secret.accessed` audit event and
+`custos_secrets_delivered_total{mode,result}`.

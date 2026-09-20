@@ -28,6 +28,7 @@ path "sys/namespaces/tenants" { capabilities = ["create", "update", "read"] }
 path "tenants/sys/namespaces/*" { capabilities = ["create", "update", "read"] }
 path "tenants/+/sys/mounts/kv" { capabilities = ["create", "update", "read"] }
 path "tenants/+/sys/policies/acl/tenant-*" { capabilities = ["create", "update", "read"] }
+path "tenants/+/sys/policies/acl/ref-*" { capabilities = ["create", "update", "read"] }
 path "tenants/+/auth/token/create-orphan" { capabilities = ["create", "update", "sudo"] }
 path "tenants/+/kv/data/connectors/*" { capabilities = ["create", "update", "read", "delete"] }
 EOF

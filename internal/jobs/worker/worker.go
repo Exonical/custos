@@ -24,6 +24,8 @@ import (
 	"github.com/Exonical/custos/internal/platform/apperr"
 	"github.com/Exonical/custos/internal/platform/workqueue"
 	"github.com/Exonical/custos/internal/scripts"
+	"github.com/Exonical/custos/internal/secretrefs"
+	"github.com/Exonical/custos/internal/secrets"
 	"github.com/Exonical/custos/internal/slurm"
 	"github.com/Exonical/custos/internal/submission"
 	"github.com/Exonical/custos/internal/tenants"
@@ -40,6 +42,11 @@ const (
 	idemExpireEvery = time.Hour
 )
 
+// SecretDelivery resolves or wraps one reference at submit time.
+type SecretDelivery interface {
+	Deliver(context.Context, secretrefs.DeliveryRequest) (secretrefs.DeliveredSecret, error)
+}
+
 // Deps wires the handlers.
 type Deps struct {
 	Jobs     jobs.Repository
@@ -50,6 +57,7 @@ type Deps struct {
 	Execs    executions.Repository
 	Audit    audit.Recorder
 	Metrics  *Metrics // optional
+	Secrets  SecretDelivery
 }
 
 func jobID(it workqueue.Item) (uuid.UUID, error) {
@@ -128,6 +136,25 @@ func Submit(d Deps) workqueue.Handler {
 			return integrityFailure(ctx, d, j, err)
 		}
 		sub := submission.JobSubmission(j.ExecutionSpec, wrapper)
+		values, err := deliverSecrets(ctx, d, j, &sub)
+		if err != nil {
+			for i := range values {
+				values[i].Wipe()
+			}
+			if apperr.Is(err, apperr.Forbidden) || apperr.Is(err, apperr.NotFound) ||
+				apperr.Is(err, apperr.Validation) {
+				reason := "SECRET_UNAVAILABLE"
+				_, terr := transition(ctx, d, j, jobs.Patch{State: ptr(jobs.StateFailed),
+					Reason: &reason, EndedAt: ptr(time.Now().UTC())})
+				return terr
+			}
+			return err
+		}
+		defer func() {
+			for i := range values {
+				values[i].Wipe()
+			}
+		}()
 		ref, err := cl.SubmitJob(ctx, sub)
 		if err != nil {
 			if errors.Is(err, slurm.ErrUnavailable) {
@@ -159,6 +186,48 @@ func Submit(d Deps) workqueue.Handler {
 	}
 }
 
+func deliverSecrets(ctx context.Context, d Deps, j jobs.Job,
+	sub *slurm.JobSubmission) ([]secrets.Value, error) {
+	refs := j.ExecutionSpec.Environment.SecretRefs
+	if len(refs) == 0 {
+		return nil, nil
+	}
+	if d.Secrets == nil {
+		return nil, apperr.New(apperr.Unavailable, "SECRETS_UNAVAILABLE",
+			"secret delivery service unavailable")
+	}
+	var executionID *uuid.UUID
+	if j.TaskExecutionID != nil && d.Execs != nil {
+		if task, err := d.Execs.GetTaskByJob(ctx, tenants.PlatformScope(), j.ID); err == nil {
+			executionID = &task.ExecutionID
+		}
+	}
+	values := make([]secrets.Value, 0, len(refs))
+	for _, ref := range refs {
+		out, err := d.Secrets.Deliver(ctx, secretrefs.DeliveryRequest{
+			TenantID: j.TenantID, ReferenceID: ref.ReferenceID, Mode: ref.Mode,
+			Walltime: time.Duration(j.ExecutionSpec.Resources.WalltimeSeconds) * time.Second,
+			JobID:    j.ID, ExecutionID: executionID, TaskID: j.TaskExecutionID,
+		})
+		if err != nil {
+			return values, err
+		}
+		values = append(values, out.Value)
+		switch ref.Mode {
+		case "env":
+			sub.Environment[ref.Name] = string(out.Value.Reveal())
+		case "wrapped_token":
+			prefix := strings.TrimSuffix(ref.Name, "_WRAP_TOKEN")
+			sub.Environment[ref.Name] = string(out.Value.Reveal())
+			sub.Environment[prefix+"_PATH"] = out.Path
+			sub.Environment[prefix+"_KEY"] = out.Key
+			sub.Environment["CUSTOS_BAO_ADDR"] = out.Address
+			sub.Environment["CUSTOS_BAO_NAMESPACE"] = out.Namespace
+		}
+	}
+	return values, nil
+}
+
 // findByName looks up an existing scheduler job by the deterministic
 // custos-<uuid> name, falling back to accounting records from the last
 // 24h when the queue shows nothing.
@@ -169,7 +238,9 @@ func findByName(ctx context.Context, cl slurm.Cluster, acct slurm.Accounting,
 		return nil, err
 	}
 	for i := range list {
-		return &list[i], nil
+		if list[i].Name == name {
+			return &list[i], nil
+		}
 	}
 	if acct == nil {
 		return nil, nil
@@ -180,14 +251,16 @@ func findByName(ctx context.Context, cl slurm.Cluster, acct slurm.Accounting,
 	if err != nil {
 		return nil, nil // accounting is advisory; never blocks submit
 	}
-	if len(recs) == 0 {
-		return nil, nil
+	for _, r := range recs {
+		if r.Name != name {
+			continue
+		}
+		return &slurm.Job{
+			ID: r.ID, Name: r.Name, State: r.State, ExitCode: r.ExitCode,
+			SubmitTime: r.StartTime, StartTime: r.StartTime, EndTime: r.EndTime,
+		}, nil
 	}
-	r := recs[0]
-	return &slurm.Job{
-		ID: r.ID, Name: r.Name, State: r.State, ExitCode: r.ExitCode,
-		SubmitTime: r.StartTime, StartTime: r.StartTime, EndTime: r.EndTime,
-	}, nil
+	return nil, nil
 }
 
 // adopt records an existing scheduler job instead of resubmitting.
@@ -215,7 +288,10 @@ func adopt(ctx context.Context, d Deps, j jobs.Job, sj slurm.Job,
 	nj, err := transition(ctx, d, j, p)
 	if err != nil {
 		if apperr.Is(err, apperr.Conflict) {
-			return nil // concurrent handler won; idempotent
+			// A sweep may have advanced the optimistic version without changing
+			// SUBMITTING. Re-run this same item so it reloads the row; if another
+			// handler truly progressed it, Submit exits idempotently.
+			return workqueue.RescheduleAt(time.Now().Add(time.Second))
 		}
 		return err
 	}

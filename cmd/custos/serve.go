@@ -160,7 +160,8 @@ func cmdServe(parent context.Context, configPath string, lookupEnv config.Lookup
 		platformNS = cfg.Secrets.OpenBao.Namespace
 	}
 	secretSvc := secretrefs.NewService(secretRepo, secretRuntime, authz.RBAC{},
-		recorder, sdeps.OpenBao, platformNS)
+		recorder, sdeps.OpenBao, platformNS, tenantRepo)
+	secretSvc.SetMeterProvider(prov.Meter)
 	tenantSvc := tenantsvc.NewService(tenantRepo, tenantRepo, tenantRepo,
 		userRepo, authz.RBAC{}, recorder, secretSvc)
 	clusterRepo := clusterpg.New(pool)
@@ -201,11 +202,12 @@ func cmdServe(parent context.Context, configPath string, lookupEnv config.Lookup
 		Metrics:     vMetrics,
 		AZ:          authz.RBAC{},
 		Audit:       recorder,
+		Secrets:     secretSvc,
 	})
 
 	wfSvc := wfsvc.New(wfsvc.Deps{
 		Repo:            wfpg.New(pool),
-		SecretReference: secretSvc.ReferenceExists,
+		SecretReference: secretSvc.ReferenceInfo,
 		Projects:        projectSvc,
 		Policies:        policySvc,
 		Clusters:        clusterRepo,
