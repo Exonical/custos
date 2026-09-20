@@ -301,6 +301,7 @@ var identRE = regexp.MustCompile(`^[a-z_]+$`)
 // ExecQueryer is satisfied by pgx.Tx and *pgxpool.Pool.
 type ExecQueryer interface {
 	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
+	Query(context.Context, string, ...any) (pgx.Rows, error)
 	QueryRow(context.Context, string, ...any) pgx.Row
 }
 
@@ -339,4 +340,49 @@ func EnsureMonthlyPartitions(ctx context.Context, ex ExecQueryer,
 		created = append(created, name)
 	}
 	return created, nil
+}
+
+// DropMonthlyPartitionsBefore drops child partitions whose month ends on or
+// before cutoff. It is intended for append-only retention enforcement.
+func DropMonthlyPartitionsBefore(ctx context.Context, ex ExecQueryer,
+	parent string, cutoff time.Time) ([]string, error) {
+	if !identRE.MatchString(parent) {
+		return nil, apperr.New(apperr.Invalid, "db.partition", "invalid partition parent name")
+	}
+	rows, err := ex.Query(ctx, `SELECT c.relname FROM pg_inherits i
+		JOIN pg_class c ON c.oid=i.inhrelid JOIN pg_class p ON p.oid=i.inhparent
+		WHERE p.relname=$1 ORDER BY c.relname`, parent)
+	if err != nil {
+		return nil, MapError(err)
+	}
+	defer rows.Close()
+	var drop []string
+	prefix := parent + "_"
+	for rows.Next() {
+		var name string
+		if err = rows.Scan(&name); err != nil {
+			return drop, MapError(err)
+		}
+		if !strings.HasPrefix(name, prefix) || len(name) != len(prefix)+6 {
+			continue
+		}
+		y, ey := strconv.Atoi(name[len(prefix) : len(prefix)+4])
+		m, em := strconv.Atoi(name[len(prefix)+4:])
+		if ey != nil || em != nil || m < 1 || m > 12 {
+			continue
+		}
+		end := time.Date(y, time.Month(m), 1, 0, 0, 0, 0, time.UTC).AddDate(0, 1, 0)
+		if !end.After(cutoff.UTC()) {
+			drop = append(drop, name)
+		}
+	}
+	if err = rows.Err(); err != nil {
+		return drop, MapError(err)
+	}
+	for _, name := range drop {
+		if _, err = ex.Exec(ctx, "DROP TABLE "+name); err != nil {
+			return drop, MapError(err)
+		}
+	}
+	return drop, nil
 }

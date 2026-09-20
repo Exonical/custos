@@ -64,7 +64,7 @@ Next up: **M7** accounting/policy sync, **M8** the Next.js UI.
 - [API conventions](docs/api.md) — OpenAPI contract, routing, envelopes
 - [Threat model](docs/threat-model.md) — assets, actors, STRIDE threats
 - [Milestone 1 plan](docs/milestone-1.md) — foundation implementation plan
-- [Architecture Decision Records](docs/adr/README.md) — ADR-001 … ADR-017
+- [Architecture Decision Records](docs/adr/README.md) — ADR-001 … ADR-018
 
 ## Planned stack
 

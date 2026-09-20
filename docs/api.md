@@ -206,8 +206,9 @@ POST   /api/v1/tenants/{tenant}/projects/{project}/jobs/{job}/cancel       202; 
 GET    /api/v1/tenants/{tenant}/projects/{project}/jobs/{job}/execution-spec
 GET    /api/v1/tenants/{tenant}/jobs                     tenant-wide; job.read.tenant
 GET    /api/v1/tenants/{tenant}/projects/{project}/jobs/{job}/output?stream=stdout   (Milestone 7+, via cluster file access policy)
-GET    /api/v1/tenants/{tenant}/accounting/usage?group_by=...&from=&to=
-GET    /api/v1/tenants/{tenant}/accounting/allocations
+GET    /api/v1/tenants/{tenant}/accounting/usage?group_by=user|project|cluster|account|partition|day&from=&to=   accounting.read.self/project/tenant; max 400 days
+GET    /api/v1/tenants/{tenant}/accounting/top?metric=cpu_seconds|gpu_seconds|jobs&by=user|project&from=&to=    top ≤50 under the same scope
+GET    /api/v1/tenants/{tenant}/accounting/allocations                         later M7 allocation slice
 GET    /api/v1/tenants/{tenant}/audit-events
 GET    /api/v1/clusters                             platform registry list
 POST   /api/v1/clusters                             register cluster (SSRF-vetted base_url, token_ref)
@@ -215,6 +216,9 @@ GET    /api/v1/clusters/{cluster}                   platform detail
 PATCH  /api/v1/clusters/{cluster}                   update (optimistic version)
 POST   /api/v1/clusters/{cluster}/disable           disable (stops the sync chain)
 POST   /api/v1/clusters/{cluster}/test-connection   open + ping + capabilities (no state change)
+GET    /api/v1/clusters/{cluster}/accounting        watermark/error/unattributed collector status
+POST   /api/v1/clusters/{cluster}/accounting/collect     cluster.manage; enqueue collection
+POST   /api/v1/clusters/{cluster}/accounting/aggregate   cluster.manage; enqueue dirty-day aggregation
 GET    /api/v1/clusters/{cluster}/tenants           list assignments
 PUT    /api/v1/clusters/{cluster}/tenants/{tenant}  assign (defaults)
 DELETE /api/v1/clusters/{cluster}/tenants/{tenant}  unassign

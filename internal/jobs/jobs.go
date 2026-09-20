@@ -107,6 +107,7 @@ type Job struct {
 	ResourceRequest     workflowspec.Resources
 	ExecutionSpec       admission.ExecutionSpec
 	ExecutionSpecDigest validation.Digest
+	ResourceUsage       map[string]any
 	// ScriptDigest is zero for command (payload-less) tasks — persisted
 	// as NULL. Payload-bearing jobs always set it.
 	ScriptDigest       validation.Digest

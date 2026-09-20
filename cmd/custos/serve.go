@@ -16,6 +16,8 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
+	accountsvc "github.com/Exonical/custos/internal/accounting"
+	accountpg "github.com/Exonical/custos/internal/accounting/postgres"
 	"github.com/Exonical/custos/internal/api"
 	"github.com/Exonical/custos/internal/audit"
 	"github.com/Exonical/custos/internal/audit/pgaudit"
@@ -177,6 +179,7 @@ func cmdServe(parent context.Context, configPath string, lookupEnv config.Lookup
 	projectSvc := projectsvc.NewService(projectRepo, projectRepo, projectRepo,
 		tenantRepo, clusterRepo, authz.RBAC{}, recorder)
 	policySvc := policiesvc.NewService(policypg.New(pool), authz.RBAC{}, recorder)
+	accountingSvc := accountsvc.NewService(accountpg.New(pool), projectRepo, authz.RBAC{})
 
 	// Validation pipeline: in-process validators always; ShellCheck via
 	// the loopback sidecar when enabled (docs/script-validation.md).
@@ -255,6 +258,7 @@ func cmdServe(parent context.Context, configPath string, lookupEnv config.Lookup
 		Workflows:      wfSvc,
 		Executions:     execSvc,
 		SecretRefs:     secretSvc,
+		Accounting:     accountingSvc,
 		AZ:             authz.RBAC{},
 	})
 

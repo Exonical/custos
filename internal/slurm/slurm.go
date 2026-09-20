@@ -322,17 +322,22 @@ type JobRecordFilter struct {
 
 // JobRecord is a historical accounting record.
 type JobRecord struct {
-	ID        JobID
-	Name      string
-	User      string
-	Account   string
-	Partition string
-	State     JobState
-	ExitCode  *ExitCode
-	StartTime time.Time
-	EndTime   time.Time
-	Elapsed   time.Duration
-	TRESUsage map[string]int64
+	ID           JobID
+	Name         string
+	User         string
+	Account      string
+	Partition    string
+	State        JobState
+	ExitCode     *ExitCode
+	SubmitTime   time.Time
+	EligibleTime time.Time
+	StartTime    time.Time
+	EndTime      time.Time
+	Elapsed      time.Duration
+	NodeCount    int32
+	TRESAlloc    map[string]int64
+	TRESUsage    map[string]int64
+	Steps        int32
 }
 
 // --- Errors ------------------------------------------------------------

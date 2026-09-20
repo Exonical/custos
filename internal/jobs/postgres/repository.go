@@ -54,7 +54,7 @@ const jobCols = `id, tenant_id, project_id, cluster_id, created_by, name,
 	resource_request, execution_spec, execution_spec_digest, script_digest,
 	script_language, script_validation_id, task_execution_id,
 	submitted_at, started_at, ended_at, last_reconciled_at, version,
-	created_at, updated_at`
+	created_at, updated_at, resource_usage`
 
 // nilDigest returns nil for the zero digest so script_digest stores
 // NULL on command (payload-less) jobs.
@@ -69,7 +69,7 @@ func scanJob(row pgx.Row) (jobs.Job, error) {
 	var j jobs.Job
 	var reason, slurmState *string
 	var state, lang string
-	var specJSON, reqJSON []byte
+	var specJSON, reqJSON, usageJSON []byte
 	var specDigest, scriptDigest []byte
 	err := row.Scan(&j.ID, &j.TenantID, &j.ProjectID, &j.ClusterID,
 		&j.CreatedBy, &j.Name, &state, &reason, &j.SlurmJobID,
@@ -77,7 +77,7 @@ func scanJob(row pgx.Row) (jobs.Job, error) {
 		&specDigest, &scriptDigest, &lang, &j.ScriptValidationID,
 		&j.TaskExecutionID, &j.SubmittedAt,
 		&j.StartedAt, &j.EndedAt, &j.LastReconciledAt, &j.Version,
-		&j.CreatedAt, &j.UpdatedAt)
+		&j.CreatedAt, &j.UpdatedAt, &usageJSON)
 	if err != nil {
 		return j, db.MapError(err)
 	}
@@ -97,12 +97,17 @@ func scanJob(row pgx.Row) (jobs.Job, error) {
 	}
 	copy(j.ExecutionSpecDigest[:], specDigest)
 	copy(j.ScriptDigest[:], scriptDigest)
+	if len(usageJSON) > 0 {
+		if err := json.Unmarshal(usageJSON, &j.ResourceUsage); err != nil {
+			return j, fmt.Errorf("jobs: resource_usage: %w", err)
+		}
+	}
 	return j, nil
 }
 
 const insertJobSQL = `INSERT INTO jobs (` + jobCols + `)
 	VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,
-	        $17,$18,$19,$20,$21,$22,$23,$24,$25,$26)`
+	        $17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)`
 
 // Create inserts a job and runs enqueue in one transaction (workflow
 // task admissions; ad-hoc submissions use CreateWithIdempotency).
@@ -128,7 +133,7 @@ func (r *Repository) Create(ctx context.Context, scope tenants.Scope,
 			nilDigest(j.ScriptDigest), string(j.ScriptLanguage),
 			j.ScriptValidationID, j.TaskExecutionID, j.SubmittedAt,
 			j.StartedAt, j.EndedAt, j.LastReconciledAt, j.Version,
-			j.CreatedAt, j.UpdatedAt); err != nil {
+			j.CreatedAt, j.UpdatedAt, nil); err != nil {
 			return db.MapError(err)
 		}
 		if enqueue != nil {
@@ -205,7 +210,7 @@ func (r *Repository) CreateWithIdempotency(ctx context.Context,
 			string(j.ScriptLanguage), j.ScriptValidationID,
 			j.TaskExecutionID, j.SubmittedAt,
 			j.StartedAt, j.EndedAt, j.LastReconciledAt, j.Version,
-			j.CreatedAt, j.UpdatedAt); err != nil {
+			j.CreatedAt, j.UpdatedAt, nil); err != nil {
 			return db.MapError(err)
 		}
 		if enqueue != nil {

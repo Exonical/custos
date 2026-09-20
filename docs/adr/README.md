@@ -23,6 +23,7 @@ decisions get a new ADR that references the old one.
 | [ADR-015](ADR-015-structured-argv-runtime-references.md) | Structured argv + allow-listed runtime references (`$SLURM_ARRAY_TASK_ID`) in ExecutionSpec | [workflows.md](../workflows.md), [script-validation.md](../script-validation.md) |
 | [ADR-016](ADR-016-workqueue-self-reschedule.md) | Periodic handlers reschedule via `RescheduleAt`, never self-enqueue | [workers.md](../workers.md) |
 | [ADR-017](ADR-017-tenant-secret-connectors.md) | Tenant secret connectors with platform defaults, BYO OpenBao, externalized credentials, and SSRF-safe transport | [secrets.md](../secrets.md) |
+| [ADR-018](ADR-018-accounting-attribution.md) | Ordered Slurm accounting attribution with immutable facts and recomputable daily aggregates | [observability.md](../observability.md) |
 
 ## Process
 

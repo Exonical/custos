@@ -67,7 +67,7 @@ Prometheus.
 
 ```text
 slurmdbd ── GET /slurmdb/v0.0.4x/jobs?start=<watermark> ──► accounting.collect worker
-      └► usage_records (append-only; one row per job record/step)
+      └► usage_records (append-only; one row per ended job, step count/usage folded in)
              └► usage.aggregate ──► usage_daily(tenant, project, user, cluster, account, partition, day,
                                                 jobs, cpu_seconds, gpu_seconds, node_seconds, mem_gb_seconds,
                                                 wait_seconds_sum, run_seconds_sum, failed, energy_joules)
@@ -77,15 +77,24 @@ slurmdbd ── GET /slurmdb/v0.0.4x/jobs?start=<watermark> ──► accounting
 Correlation: `usage_records.job_id` is filled by matching
 (`cluster_id`, `slurm_job_id`) to `jobs`; Slurm records for jobs not
 submitted through Custos are kept (with `job_id NULL`) and attributed to a
-project via `ProjectClusterBinding.slurm_account` when possible, so
-"utilization by cluster" and "CPU-hours by account" are complete even when
-users bypass Custos. Users are attributed via the Slurm username →
-Custos user mapping when configured.
+project via `ProjectClusterBinding.slurm_account` when exactly one binding
+matches, so "utilization by cluster" and "CPU-hours by account" are complete
+even when users bypass Custos. Ambiguous/unmatched records remain platform-only.
+Slurm username → Custos user mapping is not implemented; external records keep
+the raw Slurm username and a NULL user (ADR-018).
 
-Per-job metrics persisted on `jobs.resource_usage` (from `GetJobRecords`):
-`cpu_time`, `elapsed`, `max_rss`, `tres_alloc`, `tres_usage_in_tot`
-(including `gres/gpu`, `energy` if configured), `exit_code`, `derived_ec`,
-`node_count`, `submit/eligible/start/end` → `wait_seconds`.
+Implemented in M7-A: `accounting.collect` runs per cluster every five minutes
+with a two-hour overlap and bounded 24-hour chunks; immutable inserts mark dirty
+days. `usage.aggregate` hourly recomputes each dirty cluster/day, including
+p50/p90/p99 wait/runtime. `usage_records` partitions retain 400 days of ended
+facts; tenant RLS excludes unattributed rows. Operational collect/aggregate
+endpoints can pull the periodic work forward.
+
+Per-job metrics persisted on `jobs.resource_usage` include elapsed, derived CPU
+seconds, node count, allocated/consumed TRES, wait seconds, exit code, and the
+derived failure flag. Derivations are: allocated CPUs/GPUs × elapsed,
+node count × elapsed, allocated memory MiB × elapsed / 1024, and
+start − max(submit, eligible), clamped to zero.
 
 ## Queries the API must answer (Milestone 7)
 
@@ -98,8 +107,13 @@ All via `usage_daily` with keyset pagination and bounded date ranges
 - top-N consumers within a scope the caller may read
 - allocation consumed / remaining per `ProjectClusterBinding`
 
-Authorization: `accounting.read.self|project|tenant` — a user only sees
-their own rows unless they hold a broader permission.
+Implemented endpoints are `GET /tenants/{tenant}/accounting/usage` (group by
+user/project/cluster/account/partition/day) and `/accounting/top` (CPU/GPU
+seconds or jobs by user/project), with RFC 3339 required bounds, a 400-day cap,
+and stable group-key cursors. Authorization is
+`accounting.read.self|project|tenant`: self sees own rows, project readers also
+see NULL-user rows in their projects, and tenant readers see all attributed
+rows.
 
 ## Logging
 

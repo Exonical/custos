@@ -16,6 +16,7 @@ import (
 
 	apiv1 "github.com/Exonical/custos/pkg/api/v1"
 
+	"github.com/Exonical/custos/internal/accounting"
 	"github.com/Exonical/custos/internal/audit"
 	"github.com/Exonical/custos/internal/authn"
 	"github.com/Exonical/custos/internal/authz"
@@ -85,6 +86,7 @@ type Deps struct {
 	Workflows      *wfsvc.Service                // enables workflow routes
 	Executions     *execsvc.Service              // enables execution routes
 	SecretRefs     *secretrefs.Service           // enables connector/reference routes
+	Accounting     *accounting.Service           // enables usage/accounting routes
 	AZ             authz.Authorizer              // required for validate routes
 }
 
@@ -137,6 +139,13 @@ func Mount(mux *http.ServeMux, deps Deps) {
 			tenantMW := tenants.Require(deps.TenantRepo, deps.Logger, deps.Audit)
 			tr := func(h http.Handler) http.Handler { return bearer(tenantMW(h)) }
 			mountSecretRoutes(mux, &secretHandlers{svc: deps.SecretRefs}, tr)
+		}
+
+		if deps.Accounting != nil && deps.Clusters != nil && deps.JobExec != nil {
+			tenantMW := tenants.Require(deps.TenantRepo, deps.Logger, deps.Audit)
+			tr := func(h http.Handler) http.Handler { return bearer(tenantMW(h)) }
+			mountAccountingRoutes(mux, &accountingHandlers{svc: deps.Accounting,
+				clusters: deps.Clusters, exec: deps.JobExec, az: deps.AZ}, bearer, tr)
 		}
 
 		if deps.Clusters != nil {

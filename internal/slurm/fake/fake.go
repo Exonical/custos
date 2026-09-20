@@ -24,6 +24,7 @@ type Cluster struct {
 	accounts     []slurm.Account
 	qos          []slurm.QoS
 	associations []slurm.Association
+	jobRecords   []slurm.JobRecord
 
 	jobs   map[uint32]*jobState
 	nextID uint32
@@ -85,6 +86,13 @@ func (c *Cluster) SetQoS(q []slurm.QoS) { c.mu.Lock(); c.qos = q; c.mu.Unlock() 
 func (c *Cluster) SetAssociations(a []slurm.Association) {
 	c.mu.Lock()
 	c.associations = a
+	c.mu.Unlock()
+}
+
+// SetJobRecords replaces the accounting records returned by GetJobRecords.
+func (c *Cluster) SetJobRecords(records []slurm.JobRecord) {
+	c.mu.Lock()
+	c.jobRecords = append([]slurm.JobRecord(nil), records...)
 	c.mu.Unlock()
 }
 
@@ -391,22 +399,42 @@ func (c *Cluster) GetJobRecords(_ context.Context,
 	for _, n := range f.Names {
 		names[n] = true
 	}
+	records := append([]slurm.JobRecord(nil), c.jobRecords...)
+	if c.jobRecords == nil {
+		for _, j := range c.jobs {
+			records = append(records, slurm.JobRecord{
+				ID: j.job.ID, Name: j.job.Name, User: j.job.UserName,
+				Account: j.job.Account, Partition: j.job.Partition,
+				State: j.job.State, SubmitTime: j.job.SubmitTime,
+				EligibleTime: j.job.EligibleTime, StartTime: j.job.StartTime,
+				EndTime: j.job.EndTime, NodeCount: int32(j.job.Nodes), // #nosec G115 -- test topology is bounded
+				TRESAlloc: j.job.TRESAlloc,
+			})
+		}
+	}
 	var out []slurm.JobRecord
-	for _, j := range c.jobs {
-		if len(names) > 0 && !names[j.job.Name] {
+	for _, r := range records {
+		if len(names) > 0 && !names[r.Name] || len(f.Users) > 0 && !contains(f.Users, r.User) ||
+			len(f.Accounts) > 0 && !contains(f.Accounts, r.Account) ||
+			len(f.States) > 0 && !containsState(f.States, r.State) {
 			continue
 		}
-		if f.Since != nil && j.job.SubmitTime.Before(*f.Since) {
+		if f.Since != nil && r.EndTime.Before(*f.Since) ||
+			f.Until != nil && r.EndTime.After(*f.Until) {
 			continue
 		}
-		out = append(out, slurm.JobRecord{
-			ID: j.job.ID, Name: j.job.Name, User: j.job.UserName,
-			Account: j.job.Account, Partition: j.job.Partition,
-			State: j.job.State, StartTime: j.job.StartTime,
-			EndTime: j.job.EndTime,
-		})
+		out = append(out, r)
 	}
 	return out, nil
+}
+
+func containsState(xs []slurm.JobState, s slurm.JobState) bool {
+	for _, x := range xs {
+		if x == s {
+			return true
+		}
+	}
+	return false
 }
 
 func contains(xs []string, s string) bool {

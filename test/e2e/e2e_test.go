@@ -21,6 +21,7 @@ func TestE2E(t *testing.T) {
 		execID                     string
 		execBody                   map[string]any
 		secretRefName              string
+		e2eJobID                   string
 	)
 	// Per-run suffix so re-runs against the same stack don't collide on
 	// unique resource names (workflows).
@@ -377,6 +378,7 @@ func TestE2E(t *testing.T) {
 			})
 		want(t, status, job, http.StatusAccepted, "submit job")
 		jobID, _ := job["id"].(string)
+		e2eJobID = jobID
 		if jobID == "" {
 			t.Fatalf("job: %v", job)
 		}
@@ -406,6 +408,48 @@ func TestE2E(t *testing.T) {
 			!strings.Contains(out, "custos-") {
 			t.Fatalf("sacct -j %s: %s", sid, out)
 		}
+	})
+
+	t.Run("05b_accounting_collection", func(t *testing.T) {
+		status, body := api(t, http.MethodPost,
+			"/clusters/e2e/accounting/collect", nil, tokAdmin, nil)
+		if status != http.StatusAccepted {
+			t.Fatalf("collect accounting: HTTP %d: %v", status, body)
+		}
+		poll(t, "job resource_usage", 90*time.Second, func() bool {
+			_, job := api(t, http.MethodGet,
+				"/tenants/acme/projects/p1/jobs/"+e2eJobID, nil, tokAlice, nil)
+			return job["resource_usage"] != nil
+		})
+		status, body = api(t, http.MethodPost,
+			"/clusters/e2e/accounting/aggregate", nil, tokAdmin, nil)
+		if status != http.StatusAccepted {
+			t.Fatalf("aggregate accounting: HTTP %d: %v", status, body)
+		}
+		from := time.Now().Add(-24 * time.Hour).UTC().Format(time.RFC3339)
+		to := time.Now().Add(24 * time.Hour).UTC().Format(time.RFC3339)
+		path := "/tenants/acme/accounting/usage?group_by=user&from=" + from + "&to=" + to
+		tooOld := time.Now().Add(-401 * 24 * time.Hour).UTC().Format(time.RFC3339)
+		status, body = api(t, http.MethodGet,
+			"/tenants/acme/accounting/usage?group_by=user&from="+tooOld+"&to="+to,
+			nil, tokAlice, nil)
+		if status != http.StatusBadRequest {
+			t.Fatalf("accounting range: HTTP %d: %v", status, body)
+		}
+		poll(t, "alice usage aggregate", 90*time.Second, func() bool {
+			status, usage := api(t, http.MethodGet, path, nil, tokAlice, nil)
+			if status != http.StatusOK {
+				return false
+			}
+			items, _ := usage["items"].([]any)
+			for _, item := range items {
+				row := item.(map[string]any)
+				if row["key"] == aliceID && row["jobs"].(float64) >= 1 {
+					return true
+				}
+			}
+			return false
+		})
 	})
 
 	t.Run("06_script_directive_rejection", func(t *testing.T) {

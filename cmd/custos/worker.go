@@ -10,6 +10,8 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/Exonical/custos/internal/accounting"
+	accountpg "github.com/Exonical/custos/internal/accounting/postgres"
 	"github.com/Exonical/custos/internal/audit"
 	"github.com/Exonical/custos/internal/audit/pgaudit"
 	"github.com/Exonical/custos/internal/authz"
@@ -111,6 +113,14 @@ func cmdWorker(parent context.Context, configPath string, lookupEnv config.Looku
 		clustersync.NewMetrics(prov.Meter)))
 	if err := clustersync.Bootstrap(ctx, pool, clusterRepo); err != nil {
 		logger.ErrorContext(ctx, "cluster.sync bootstrap", "error", err)
+		return 1
+	}
+	accountDeps := accounting.WorkerDeps{Repo: accountpg.New(pool), Clusters: clusterRepo,
+		Factory: sdeps.Factory, Metrics: accounting.NewMetrics(prov.Meter)}
+	q.Register(accounting.KindCollect, accounting.Collect(accountDeps))
+	q.Register(accounting.KindAggregate, accounting.Aggregate(accountDeps))
+	if err := accounting.Bootstrap(ctx, pool, clusterRepo); err != nil {
+		logger.ErrorContext(ctx, "accounting bootstrap", "error", err)
 		return 1
 	}
 
@@ -229,25 +239,31 @@ func registerBuiltins(q *workqueue.Queue, pool *pgxpool.Pool, recorder audit.Rec
 	})
 	q.Register("tenant.delete", tenantDeleteHandler(pool, recorder))
 	q.Register("maintenance.partitions", func(ctx context.Context, _ workqueue.Item) error {
-		created, err := db.EnsureMonthlyPartitions(ctx, pool, "audit_events", time.Now(), 3)
+		var all []string
+		for _, table := range []string{"audit_events", "usage_records"} {
+			created, err := db.EnsureMonthlyPartitions(ctx, pool, table, time.Now(), 3)
+			if err != nil {
+				return err
+			}
+			all = append(all, created...)
+		}
+		dropped, err := db.DropMonthlyPartitionsBefore(ctx, pool, "usage_records",
+			time.Now().Add(-400*24*time.Hour))
 		if err != nil {
 			return err
 		}
-		if len(created) == 0 {
+		all = append(all, dropped...)
+		if len(all) == 0 {
 			return nil
 		}
-		names := make([]any, len(created))
-		for i, n := range created {
+		names := make([]any, len(all))
+		for i, n := range all {
 			names[i] = n
 		}
 		return recorder.Record(ctx, audit.Event{
 			Actor:  audit.Actor{Type: audit.ActorSystem, ID: "custos"},
-			Action: "maintenance.partitions",
-			Result: audit.ResultAllow,
-			Details: map[string]any{
-				"table":   "audit_events",
-				"created": names,
-			},
+			Action: "maintenance.partitions", Result: audit.ResultAllow,
+			Details: map[string]any{"tables": []string{"audit_events", "usage_records"}, "created": names},
 		})
 	})
 }

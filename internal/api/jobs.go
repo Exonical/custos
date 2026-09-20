@@ -72,6 +72,9 @@ func jobDTO(j jobs.Job) map[string]any {
 	if j.ScriptValidationID != nil {
 		out["validation_id"] = *j.ScriptValidationID
 	}
+	if j.ResourceUsage != nil {
+		out["resource_usage"] = j.ResourceUsage
+	}
 	if j.SlurmState != "" {
 		out["slurm_state"] = j.SlurmState
 	}

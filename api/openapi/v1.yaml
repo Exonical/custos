@@ -2729,6 +2729,57 @@ paths:
       security: [{bearerAuth: []}]
       responses: {"200": {description: Resolution result without a value, content: {application/json: {schema: {type: object}}}}}
 
+  /tenants/{tenant}/accounting/usage:
+    get:
+      operationId: getAccountingUsage
+      security: [{bearerAuth: []}]
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+        - {name: group_by, in: query, required: true, schema: {type: string, enum: [user, project, cluster, account, partition, day]}}
+        - {name: from, in: query, required: true, schema: {type: string, format: date-time}}
+        - {name: to, in: query, required: true, schema: {type: string, format: date-time}}
+        - {name: project, in: query, schema: {type: string, format: uuid}}
+        - {name: cluster, in: query, schema: {type: string, format: uuid}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 200}}
+        - {name: cursor, in: query, schema: {type: string}}
+      responses:
+        "200": {description: Bounded accounting usage page, content: {application/json: {schema: {$ref: "#/components/schemas/AccountingUsageList"}}}}
+        "400": {description: Invalid or greater-than-400-day range, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+
+  /tenants/{tenant}/accounting/top:
+    get:
+      operationId: getAccountingTop
+      security: [{bearerAuth: []}]
+      parameters:
+        - $ref: "#/components/parameters/TenantSlug"
+        - {name: metric, in: query, required: true, schema: {type: string, enum: [cpu_seconds, gpu_seconds, jobs]}}
+        - {name: by, in: query, required: true, schema: {type: string, enum: [user, project]}}
+        - {name: from, in: query, required: true, schema: {type: string, format: date-time}}
+        - {name: to, in: query, required: true, schema: {type: string, format: date-time}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 50}}
+      responses: {"200": {description: Top consumers, content: {application/json: {schema: {type: object}}}}}
+
+  /clusters/{cluster}/accounting:
+    parameters: [{name: cluster, in: path, required: true, schema: {type: string}}]
+    get:
+      operationId: getClusterAccounting
+      security: [{bearerAuth: []}]
+      responses: {"200": {description: Collector status, content: {application/json: {schema: {type: object}}}}}
+
+  /clusters/{cluster}/accounting/collect:
+    parameters: [{name: cluster, in: path, required: true, schema: {type: string}}]
+    post:
+      operationId: collectClusterAccounting
+      security: [{bearerAuth: []}]
+      responses: {"202": {description: Collection enqueued}}
+
+  /clusters/{cluster}/accounting/aggregate:
+    parameters: [{name: cluster, in: path, required: true, schema: {type: string}}]
+    post:
+      operationId: aggregateClusterAccounting
+      security: [{bearerAuth: []}]
+      responses: {"202": {description: Aggregation enqueued}}
+
 components:
   securitySchemes:
     bearerAuth:
@@ -3831,6 +3882,33 @@ components:
           items:
             $ref: "#/components/schemas/PartitionRecord"
 
+    AccountingUsageRow:
+      type: object
+      required: [key, jobs, failed, cpu_hours, gpu_hours, node_hours, mem_gb_hours, wait_hours, run_hours]
+      properties:
+        key: {type: string}
+        jobs: {type: integer, format: int64}
+        failed: {type: integer, format: int64}
+        cpu_hours: {type: number, format: double}
+        gpu_hours: {type: number, format: double}
+        node_hours: {type: number, format: double}
+        mem_gb_hours: {type: number, format: double}
+        wait_hours: {type: number, format: double}
+        run_hours: {type: number, format: double}
+        energy_joules: {type: [integer, "null"], format: int64}
+        wait_p50: {type: [number, "null"]}
+        wait_p90: {type: [number, "null"]}
+        wait_p99: {type: [number, "null"]}
+        run_p50: {type: [number, "null"]}
+        run_p90: {type: [number, "null"]}
+        run_p99: {type: [number, "null"]}
+    AccountingUsageList:
+      type: object
+      required: [items]
+      properties:
+        items: {type: array, items: {$ref: "#/components/schemas/AccountingUsageRow"}}
+        next_cursor: {type: string}
+
     Job:
       type: object
       required: [id, tenant_id, project_id, cluster_id, created_by, name,
@@ -3852,6 +3930,10 @@ components:
         exit_code: {type: integer}
         exit_signal: {type: integer}
         resource_request: {type: object}
+        resource_usage:
+          type: object
+          description: Ended-job accounting usage correlated from slurmdbd.
+          additionalProperties: true
         script_digest: {type: string, description: "sha256:<hex>"}
         script_language: {type: string}
         execution_spec_id: {type: string, description: "sha256:<hex> digest of the immutable ExecutionSpec"}

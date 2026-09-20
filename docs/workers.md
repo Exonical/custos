@@ -102,8 +102,8 @@ execution engine handlers: `execution.advance` (DAG evaluation, unblock/
 skip/retry/cancel, execution terminal accounting) and `task.admit`
 (validation currency → `ExecutionSpec` freeze → linked `jobs` row +
 `job.submit`, all in one transaction). Task-linked job transitions also
-enqueue `execution.advance` from inside the jobs worker. The rest lands
-with the workflow milestones.
+enqueue `execution.advance` from inside the jobs worker. M7-A adds the
+windowed accounting collector and dirty-day daily aggregation.
 
 | Kind | Status | Trigger | Handler outline |
 | --- | --- | --- | --- |
@@ -115,12 +115,12 @@ with the workflow milestones.
 | `execution.advance` | implemented | any task terminal transition | evaluate DAG: unblock READY tasks, evaluate `when`, fan-out, decide execution terminal state |
 | `cluster.sync` | implemented | periodic per cluster | see `docs/slurm.md` |
 | `tenant.delete` | implemented | tenant deletion | staged teardown |
-| `maintenance.partitions` | implemented | daily (enqueued at worker start) | create next month partitions; drop expired |
+| `maintenance.partitions` | implemented | worker start | keep audit/usage monthly partitions three months ahead; drop usage partitions older than 400 days |
 | `idempotency.expire` | implemented | hourly | purge expired keys |
 | `script.validate` | **deferred** — not a work item | — | Validation is synchronous everywhere it is needed today: the pipeline runs inline in the submit/admit paths and at publish. If a future need arises (async validation of very large scripts, or batch revalidation after a policy change) it will arrive as this kind. |
 | `policy.sync` | future (M7+) | ResourcePolicy / binding change; periodic per cluster | mirror binding limits to slurmdbd associations via `slurm.Accounting` write ops; report drift |
-| `accounting.collect` | future (M7+) | periodic per cluster (window) | `GetJobRecords(since=watermark)`; upsert `usage_records`; advance watermark |
-| `usage.aggregate` | future (M7+) | hourly | roll up `usage_records` into `usage_daily` |
+| `accounting.collect` | implemented | periodic per cluster (5m) or operational trigger | query 24h chunks from watermark−2h (max 20); retain ended jobs only; immutable insert + attribution + dirty days; watermark never regresses; errors persist on the watermark and reschedule the chain |
+| `usage.aggregate` | implemented | hourly or operational trigger | atomically recompute each dirty cluster/day into `usage_daily` with exact counters and `percentile_cont`, then delete its marker |
 
 ## Reconciliation of the "lost submit" case
 

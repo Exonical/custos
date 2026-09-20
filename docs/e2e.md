@@ -47,7 +47,8 @@ claim rules; then write Alice's fixture value in her new tenant namespace.
 `TestE2E` exercises both cluster providers, the automatic default connector,
 a BYO connector, owner isolation, path/namespace validation, SSRF denial,
 workflow env delivery, platform-OpenBao wrapped-token delivery, value-free
-execution metadata/audit, and execute-time denial for another user.
+execution metadata/audit, execute-time denial for another user, real slurmdbd
+accounting collection, per-job resource usage, and daily usage aggregation.
 
 Then, with the env it prints:
 
