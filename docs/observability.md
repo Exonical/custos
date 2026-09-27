@@ -115,6 +115,24 @@ and stable group-key cursors. Authorization is
 see NULL-user rows in their projects, and tenant readers see all attributed
 rows.
 
+## Allocation consumption and policy drift (M7-B)
+
+`Allocation` budgets attach to a `ProjectClusterBinding` in cpu-hours,
+gpu-hours, or node-hours. The hourly `usage.aggregate` pass refreshes
+`consumed_amount` and `consumed_as_of` from `usage_daily` for the matching
+project/cluster/account and period; a daily full-allocation pass corrects
+older or newly-created budgets. Admission adds active non-terminal job
+estimates (`jobs.estimated_cost`) before enforcing hard/soft limits. The
+estimate lives in the immutable `ExecutionSpec`, never in a client-controlled
+scheduler field.
+
+`policy.sync` is deliberately **read-only**: it checks accounts, associations,
+QoS and partitions and annotates bindings with `ok`, `drift`, or `unknown`.
+Custos never mutates slurmdbd policy; operators reconcile detected drift with
+site administrators. Metrics are bounded by cluster and unit/reason:
+`custos_allocation_denials_total`, `custos_allocation_soft_exceeded_total`,
+and `custos_policy_drift_bindings`.
+
 ## Logging
 
 `slog` JSON to stdout. Mandatory fields: `time`, `level`, `msg`,

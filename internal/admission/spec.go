@@ -123,6 +123,21 @@ type SecurityContext struct {
 	WrappedTokenRefs  []string `json:"wrapped_token_refs,omitempty"`
 }
 
+// Warning records a non-blocking admission policy outcome.
+type Warning struct {
+	Severity   string `json:"severity"`
+	Code       string `json:"code"`
+	Allocation string `json:"allocation,omitempty"`
+	Unit       string `json:"unit,omitempty"`
+	Message    string `json:"message"`
+}
+
+// Result records value-free cost estimates and warnings in the execution digest.
+type Result struct {
+	EstimatedCost map[string]float64 `json:"estimated_cost,omitempty"`
+	Warnings      []Warning          `json:"warnings,omitempty"`
+}
+
 // ExecutionSpec is the immutable canonical record persisted on
 // task_executions.execution_spec.
 type ExecutionSpec struct {
@@ -157,7 +172,8 @@ type ExecutionSpec struct {
 	Stdout     string        `json:"stdout,omitempty"`
 	Stderr     string        `json:"stderr,omitempty"`
 
-	Security SecurityContext `json:"security"`
+	Security  SecurityContext `json:"security"`
+	Admission Result          `json:"admission"`
 
 	Digest     validation.Digest `json:"digest"`
 	AdmittedAt time.Time         `json:"admitted_at"`

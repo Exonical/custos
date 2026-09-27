@@ -251,7 +251,7 @@ Entities and the relationships that matter:
 | `Cluster` | Platform-owned registry entry: endpoint, API version, TLS config, credential `SecretReference`, capabilities snapshot, sync status. Clusters are never tenant-owned. |
 | `ClusterTenantAssignment` | Grants a tenant visibility of a cluster plus optional tenant-level defaults (default account prefix, allowed partitions). A "global" cluster is modeled as an assignment row per tenant created by policy, not as a NULL tenant — keeps every access query a simple join. |
 | `ProjectClusterBinding` | The explicit mapping Project → Cluster → Slurm account (+ allowed QoS/partitions, default partition). This is where "which Slurm account do I use" is answered. Many-to-many; not 1:1. |
-| `Allocation` | Budget attached to a `ProjectClusterBinding` (unit: cpu-hours, gpu-hours, node-hours, or Slurm TRES-minutes), with period and limits. Consumption is derived from `UsageRecord`s. |
+| `Allocation` | Hard or soft CPU-hour, GPU-hour, or node-hour budget attached to a `ProjectClusterBinding`, with a period and limit. Materialized consumption is refreshed from daily accounting aggregates. |
 | `ResourcePolicy` | Declarative limits (max walltime, max nodes, allowed partitions/QoS, allowed task types, shell allowed?) attached to tenant or project. Effective policy = intersection. |
 | `Workflow` | Tenant-owned (optionally project-scoped) mutable header: name, description, current published version pointer. |
 | `WorkflowVersion` | Immutable. Stores canonical spec JSON, spec hash, schema version, UI layout JSON (separately), state (draft/published/deprecated). |

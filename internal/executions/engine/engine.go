@@ -20,6 +20,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/Exonical/custos/internal/admission"
+	"github.com/Exonical/custos/internal/allocations"
 	"github.com/Exonical/custos/internal/audit"
 	"github.com/Exonical/custos/internal/clusters"
 	"github.com/Exonical/custos/internal/executions"
@@ -70,6 +71,7 @@ type Deps struct {
 	Workflows          workflows.Repository
 	SecretReference    func(context.Context, uuid.UUID, string) (wfvalidate.SecretReferenceInfo, bool)
 	AuthorizeSecretUse func(context.Context, uuid.UUID, uuid.UUID, uuid.UUID, string) error
+	Allocations        *allocations.Service
 	Policies           *policiessvc.Service
 	VPolicy            *vpolicy.Service
 	Clusters           clusters.Repository

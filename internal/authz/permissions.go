@@ -49,6 +49,9 @@ const (
 	SecretConnectorRead   Action = "secret.connector.read"
 	SecretConnectorManage Action = "secret.connector.manage"
 
+	AllocationRead   Action = "allocation.read"
+	AllocationManage Action = "allocation.manage"
+
 	AccountingReadSelf    Action = "accounting.read.self"
 	AccountingReadProject Action = "accounting.read.project"
 	AccountingReadTenant  Action = "accounting.read.tenant"
@@ -69,6 +72,7 @@ var AllActions = []Action{
 	JobSubmit, JobReadSelf, JobReadProject, JobReadTenant, JobCancelSelf, JobCancelAny,
 	SecretReferenceRead, SecretReferenceCreate, SecretReferenceUse, SecretReferenceDelete,
 	SecretConnectorRead, SecretConnectorManage,
+	AllocationRead, AllocationManage,
 	AccountingReadSelf, AccountingReadProject, AccountingReadTenant,
 	AuditReadTenant,
 }

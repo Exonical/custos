@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"strconv"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -400,14 +401,18 @@ func (r *Repository) ListMembershipsForUser(ctx context.Context, scope tenants.S
 
 const bindingCols = `id, tenant_id, project_id, cluster_id, slurm_account,
 	default_partition, allowed_partitions, default_qos, allowed_qos,
-	enabled, version, created_at, updated_at`
+	enabled, version, created_at, updated_at, drift, drift_checked_at, drift_state`
 
 func scanBinding(row pgx.Row) (projects.ClusterBinding, error) {
 	var b projects.ClusterBinding
+	var drift []byte
 	err := row.Scan(&b.ID, &b.TenantID, &b.ProjectID, &b.ClusterID,
 		&b.SlurmAccount, &b.DefaultPartition, &b.AllowedPartitions,
 		&b.DefaultQoS, &b.AllowedQoS, &b.Enabled, &b.Version,
-		&b.CreatedAt, &b.UpdatedAt)
+		&b.CreatedAt, &b.UpdatedAt, &drift, &b.DriftCheckedAt, &b.DriftState)
+	if err == nil && len(drift) > 0 {
+		err = json.Unmarshal(drift, &b.Drift)
+	}
 	return b, err
 }
 
@@ -450,7 +455,7 @@ func (r *Repository) GetBinding(ctx context.Context, scope tenants.Scope,
 	return b, err
 }
 
-// GetBindingByCluster implements projects.BindingRepository.
+// GetBindingByCluster returns a project's binding for a cluster.
 func (r *Repository) GetBindingByCluster(ctx context.Context, scope tenants.Scope,
 	projectID, clusterID uuid.UUID) (projects.ClusterBinding, error) {
 	var b projects.ClusterBinding
@@ -533,7 +538,72 @@ func (r *Repository) UpdateBinding(ctx context.Context, scope tenants.Scope,
 	})
 }
 
-// DeleteBinding implements projects.BindingRepository.
+// BindingByID returns a binding by ID using platform scope.
+func (r *Repository) BindingByID(ctx context.Context, bindingID uuid.UUID) (projects.ClusterBinding, error) {
+	var b projects.ClusterBinding
+	err := db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
+		if err := db.SetPlatformScope(ctx, tx); err != nil {
+			return err
+		}
+		var err error
+		b, err = scanBinding(tx.QueryRow(ctx, `SELECT `+bindingCols+` FROM project_cluster_bindings WHERE id=$1`, bindingID))
+		return err
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return projects.ClusterBinding{}, errNotFound
+	}
+	return b, err
+}
+
+// ListBindingsByCluster returns all bindings on a cluster in platform scope.
+func (r *Repository) ListBindingsByCluster(ctx context.Context, clusterID uuid.UUID) ([]projects.ClusterBinding, error) {
+	var out []projects.ClusterBinding
+	err := db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
+		if err := db.SetPlatformScope(ctx, tx); err != nil {
+			return err
+		}
+		rows, err := tx.Query(ctx, `SELECT `+bindingCols+` FROM project_cluster_bindings WHERE cluster_id=$1 ORDER BY id`, clusterID)
+		if err != nil {
+			return db.MapError(err)
+		}
+		defer rows.Close()
+		for rows.Next() {
+			b, e := scanBinding(rows)
+			if e != nil {
+				return e
+			}
+			out = append(out, b)
+		}
+		return rows.Err()
+	})
+	return out, err
+}
+
+// SetBindingDrift persists one policy-sync result in platform scope.
+func (r *Repository) SetBindingDrift(ctx context.Context, bindingID uuid.UUID, state string, drift []projects.DriftItem, checkedAt time.Time) (projects.ClusterBinding, error) {
+	var out projects.ClusterBinding
+	data, err := json.Marshal(drift)
+	if err != nil {
+		return out, err
+	}
+	err = db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
+		if err := db.SetPlatformScope(ctx, tx); err != nil {
+			return err
+		}
+		tag, e := tx.Exec(ctx, `UPDATE project_cluster_bindings SET drift=$2,drift_checked_at=$3,drift_state=$4 WHERE id=$1`, bindingID, data, checkedAt, state)
+		if e != nil {
+			return db.MapError(e)
+		}
+		if tag.RowsAffected() == 0 {
+			return errNotFound
+		}
+		out, e = scanBinding(tx.QueryRow(ctx, `SELECT `+bindingCols+` FROM project_cluster_bindings WHERE id=$1`, bindingID))
+		return e
+	})
+	return out, err
+}
+
+// DeleteBinding removes a project's cluster binding.
 func (r *Repository) DeleteBinding(ctx context.Context, scope tenants.Scope,
 	projectID, bindingID uuid.UUID) error {
 	return db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {

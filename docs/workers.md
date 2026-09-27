@@ -118,9 +118,9 @@ windowed accounting collector and dirty-day daily aggregation.
 | `maintenance.partitions` | implemented | worker start | keep audit/usage monthly partitions three months ahead; drop usage partitions older than 400 days |
 | `idempotency.expire` | implemented | hourly | purge expired keys |
 | `script.validate` | **deferred** — not a work item | — | Validation is synchronous everywhere it is needed today: the pipeline runs inline in the submit/admit paths and at publish. If a future need arises (async validation of very large scripts, or batch revalidation after a policy change) it will arrive as this kind. |
-| `policy.sync` | future (M7+) | ResourcePolicy / binding change; periodic per cluster | mirror binding limits to slurmdbd associations via `slurm.Accounting` write ops; report drift |
+| `policy.sync` | implemented (read-only) | periodic per cluster (15m); `POST /clusters/{cluster}/policy-sync` | compare binding accounts, associations, QoS and partitions with Slurm; persist drift/unknown; audit only transitions; never writes slurmdbd |
 | `accounting.collect` | implemented | periodic per cluster (5m) or operational trigger | query 24h chunks from watermark−2h (max 20); retain ended jobs only; immutable insert + attribution + dirty days; watermark never regresses; errors persist on the watermark and reschedule the chain |
-| `usage.aggregate` | implemented | hourly or operational trigger | atomically recompute each dirty cluster/day into `usage_daily` with exact counters and `percentile_cont`, then delete its marker |
+| `usage.aggregate` | implemented | hourly, operational trigger, and daily full allocation refresh | atomically recompute dirty cluster/days into `usage_daily` with `percentile_cont`; refresh allocation consumption and clear markers |
 
 ## Reconciliation of the "lost submit" case
 

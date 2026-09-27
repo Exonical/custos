@@ -59,8 +59,17 @@ type ClusterBinding struct {
 	AllowedQoS        []string
 	Enabled           bool
 	Version           int
+	Drift             []DriftItem
+	DriftCheckedAt    *time.Time
+	DriftState        string
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
+}
+
+// DriftItem describes a read-only policy mismatch with Slurm.
+type DriftItem struct {
+	Code   string `json:"code"`
+	Detail string `json:"detail"`
 }
 
 // ProjectContext is the resolved project plus the principal's
@@ -115,4 +124,7 @@ type BindingRepository interface {
 	// UpdateBinding applies optimistic concurrency.
 	UpdateBinding(ctx context.Context, scope tenants.Scope, b ClusterBinding) error
 	DeleteBinding(ctx context.Context, scope tenants.Scope, projectID, bindingID uuid.UUID) error
+	ListBindingsByCluster(ctx context.Context, clusterID uuid.UUID) ([]ClusterBinding, error)
+	SetBindingDrift(ctx context.Context, bindingID uuid.UUID, state string, drift []DriftItem, checkedAt time.Time) (ClusterBinding, error)
+	BindingByID(ctx context.Context, bindingID uuid.UUID) (ClusterBinding, error)
 }

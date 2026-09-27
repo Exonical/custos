@@ -48,7 +48,8 @@ claim rules; then write Alice's fixture value in her new tenant namespace.
 a BYO connector, owner isolation, path/namespace validation, SSRF denial,
 workflow env delivery, platform-OpenBao wrapped-token delivery, value-free
 execution metadata/audit, execute-time denial for another user, real slurmdbd
-accounting collection, per-job resource usage, and daily usage aggregation.
+accounting collection, per-job resource usage, daily usage aggregation,
+hard-allocation denial and recovery, and read-only policy drift reporting.
 
 Then, with the env it prints:
 

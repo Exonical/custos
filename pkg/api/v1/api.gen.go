@@ -25,6 +25,45 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+// Defines values for AllocationEnforcement.
+const (
+	AllocationEnforcementHard AllocationEnforcement = "hard"
+	AllocationEnforcementSoft AllocationEnforcement = "soft"
+)
+
+// Valid indicates whether the value is a known member of the AllocationEnforcement enum.
+func (e AllocationEnforcement) Valid() bool {
+	switch e {
+	case AllocationEnforcementHard:
+		return true
+	case AllocationEnforcementSoft:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AllocationUnit.
+const (
+	AllocationUnitCpuHours  AllocationUnit = "cpu_hours"
+	AllocationUnitGpuHours  AllocationUnit = "gpu_hours"
+	AllocationUnitNodeHours AllocationUnit = "node_hours"
+)
+
+// Valid indicates whether the value is a known member of the AllocationUnit enum.
+func (e AllocationUnit) Valid() bool {
+	switch e {
+	case AllocationUnitCpuHours:
+		return true
+	case AllocationUnitGpuHours:
+		return true
+	case AllocationUnitNodeHours:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AssignmentSource.
 const (
 	AssignmentSourceAuto   AssignmentSource = "auto"
@@ -199,6 +238,27 @@ func (e ClusterVisibility) Valid() bool {
 	}
 }
 
+// Defines values for ClusterBindingDriftState.
+const (
+	ClusterBindingDriftStateDrift   ClusterBindingDriftState = "drift"
+	ClusterBindingDriftStateOk      ClusterBindingDriftState = "ok"
+	ClusterBindingDriftStateUnknown ClusterBindingDriftState = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the ClusterBindingDriftState enum.
+func (e ClusterBindingDriftState) Valid() bool {
+	switch e {
+	case ClusterBindingDriftStateDrift:
+		return true
+	case ClusterBindingDriftStateOk:
+		return true
+	case ClusterBindingDriftStateUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ClusterCreateApiVersion.
 const (
 	ClusterCreateApiVersionV0044 ClusterCreateApiVersion = "v0.0.44"
@@ -325,6 +385,45 @@ func (e ClusterUpdateVisibility) Valid() bool {
 	case ClusterUpdateVisibilityAllTenants:
 		return true
 	case ClusterUpdateVisibilityAssigned:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CreateAllocationEnforcement.
+const (
+	CreateAllocationEnforcementHard CreateAllocationEnforcement = "hard"
+	CreateAllocationEnforcementSoft CreateAllocationEnforcement = "soft"
+)
+
+// Valid indicates whether the value is a known member of the CreateAllocationEnforcement enum.
+func (e CreateAllocationEnforcement) Valid() bool {
+	switch e {
+	case CreateAllocationEnforcementHard:
+		return true
+	case CreateAllocationEnforcementSoft:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CreateAllocationUnit.
+const (
+	CreateAllocationUnitCpuHours  CreateAllocationUnit = "cpu_hours"
+	CreateAllocationUnitGpuHours  CreateAllocationUnit = "gpu_hours"
+	CreateAllocationUnitNodeHours CreateAllocationUnit = "node_hours"
+)
+
+// Valid indicates whether the value is a known member of the CreateAllocationUnit enum.
+func (e CreateAllocationUnit) Valid() bool {
+	switch e {
+	case CreateAllocationUnitCpuHours:
+		return true
+	case CreateAllocationUnitGpuHours:
+		return true
+	case CreateAllocationUnitNodeHours:
 		return true
 	default:
 		return false
@@ -988,6 +1087,45 @@ func (e TenantUpdateState) Valid() bool {
 	}
 }
 
+// Defines values for UpdateAllocationEnforcement.
+const (
+	UpdateAllocationEnforcementHard UpdateAllocationEnforcement = "hard"
+	UpdateAllocationEnforcementSoft UpdateAllocationEnforcement = "soft"
+)
+
+// Valid indicates whether the value is a known member of the UpdateAllocationEnforcement enum.
+func (e UpdateAllocationEnforcement) Valid() bool {
+	switch e {
+	case UpdateAllocationEnforcementHard:
+		return true
+	case UpdateAllocationEnforcementSoft:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for UpdateAllocationUnit.
+const (
+	UpdateAllocationUnitCpuHours  UpdateAllocationUnit = "cpu_hours"
+	UpdateAllocationUnitGpuHours  UpdateAllocationUnit = "gpu_hours"
+	UpdateAllocationUnitNodeHours UpdateAllocationUnit = "node_hours"
+)
+
+// Valid indicates whether the value is a known member of the UpdateAllocationUnit enum.
+func (e UpdateAllocationUnit) Valid() bool {
+	switch e {
+	case UpdateAllocationUnitCpuHours:
+		return true
+	case UpdateAllocationUnitGpuHours:
+		return true
+	case UpdateAllocationUnitNodeHours:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for UserLookupResultKind.
 const (
 	UserLookupResultKindService UserLookupResultKind = "service"
@@ -1341,6 +1479,31 @@ type AccountingUsageRow struct {
 	WaitP99      *float32 `json:"wait_p99,omitempty"`
 }
 
+// Allocation defines model for Allocation.
+type Allocation struct {
+	BindingId      openapi_types.UUID    `json:"binding_id"`
+	ConsumedAmount float32               `json:"consumed_amount"`
+	ConsumedAsOf   *time.Time            `json:"consumed_as_of,omitempty"`
+	CreatedAt      *time.Time            `json:"created_at,omitempty"`
+	Enforcement    AllocationEnforcement `json:"enforcement"`
+	Id             openapi_types.UUID    `json:"id"`
+	LimitAmount    float32               `json:"limit_amount"`
+	Name           string                `json:"name"`
+	PeriodEnd      time.Time             `json:"period_end"`
+	PeriodStart    time.Time             `json:"period_start"`
+	ProjectId      openapi_types.UUID    `json:"project_id"`
+	TenantId       openapi_types.UUID    `json:"tenant_id"`
+	Unit           AllocationUnit        `json:"unit"`
+	UpdatedAt      *time.Time            `json:"updated_at,omitempty"`
+	Version        int                   `json:"version"`
+}
+
+// AllocationEnforcement defines model for Allocation.Enforcement.
+type AllocationEnforcement string
+
+// AllocationUnit defines model for Allocation.Unit.
+type AllocationUnit string
+
 // Assignment defines model for Assignment.
 type Assignment struct {
 	ClusterId openapi_types.UUID `json:"cluster_id"`
@@ -1471,13 +1634,22 @@ type ClusterBinding struct {
 	CreatedAt         time.Time          `json:"created_at"`
 	DefaultPartition  string             `json:"default_partition"`
 	DefaultQos        string             `json:"default_qos"`
-	Enabled           bool               `json:"enabled"`
-	Id                openapi_types.UUID `json:"id"`
-	ProjectId         openapi_types.UUID `json:"project_id"`
-	SlurmAccount      string             `json:"slurm_account"`
-	UpdatedAt         time.Time          `json:"updated_at"`
-	Version           int                `json:"version"`
+	Drift             *[]struct {
+		Code   string `json:"code"`
+		Detail string `json:"detail"`
+	} `json:"drift,omitempty"`
+	DriftCheckedAt *time.Time                `json:"drift_checked_at,omitempty"`
+	DriftState     *ClusterBindingDriftState `json:"drift_state,omitempty"`
+	Enabled        bool                      `json:"enabled"`
+	Id             openapi_types.UUID        `json:"id"`
+	ProjectId      openapi_types.UUID        `json:"project_id"`
+	SlurmAccount   string                    `json:"slurm_account"`
+	UpdatedAt      time.Time                 `json:"updated_at"`
+	Version        int                       `json:"version"`
 }
+
+// ClusterBindingDriftState defines model for ClusterBinding.DriftState.
+type ClusterBindingDriftState string
 
 // ClusterBindingList defines model for ClusterBindingList.
 type ClusterBindingList struct {
@@ -1590,6 +1762,23 @@ type ClusterUpdateIdentityMode string
 
 // ClusterUpdateVisibility defines model for ClusterUpdate.Visibility.
 type ClusterUpdateVisibility string
+
+// CreateAllocation defines model for CreateAllocation.
+type CreateAllocation struct {
+	BindingId   openapi_types.UUID          `json:"binding_id"`
+	Enforcement CreateAllocationEnforcement `json:"enforcement"`
+	LimitAmount float32                     `json:"limit_amount"`
+	Name        string                      `json:"name"`
+	PeriodEnd   time.Time                   `json:"period_end"`
+	PeriodStart time.Time                   `json:"period_start"`
+	Unit        CreateAllocationUnit        `json:"unit"`
+}
+
+// CreateAllocationEnforcement defines model for CreateAllocation.Enforcement.
+type CreateAllocationEnforcement string
+
+// CreateAllocationUnit defines model for CreateAllocation.Unit.
+type CreateAllocationUnit string
 
 // CreateSecretConnector defines model for CreateSecretConnector.
 type CreateSecretConnector struct {
@@ -1892,6 +2081,16 @@ type PlatformRoleBinding struct {
 
 // PlatformRoleBindingRole defines model for PlatformRoleBinding.Role.
 type PlatformRoleBindingRole string
+
+// PolicySyncSummary defines model for PolicySyncSummary.
+type PolicySyncSummary struct {
+	Bindings  int                `json:"bindings"`
+	CheckedAt *time.Time         `json:"checked_at,omitempty"`
+	ClusterId openapi_types.UUID `json:"cluster_id"`
+	Drifted   int                `json:"drifted"`
+	LastError *string            `json:"last_error,omitempty"`
+	Unknown   int                `json:"unknown"`
+}
 
 // Principal defines model for Principal.
 type Principal struct {
@@ -2200,6 +2399,23 @@ type TenantUpdate struct {
 
 // TenantUpdateState defines model for TenantUpdate.State.
 type TenantUpdateState string
+
+// UpdateAllocation defines model for UpdateAllocation.
+type UpdateAllocation struct {
+	Enforcement *UpdateAllocationEnforcement `json:"enforcement,omitempty"`
+	LimitAmount *float32                     `json:"limit_amount,omitempty"`
+	Name        *string                      `json:"name,omitempty"`
+	PeriodEnd   *time.Time                   `json:"period_end,omitempty"`
+	PeriodStart *time.Time                   `json:"period_start,omitempty"`
+	Unit        *UpdateAllocationUnit        `json:"unit,omitempty"`
+	Version     int                          `json:"version"`
+}
+
+// UpdateAllocationEnforcement defines model for UpdateAllocation.Enforcement.
+type UpdateAllocationEnforcement string
+
+// UpdateAllocationUnit defines model for UpdateAllocation.Unit.
+type UpdateAllocationUnit string
 
 // UserLookupList defines model for UserLookupList.
 type UserLookupList struct {
@@ -2640,6 +2856,12 @@ type CreateProjectJSONRequestBody = ProjectCreate
 // UpdateProjectJSONRequestBody defines body for UpdateProject for application/json ContentType.
 type UpdateProjectJSONRequestBody = ProjectUpdate
 
+// CreateAllocationJSONRequestBody defines body for CreateAllocation for application/json ContentType.
+type CreateAllocationJSONRequestBody = CreateAllocation
+
+// UpdateAllocationJSONRequestBody defines body for UpdateAllocation for application/json ContentType.
+type UpdateAllocationJSONRequestBody = UpdateAllocation
+
 // CreateClusterBindingJSONRequestBody defines body for CreateClusterBinding for application/json ContentType.
 type CreateClusterBindingJSONRequestBody = ClusterBindingUpsert
 
@@ -2735,6 +2957,12 @@ type ServerInterface interface {
 	// SetClusterValidationPolicy Replace the cluster validation policy (platform only)
 	// (PUT /clusters/{cluster}/policies/validation)
 	SetClusterValidationPolicy(w http.ResponseWriter, r *http.Request, cluster ClusterRef)
+
+	// (GET /clusters/{cluster}/policy-sync)
+	GetPolicySync(w http.ResponseWriter, r *http.Request, cluster string)
+
+	// (POST /clusters/{cluster}/policy-sync)
+	TriggerPolicySync(w http.ResponseWriter, r *http.Request, cluster string)
 	// ListClusterAssignments List cluster tenant assignments
 	// (GET /clusters/{cluster}/tenants)
 	ListClusterAssignments(w http.ResponseWriter, r *http.Request, cluster ClusterRef, params ListClusterAssignmentsParams)
@@ -2786,6 +3014,9 @@ type ServerInterface interface {
 	// UpdateTenant Update a tenant
 	// (PATCH /tenants/{tenant})
 	UpdateTenant(w http.ResponseWriter, r *http.Request, tenant TenantSlug)
+
+	// (GET /tenants/{tenant}/accounting/allocations)
+	ListAccountingAllocations(w http.ResponseWriter, r *http.Request, tenant TenantSlug)
 
 	// (GET /tenants/{tenant}/accounting/top)
 	GetAccountingTop(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params GetAccountingTopParams)
@@ -2879,6 +3110,21 @@ type ServerInterface interface {
 	// UpdateProject Update a project (project.manage; JSON merge patch fields)
 	// (PATCH /tenants/{tenant}/projects/{project})
 	UpdateProject(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectRef)
+
+	// (GET /tenants/{tenant}/projects/{project}/allocations)
+	ListAllocations(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectRef)
+
+	// (POST /tenants/{tenant}/projects/{project}/allocations)
+	CreateAllocation(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectRef)
+
+	// (DELETE /tenants/{tenant}/projects/{project}/allocations/{allocation})
+	DeleteAllocation(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectRef, allocation openapi_types.UUID)
+
+	// (GET /tenants/{tenant}/projects/{project}/allocations/{allocation})
+	GetAllocation(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectRef, allocation openapi_types.UUID)
+
+	// (PATCH /tenants/{tenant}/projects/{project}/allocations/{allocation})
+	UpdateAllocation(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectRef, allocation openapi_types.UUID)
 	// ArchiveProject Archive a project (project.manage; blocks mutations and submissions)
 	// (POST /tenants/{tenant}/projects/{project}/archive)
 	ArchiveProject(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectRef)
@@ -3332,6 +3578,58 @@ func (siw *ServerInterfaceWrapper) SetClusterValidationPolicy(w http.ResponseWri
 	handler.ServeHTTP(w, r)
 }
 
+// GetPolicySync operation middleware
+func (siw *ServerInterfaceWrapper) GetPolicySync(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "cluster" -------------
+	var cluster string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "cluster", r.PathValue("cluster"), &cluster, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cluster", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetPolicySync(w, r, cluster)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// TriggerPolicySync operation middleware
+func (siw *ServerInterfaceWrapper) TriggerPolicySync(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "cluster" -------------
+	var cluster string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "cluster", r.PathValue("cluster"), &cluster, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cluster", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.TriggerPolicySync(w, r, cluster)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListClusterAssignments operation middleware
 func (siw *ServerInterfaceWrapper) ListClusterAssignments(w http.ResponseWriter, r *http.Request) {
 
@@ -3766,6 +4064,32 @@ func (siw *ServerInterfaceWrapper) UpdateTenant(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateTenant(w, r, tenant)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListAccountingAllocations operation middleware
+func (siw *ServerInterfaceWrapper) ListAccountingAllocations(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAccountingAllocations(w, r, tenant)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5078,6 +5402,208 @@ func (siw *ServerInterfaceWrapper) UpdateProject(w http.ResponseWriter, r *http.
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateProject(w, r, tenant, project)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListAllocations operation middleware
+func (siw *ServerInterfaceWrapper) ListAllocations(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", r.PathValue("project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAllocations(w, r, tenant, project)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateAllocation operation middleware
+func (siw *ServerInterfaceWrapper) CreateAllocation(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", r.PathValue("project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateAllocation(w, r, tenant, project)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteAllocation operation middleware
+func (siw *ServerInterfaceWrapper) DeleteAllocation(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", r.PathValue("project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "allocation" -------------
+	var allocation openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "allocation", r.PathValue("allocation"), &allocation, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "allocation", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteAllocation(w, r, tenant, project, allocation)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAllocation operation middleware
+func (siw *ServerInterfaceWrapper) GetAllocation(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", r.PathValue("project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "allocation" -------------
+	var allocation openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "allocation", r.PathValue("allocation"), &allocation, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "allocation", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAllocation(w, r, tenant, project, allocation)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateAllocation operation middleware
+func (siw *ServerInterfaceWrapper) UpdateAllocation(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectRef
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", r.PathValue("project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "allocation" -------------
+	var allocation openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "allocation", r.PathValue("allocation"), &allocation, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "allocation", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateAllocation(w, r, tenant, project, allocation)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -7669,6 +8195,14 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/tenants/{tenant}/projects/{project}/jobs/{job}", wrapper.GetJob)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/tenants/{tenant}/projects/{project}/jobs/{job}/cancel", wrapper.CancelJob)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/tenants/{tenant}/projects/{project}/jobs/{job}/execution-spec", wrapper.GetJobExecutionSpec)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/tenants/{tenant}/projects/{project}/allocations", wrapper.ListAllocations)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/tenants/{tenant}/projects/{project}/allocations", wrapper.CreateAllocation)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/tenants/{tenant}/projects/{project}/allocations/{allocation}", wrapper.DeleteAllocation)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/tenants/{tenant}/projects/{project}/allocations/{allocation}", wrapper.GetAllocation)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/tenants/{tenant}/projects/{project}/allocations/{allocation}", wrapper.UpdateAllocation)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/tenants/{tenant}/accounting/allocations", wrapper.ListAccountingAllocations)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/clusters/{cluster}/policy-sync", wrapper.GetPolicySync)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/clusters/{cluster}/policy-sync", wrapper.TriggerPolicySync)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/tenants/{tenant}/secret-connectors", wrapper.ListSecretConnectors)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/tenants/{tenant}/secret-connectors", wrapper.CreateSecretConnector)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/tenants/{tenant}/secret-connectors/{connector}", wrapper.DeleteSecretConnector)
@@ -8220,6 +8754,44 @@ func (response SetClusterValidationPolicy409JSONResponse) VisitSetClusterValidat
 	w.WriteHeader(409)
 	_, err := buf.WriteTo(w)
 	return err
+}
+
+type GetPolicySyncRequestObject struct {
+	Cluster string `json:"cluster"`
+}
+
+type GetPolicySyncResponseObject interface {
+	VisitGetPolicySyncResponse(w http.ResponseWriter) error
+}
+
+type GetPolicySync200JSONResponse PolicySyncSummary
+
+func (response GetPolicySync200JSONResponse) VisitGetPolicySyncResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TriggerPolicySyncRequestObject struct {
+	Cluster string `json:"cluster"`
+}
+
+type TriggerPolicySyncResponseObject interface {
+	VisitTriggerPolicySyncResponse(w http.ResponseWriter) error
+}
+
+type TriggerPolicySync202Response struct {
+}
+
+func (response TriggerPolicySync202Response) VisitTriggerPolicySyncResponse(w http.ResponseWriter) error {
+	w.WriteHeader(202)
+	return nil
 }
 
 type ListClusterAssignmentsRequestObject struct {
@@ -9131,6 +9703,28 @@ func (response UpdateTenant409JSONResponse) VisitUpdateTenantResponse(w http.Res
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccountingAllocationsRequestObject struct {
+	Tenant TenantSlug `json:"tenant"`
+}
+
+type ListAccountingAllocationsResponseObject interface {
+	VisitListAccountingAllocationsResponse(w http.ResponseWriter) error
+}
+
+type ListAccountingAllocations200JSONResponse map[string]interface{}
+
+func (response ListAccountingAllocations200JSONResponse) VisitListAccountingAllocationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -10926,6 +11520,136 @@ func (response UpdateProject409JSONResponse) VisitUpdateProjectResponse(w http.R
 	w.WriteHeader(409)
 	_, err := buf.WriteTo(w)
 	return err
+}
+
+type ListAllocationsRequestObject struct {
+	Tenant  TenantSlug `json:"tenant"`
+	Project ProjectRef `json:"project"`
+}
+
+type ListAllocationsResponseObject interface {
+	VisitListAllocationsResponse(w http.ResponseWriter) error
+}
+
+type ListAllocations200JSONResponse map[string]interface{}
+
+func (response ListAllocations200JSONResponse) VisitListAllocationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAllocationRequestObject struct {
+	Tenant  TenantSlug `json:"tenant"`
+	Project ProjectRef `json:"project"`
+	Body    *CreateAllocationJSONRequestBody
+}
+
+type CreateAllocationResponseObject interface {
+	VisitCreateAllocationResponse(w http.ResponseWriter) error
+}
+
+type CreateAllocation201JSONResponse Allocation
+
+func (response CreateAllocation201JSONResponse) VisitCreateAllocationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAllocation422Response struct {
+}
+
+func (response CreateAllocation422Response) VisitCreateAllocationResponse(w http.ResponseWriter) error {
+	w.WriteHeader(422)
+	return nil
+}
+
+type DeleteAllocationRequestObject struct {
+	Tenant     TenantSlug         `json:"tenant"`
+	Project    ProjectRef         `json:"project"`
+	Allocation openapi_types.UUID `json:"allocation"`
+}
+
+type DeleteAllocationResponseObject interface {
+	VisitDeleteAllocationResponse(w http.ResponseWriter) error
+}
+
+type DeleteAllocation204Response struct {
+}
+
+func (response DeleteAllocation204Response) VisitDeleteAllocationResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type GetAllocationRequestObject struct {
+	Tenant     TenantSlug         `json:"tenant"`
+	Project    ProjectRef         `json:"project"`
+	Allocation openapi_types.UUID `json:"allocation"`
+}
+
+type GetAllocationResponseObject interface {
+	VisitGetAllocationResponse(w http.ResponseWriter) error
+}
+
+type GetAllocation200JSONResponse Allocation
+
+func (response GetAllocation200JSONResponse) VisitGetAllocationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAllocationRequestObject struct {
+	Tenant     TenantSlug         `json:"tenant"`
+	Project    ProjectRef         `json:"project"`
+	Allocation openapi_types.UUID `json:"allocation"`
+	Body       *UpdateAllocationJSONRequestBody
+}
+
+type UpdateAllocationResponseObject interface {
+	VisitUpdateAllocationResponse(w http.ResponseWriter) error
+}
+
+type UpdateAllocation200JSONResponse Allocation
+
+func (response UpdateAllocation200JSONResponse) VisitUpdateAllocationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAllocation409Response struct {
+}
+
+func (response UpdateAllocation409Response) VisitUpdateAllocationResponse(w http.ResponseWriter) error {
+	w.WriteHeader(409)
+	return nil
 }
 
 type ArchiveProjectRequestObject struct {
@@ -13707,6 +14431,12 @@ type StrictServerInterface interface {
 	// SetClusterValidationPolicy Replace the cluster validation policy (platform only)
 	// (PUT /clusters/{cluster}/policies/validation)
 	SetClusterValidationPolicy(ctx context.Context, request SetClusterValidationPolicyRequestObject) (SetClusterValidationPolicyResponseObject, error)
+
+	// (GET /clusters/{cluster}/policy-sync)
+	GetPolicySync(ctx context.Context, request GetPolicySyncRequestObject) (GetPolicySyncResponseObject, error)
+
+	// (POST /clusters/{cluster}/policy-sync)
+	TriggerPolicySync(ctx context.Context, request TriggerPolicySyncRequestObject) (TriggerPolicySyncResponseObject, error)
 	// ListClusterAssignments List cluster tenant assignments
 	// (GET /clusters/{cluster}/tenants)
 	ListClusterAssignments(ctx context.Context, request ListClusterAssignmentsRequestObject) (ListClusterAssignmentsResponseObject, error)
@@ -13758,6 +14488,9 @@ type StrictServerInterface interface {
 	// UpdateTenant Update a tenant
 	// (PATCH /tenants/{tenant})
 	UpdateTenant(ctx context.Context, request UpdateTenantRequestObject) (UpdateTenantResponseObject, error)
+
+	// (GET /tenants/{tenant}/accounting/allocations)
+	ListAccountingAllocations(ctx context.Context, request ListAccountingAllocationsRequestObject) (ListAccountingAllocationsResponseObject, error)
 
 	// (GET /tenants/{tenant}/accounting/top)
 	GetAccountingTop(ctx context.Context, request GetAccountingTopRequestObject) (GetAccountingTopResponseObject, error)
@@ -13851,6 +14584,21 @@ type StrictServerInterface interface {
 	// UpdateProject Update a project (project.manage; JSON merge patch fields)
 	// (PATCH /tenants/{tenant}/projects/{project})
 	UpdateProject(ctx context.Context, request UpdateProjectRequestObject) (UpdateProjectResponseObject, error)
+
+	// (GET /tenants/{tenant}/projects/{project}/allocations)
+	ListAllocations(ctx context.Context, request ListAllocationsRequestObject) (ListAllocationsResponseObject, error)
+
+	// (POST /tenants/{tenant}/projects/{project}/allocations)
+	CreateAllocation(ctx context.Context, request CreateAllocationRequestObject) (CreateAllocationResponseObject, error)
+
+	// (DELETE /tenants/{tenant}/projects/{project}/allocations/{allocation})
+	DeleteAllocation(ctx context.Context, request DeleteAllocationRequestObject) (DeleteAllocationResponseObject, error)
+
+	// (GET /tenants/{tenant}/projects/{project}/allocations/{allocation})
+	GetAllocation(ctx context.Context, request GetAllocationRequestObject) (GetAllocationResponseObject, error)
+
+	// (PATCH /tenants/{tenant}/projects/{project}/allocations/{allocation})
+	UpdateAllocation(ctx context.Context, request UpdateAllocationRequestObject) (UpdateAllocationResponseObject, error)
 	// ArchiveProject Archive a project (project.manage; blocks mutations and submissions)
 	// (POST /tenants/{tenant}/projects/{project}/archive)
 	ArchiveProject(ctx context.Context, request ArchiveProjectRequestObject) (ArchiveProjectResponseObject, error)
@@ -14345,6 +15093,58 @@ func (sh *strictHandler) SetClusterValidationPolicy(w http.ResponseWriter, r *ht
 	}
 }
 
+// GetPolicySync operation middleware
+func (sh *strictHandler) GetPolicySync(w http.ResponseWriter, r *http.Request, cluster string) {
+	var request GetPolicySyncRequestObject
+
+	request.Cluster = cluster
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetPolicySync(ctx, request.(GetPolicySyncRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetPolicySync")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetPolicySyncResponseObject); ok {
+		if err := validResponse.VisitGetPolicySyncResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// TriggerPolicySync operation middleware
+func (sh *strictHandler) TriggerPolicySync(w http.ResponseWriter, r *http.Request, cluster string) {
+	var request TriggerPolicySyncRequestObject
+
+	request.Cluster = cluster
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.TriggerPolicySync(ctx, request.(TriggerPolicySyncRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "TriggerPolicySync")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(TriggerPolicySyncResponseObject); ok {
+		if err := validResponse.VisitTriggerPolicySyncResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListClusterAssignments operation middleware
 func (sh *strictHandler) ListClusterAssignments(w http.ResponseWriter, r *http.Request, cluster ClusterRef, params ListClusterAssignmentsParams) {
 	var request ListClusterAssignmentsRequestObject
@@ -14792,6 +15592,32 @@ func (sh *strictHandler) UpdateTenant(w http.ResponseWriter, r *http.Request, te
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(UpdateTenantResponseObject); ok {
 		if err := validResponse.VisitUpdateTenantResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListAccountingAllocations operation middleware
+func (sh *strictHandler) ListAccountingAllocations(w http.ResponseWriter, r *http.Request, tenant TenantSlug) {
+	var request ListAccountingAllocationsRequestObject
+
+	request.Tenant = tenant
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListAccountingAllocations(ctx, request.(ListAccountingAllocationsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListAccountingAllocations")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListAccountingAllocationsResponseObject); ok {
+		if err := validResponse.VisitListAccountingAllocationsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -15699,6 +16525,158 @@ func (sh *strictHandler) UpdateProject(w http.ResponseWriter, r *http.Request, t
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(UpdateProjectResponseObject); ok {
 		if err := validResponse.VisitUpdateProjectResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListAllocations operation middleware
+func (sh *strictHandler) ListAllocations(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectRef) {
+	var request ListAllocationsRequestObject
+
+	request.Tenant = tenant
+	request.Project = project
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListAllocations(ctx, request.(ListAllocationsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListAllocations")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListAllocationsResponseObject); ok {
+		if err := validResponse.VisitListAllocationsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateAllocation operation middleware
+func (sh *strictHandler) CreateAllocation(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectRef) {
+	var request CreateAllocationRequestObject
+
+	request.Tenant = tenant
+	request.Project = project
+
+	var body CreateAllocationJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateAllocation(ctx, request.(CreateAllocationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateAllocation")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateAllocationResponseObject); ok {
+		if err := validResponse.VisitCreateAllocationResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteAllocation operation middleware
+func (sh *strictHandler) DeleteAllocation(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectRef, allocation openapi_types.UUID) {
+	var request DeleteAllocationRequestObject
+
+	request.Tenant = tenant
+	request.Project = project
+	request.Allocation = allocation
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteAllocation(ctx, request.(DeleteAllocationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteAllocation")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteAllocationResponseObject); ok {
+		if err := validResponse.VisitDeleteAllocationResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetAllocation operation middleware
+func (sh *strictHandler) GetAllocation(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectRef, allocation openapi_types.UUID) {
+	var request GetAllocationRequestObject
+
+	request.Tenant = tenant
+	request.Project = project
+	request.Allocation = allocation
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAllocation(ctx, request.(GetAllocationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAllocation")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAllocationResponseObject); ok {
+		if err := validResponse.VisitGetAllocationResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateAllocation operation middleware
+func (sh *strictHandler) UpdateAllocation(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectRef, allocation openapi_types.UUID) {
+	var request UpdateAllocationRequestObject
+
+	request.Tenant = tenant
+	request.Project = project
+	request.Allocation = allocation
+
+	var body UpdateAllocationJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateAllocation(ctx, request.(UpdateAllocationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateAllocation")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateAllocationResponseObject); ok {
+		if err := validResponse.VisitUpdateAllocationResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -17460,216 +18438,225 @@ func (sh *strictHandler) ListWorkflowVersionValidations(w http.ResponseWriter, r
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
+	"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",
+	"8NHshfPl/sv/GwA=",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

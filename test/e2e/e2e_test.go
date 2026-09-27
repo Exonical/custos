@@ -452,6 +452,114 @@ func TestE2E(t *testing.T) {
 		})
 	})
 
+	t.Run("05c_allocations", func(t *testing.T) {
+		status, bindList := api(t, http.MethodGet, "/tenants/acme/projects/p1/cluster-bindings", nil, tokAdmin, nil)
+		want(t, status, bindList, http.StatusOK, "list allocation binding")
+		bindings, _ := bindList["items"].([]any)
+		if len(bindings) == 0 {
+			t.Fatal("missing project binding")
+		}
+		binding := bindings[0].(map[string]any)
+		bindingID := binding["id"].(string)
+		now := time.Now().UTC()
+		start := now.Add(-time.Hour).Format(time.RFC3339)
+		end := now.Add(time.Hour).Format(time.RFC3339)
+		status, allocation := api(t, http.MethodPost, "/tenants/acme/projects/p1/allocations", map[string]any{"binding_id": bindingID, "name": "e2e-budget" + runSfx, "unit": "cpu_hours", "limit_amount": 0.001, "period_start": start, "period_end": end, "enforcement": "hard"}, tokAdmin, nil)
+		want(t, status, allocation, http.StatusCreated, "create hard allocation")
+		aid := allocation["id"].(string)
+		status, body := api(t, http.MethodGet, "/tenants/acme/projects/p1/allocations/"+aid, nil, tokAlice, nil)
+		want(t, status, body, http.StatusOK, "researcher reads allocation")
+		status, body = api(t, http.MethodPost, "/tenants/acme/projects/p1/allocations", map[string]any{"binding_id": bindingID, "name": "forbidden" + runSfx, "unit": "cpu_hours", "limit_amount": 1, "period_start": start, "period_end": end, "enforcement": "hard"}, tokAlice, nil)
+		if status != http.StatusForbidden {
+			t.Fatalf("researcher allocation create: HTTP %d: %v", status, body)
+		}
+		jobRequest := map[string]any{"cluster": "e2e", "partition": "debug", "resources": map[string]any{"tasks": 1, "walltime": "2m"}, "script": map[string]any{"language": "bash", "body": "echo allocation"}}
+		status, denied := api(t, http.MethodPost, "/tenants/acme/projects/p1/jobs", jobRequest, tokAlice, map[string]string{"Idempotency-Key": "e2e-allocation-denied-" + runSfx})
+		if status != http.StatusUnprocessableEntity {
+			t.Fatalf("hard allocation: HTTP %d: %v", status, denied)
+		}
+		if e, ok := denied["error"].(map[string]any); !ok || e["code"] != "ALLOCATION_EXHAUSTED" {
+			t.Fatalf("allocation denial code: %v", denied)
+		}
+		status, updated := api(t, http.MethodPatch, "/tenants/acme/projects/p1/allocations/"+aid, map[string]any{"limit_amount": 1.0, "version": allocation["version"]}, tokAdmin, nil)
+		want(t, status, updated, http.StatusOK, "raise allocation limit")
+		status, job := api(t, http.MethodPost, "/tenants/acme/projects/p1/jobs", jobRequest, tokAlice, map[string]string{"Idempotency-Key": "e2e-allocation-allowed-" + runSfx})
+		want(t, status, job, http.StatusAccepted, "submit under allocation")
+		jobID := job["id"].(string)
+		poll(t, "allocation job completed", 90*time.Second, func() bool {
+			_, current := api(t, http.MethodGet, "/tenants/acme/projects/p1/jobs/"+jobID, nil, tokAlice, nil)
+			return current["state"] == "COMPLETED"
+		})
+		_, allocList := api(t, http.MethodGet, "/tenants/acme/accounting/allocations", nil, tokAlice, nil)
+		items, ok := allocList["items"].([]any)
+		if !ok || len(items) == 0 {
+			t.Fatalf("accounting allocations response: %v", allocList)
+		}
+		view := items[0].(map[string]any)
+		for _, key := range []string{"consumed", "remaining", "percent_used", "as_of"} {
+			if _, ok := view[key]; !ok {
+				t.Fatalf("allocation summary missing %s: %v", key, view)
+			}
+		}
+		status, body = api(t, http.MethodDelete, "/tenants/acme/projects/p1/allocations/"+aid, nil, tokAdmin, nil)
+		if status != http.StatusNoContent {
+			t.Fatalf("delete allocation: HTTP %d: %v", status, body)
+		}
+	})
+
+	t.Run("05d_policy_sync", func(t *testing.T) {
+		status, p2 := api(t, http.MethodPost, "/tenants/acme/projects", map[string]any{"slug": "p2", "name": "Drift Project"}, tokAdmin, nil)
+		if status == http.StatusConflict {
+			_, list := api(t, http.MethodGet, "/tenants/acme/projects", nil, tokAdmin, nil)
+			for _, raw := range list["items"].([]any) {
+				p := raw.(map[string]any)
+				if p["slug"] == "p2" {
+					p2 = p
+				}
+			}
+		} else {
+			want(t, status, p2, http.StatusCreated, "create drift project")
+		}
+		status, b := api(t, http.MethodPost, "/tenants/acme/projects/p2/cluster-bindings", map[string]any{"cluster_id": clusterID, "slurm_account": "nope", "default_partition": "debug", "allowed_partitions": []string{"debug"}, "default_qos": "normal", "allowed_qos": []string{"normal"}}, tokAdmin, nil)
+		if status != http.StatusCreated && status != http.StatusConflict {
+			t.Fatalf("create drift binding: HTTP %d: %v", status, b)
+		}
+		status, body := api(t, http.MethodPost, "/clusters/e2e/policy-sync", nil, tokAdmin, nil)
+		want(t, status, body, http.StatusAccepted, "trigger policy sync")
+		var driftBindingID string
+		poll(t, "policy drift recorded", 30*time.Second, func() bool {
+			_, goodList := api(t, http.MethodGet, "/tenants/acme/projects/p1/cluster-bindings", nil, tokAdmin, nil)
+			goodItems, _ := goodList["items"].([]any)
+			if len(goodItems) == 0 || goodItems[0].(map[string]any)["drift_state"] != "ok" {
+				return false
+			}
+			_, list := api(t, http.MethodGet, "/tenants/acme/projects/p2/cluster-bindings", nil, tokAdmin, nil)
+			items, _ := list["items"].([]any)
+			if len(items) == 0 {
+				return false
+			}
+			b := items[0].(map[string]any)
+			driftBindingID, _ = b["id"].(string)
+			state, _ := b["drift_state"].(string)
+			drift, _ := b["drift"].([]any)
+			found := false
+			for _, raw := range drift {
+				if raw.(map[string]any)["code"] == "ACCOUNT_MISSING" {
+					found = true
+				}
+			}
+			return state == "drift" && found
+		})
+		_, summary := api(t, http.MethodGet, "/clusters/e2e/policy-sync", nil, tokAdmin, nil)
+		if summary["drifted"].(float64) < 1 {
+			t.Fatalf("policy summary: %v", summary)
+		}
+		status, body = api(t, http.MethodDelete, "/tenants/acme/projects/p2/cluster-bindings/"+driftBindingID, nil, tokAdmin, nil)
+		if status != http.StatusNoContent {
+			t.Fatalf("delete drift binding: HTTP %d: %v", status, body)
+		}
+	})
+
 	t.Run("06_script_directive_rejection", func(t *testing.T) {
 		status, body := api(t, http.MethodPost,
 			"/tenants/acme/projects/p1/jobs",

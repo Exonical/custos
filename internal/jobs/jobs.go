@@ -79,7 +79,9 @@ func MapSlurmState(s slurm.JobState) (State, bool) {
 func TransitionOK(from, to State) bool {
 	switch from {
 	case StateSubmitting:
-		return to == StateQueued || to == StateFailed || to == StateCanceled
+		// A lost submit response can be adopted from accounting after the
+		// job has already completed before Custos persisted its Slurm ID.
+		return to == StateQueued || to == StateCompleted || to == StateFailed || to == StateCanceled
 	case StateQueued:
 		return to == StateRunning || to == StateCompleted ||
 			to == StateFailed || to == StateCanceled
@@ -108,6 +110,8 @@ type Job struct {
 	ExecutionSpec       admission.ExecutionSpec
 	ExecutionSpecDigest validation.Digest
 	ResourceUsage       map[string]any
+	BindingID           *uuid.UUID
+	EstimatedCost       map[string]float64
 	// ScriptDigest is zero for command (payload-less) tasks — persisted
 	// as NULL. Payload-bearing jobs always set it.
 	ScriptDigest       validation.Digest
@@ -164,6 +168,9 @@ type Execer = workqueue.Execer
 // EnqueueFunc enqueues a work item inside the job's transaction.
 type EnqueueFunc func(ex Execer) error
 
+// TxGuard checks admission policy with access to the persistence transaction.
+type TxGuard func(context.Context, any) error
+
 // IdemRecord is the idempotency_keys row written with the job insert.
 type IdemRecord struct {
 	Key         string
@@ -208,4 +215,9 @@ type Repository interface {
 	// ExpireIdempotency deletes expired idempotency rows; returns the
 	// count (platform scope; idempotency.expire worker).
 	ExpireIdempotency(ctx context.Context, now time.Time) (int64, error)
+}
+
+// CheckedRepository adds transactional admission checks to job creation.
+type CheckedRepository interface {
+	CreateWithIdempotencyChecked(ctx context.Context, scope tenants.Scope, j Job, idem IdemRecord, guard TxGuard, enqueue EnqueueFunc) (CreateResult, error)
 }

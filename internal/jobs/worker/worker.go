@@ -17,6 +17,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 
+	"github.com/Exonical/custos/internal/allocations"
 	"github.com/Exonical/custos/internal/audit"
 	"github.com/Exonical/custos/internal/clusters"
 	"github.com/Exonical/custos/internal/executions"
@@ -49,15 +50,16 @@ type SecretDelivery interface {
 
 // Deps wires the handlers.
 type Deps struct {
-	Jobs     jobs.Repository
-	Scripts  scripts.Store
-	Clusters clusters.Repository
-	Factory  slurm.Factory
-	Exec     workqueue.Execer // pool: out-of-transaction enqueues
-	Execs    executions.Repository
-	Audit    audit.Recorder
-	Metrics  *Metrics // optional
-	Secrets  SecretDelivery
+	Jobs        jobs.Repository
+	Scripts     scripts.Store
+	Clusters    clusters.Repository
+	Factory     slurm.Factory
+	Exec        workqueue.Execer // pool: out-of-transaction enqueues
+	Execs       executions.Repository
+	Audit       audit.Recorder
+	Metrics     *Metrics // optional
+	Secrets     SecretDelivery
+	Allocations *allocations.Service
 }
 
 func jobID(it workqueue.Item) (uuid.UUID, error) {
@@ -381,6 +383,10 @@ func applyObserved(ctx context.Context, d Deps, j jobs.Job, sj slurm.Job,
 	p := jobs.Patch{
 		SlurmState:       ptr(string(sj.State)),
 		LastReconciledAt: &now,
+	}
+	if j.SlurmJobID == nil && sj.ID.ID != 0 {
+		sid := int64(sj.ID.ID)
+		p.SlurmJobID = &sid
 	}
 	if state != j.State {
 		p.State = &state

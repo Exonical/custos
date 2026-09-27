@@ -51,6 +51,7 @@ func clusterBindingDTO(b projects.ClusterBinding) map[string]any {
 		"default_qos":        b.DefaultQoS,
 		"allowed_qos":        b.AllowedQoS,
 		"enabled":            b.Enabled, "version": b.Version,
+		"drift": b.Drift, "drift_checked_at": b.DriftCheckedAt, "drift_state": b.DriftState,
 		"created_at": b.CreatedAt.UTC().Format(time.RFC3339Nano),
 		"updated_at": b.UpdatedAt.UTC().Format(time.RFC3339Nano),
 	}

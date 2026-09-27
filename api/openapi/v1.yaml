@@ -2644,6 +2644,58 @@ paths:
           description: Job not found.
           content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
 
+  /tenants/{tenant}/projects/{project}/allocations:
+    parameters:
+      - $ref: "#/components/parameters/TenantSlug"
+      - $ref: "#/components/parameters/ProjectRef"
+    get:
+      operationId: listAllocations
+      security: [{bearerAuth: []}]
+      responses: {"200": {description: Project allocations, content: {application/json: {schema: {type: object}}}}}
+    post:
+      operationId: createAllocation
+      security: [{bearerAuth: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/CreateAllocation"}}}}
+      responses: {"201": {description: Allocation created, content: {application/json: {schema: {$ref: "#/components/schemas/Allocation"}}}}, "422": {description: Invalid allocation}}
+
+  /tenants/{tenant}/projects/{project}/allocations/{allocation}:
+    parameters:
+      - $ref: "#/components/parameters/TenantSlug"
+      - $ref: "#/components/parameters/ProjectRef"
+      - {name: allocation, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: getAllocation
+      security: [{bearerAuth: []}]
+      responses: {"200": {description: Allocation, content: {application/json: {schema: {$ref: "#/components/schemas/Allocation"}}}}}
+    patch:
+      operationId: updateAllocation
+      security: [{bearerAuth: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/UpdateAllocation"}}}}
+      responses: {"200": {description: Updated allocation, content: {application/json: {schema: {$ref: "#/components/schemas/Allocation"}}}}, "409": {description: Version conflict}}
+    delete:
+      operationId: deleteAllocation
+      security: [{bearerAuth: []}]
+      responses: {"204": {description: Deleted}}
+
+  /tenants/{tenant}/accounting/allocations:
+    get:
+      operationId: listAccountingAllocations
+      security: [{bearerAuth: []}]
+      parameters: [{$ref: "#/components/parameters/TenantSlug"}]
+      responses: {"200": {description: Visible allocations with consumption and remaining amounts, content: {application/json: {schema: {type: object}}}}}
+
+  /clusters/{cluster}/policy-sync:
+    get:
+      operationId: getPolicySync
+      security: [{bearerAuth: []}]
+      parameters: [{name: cluster, in: path, required: true, schema: {type: string}}]
+      responses: {"200": {description: Read-only policy drift summary, content: {application/json: {schema: {$ref: "#/components/schemas/PolicySyncSummary"}}}}}
+    post:
+      operationId: triggerPolicySync
+      security: [{bearerAuth: []}]
+      parameters: [{name: cluster, in: path, required: true, schema: {type: string}}]
+      responses: {"202": {description: Drift check enqueued}}
+
   /tenants/{tenant}/secret-connectors:
     parameters:
       - $ref: "#/components/parameters/TenantSlug"
@@ -3091,6 +3143,16 @@ components:
         updated_at:
           type: string
           format: date-time
+        drift:
+          type: array
+          items:
+            type: object
+            required: [code, detail]
+            properties:
+              code: {type: string}
+              detail: {type: string}
+        drift_checked_at: {type: [string, "null"], format: date-time}
+        drift_state: {type: string, enum: [ok, drift, unknown]}
 
     ClusterBindingList:
       type: object
@@ -3523,6 +3585,58 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/UserLookupResult"
+
+    PolicySyncSummary:
+      type: object
+      required: [cluster_id, bindings, drifted, unknown]
+      properties:
+        cluster_id: {type: string, format: uuid}
+        checked_at: {type: [string, "null"], format: date-time}
+        bindings: {type: integer}
+        drifted: {type: integer}
+        unknown: {type: integer}
+        last_error: {type: string}
+    Allocation:
+      type: object
+      required: [id, tenant_id, project_id, binding_id, name, unit, limit_amount, period_start, period_end, enforcement, consumed_amount, version]
+      properties:
+        id: {type: string, format: uuid}
+        tenant_id: {type: string, format: uuid}
+        project_id: {type: string, format: uuid}
+        binding_id: {type: string, format: uuid}
+        name: {type: string}
+        unit: {type: string, enum: [cpu_hours, gpu_hours, node_hours]}
+        limit_amount: {type: number, format: decimal}
+        period_start: {type: string, format: date-time}
+        period_end: {type: string, format: date-time}
+        enforcement: {type: string, enum: [hard, soft]}
+        consumed_amount: {type: number, format: decimal}
+        consumed_as_of: {type: [string, "null"], format: date-time}
+        version: {type: integer}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+    CreateAllocation:
+      type: object
+      required: [binding_id, name, unit, limit_amount, period_start, period_end, enforcement]
+      properties:
+        binding_id: {type: string, format: uuid}
+        name: {type: string}
+        unit: {type: string, enum: [cpu_hours, gpu_hours, node_hours]}
+        limit_amount: {type: number, minimum: 0}
+        period_start: {type: string, format: date-time}
+        period_end: {type: string, format: date-time}
+        enforcement: {type: string, enum: [hard, soft]}
+    UpdateAllocation:
+      type: object
+      required: [version]
+      properties:
+        name: {type: string}
+        unit: {type: string, enum: [cpu_hours, gpu_hours, node_hours]}
+        limit_amount: {type: number, minimum: 0}
+        period_start: {type: string, format: date-time}
+        period_end: {type: string, format: date-time}
+        enforcement: {type: string, enum: [hard, soft]}
+        version: {type: integer}
 
     SecretUse:
       type: object

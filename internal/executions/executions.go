@@ -167,6 +167,9 @@ type Execer = workqueue.Execer
 // EnqueueFunc enqueues a work item inside a transaction.
 type EnqueueFunc func(ex Execer) error
 
+// AdmissionGuard checks resource budgets in the task-admission transaction.
+type AdmissionGuard func(context.Context, any) error
+
 // IdemRecord is the idempotency_keys row written with the execution
 // insert (same table/semantics as jobs).
 type IdemRecord struct {
@@ -231,6 +234,13 @@ type Repository interface {
 	TransitionTask(ctx context.Context, scope tenants.Scope,
 		id uuid.UUID, fromState TaskState, fromVersion int64,
 		p TaskPatch, enqueue EnqueueFunc) (TaskExecution, error)
+}
+
+// CheckedRepository adds a transactional allocation guard to workflow admission.
+type CheckedRepository interface {
+	AdmitTaskChecked(ctx context.Context, scope tenants.Scope, taskID uuid.UUID,
+		fromState TaskState, fromVersion int64, p TaskPatch, j jobs.Job,
+		guard AdmissionGuard, enqueue EnqueueFunc) (TaskExecution, error)
 }
 
 // ErrTransitionStale is returned by Transition* when the guarded

@@ -102,7 +102,27 @@ a subset of the assignment's `allowed_partitions` when set
 (`PARTITION_NOT_ALLOWED`), `default_partition`/`default_qos` must lie
 within their allowed lists, and `slurm_account` must start with the
 assignment's `default_account_prefix` when set (`ACCOUNT_PREFIX`). A
-disabled binding resolves to NotFound for admission.
+disabled binding resolves to NotFound for admission. Bindings also expose
+read-only `drift`, `drift_checked_at`, and `drift_state` (`ok|drift|unknown`)
+from the `policy.sync` chain; Custos never writes Slurm accounting associations.
+
+## Allocations
+
+An `Allocation` is a hard or soft budget attached to a project-cluster binding,
+with `cpu_hours`, `gpu_hours`, or `node_hours` units and a half-open period.
+`usage.aggregate` materializes consumption from daily accounting facts. At
+admission, Custos estimates requested cost from the frozen resource request and
+adds the estimate plus same-binding non-terminal jobs' `estimated_cost` before
+checking the limit. Exact-boundary requests are allowed; an over-limit hard
+budget denies with `ALLOCATION_EXHAUSTED`, while a soft budget records a
+warning and `allocation.soft_exceeded` audit event. The requester's estimate is
+frozen in `ExecutionSpec` and the job row, so active reservations are a simple
+sum rather than a second resource calculation.
+
+`allocation.manage` is tenant-admin or project-admin scoped; `allocation.read`
+is granted to tenant operators/auditors/researchers and project admins for
+their project. Tenant accounting allocation views include consumed, remaining,
+percent-used, and refresh time.
 
 ## Resource policies
 

@@ -134,14 +134,15 @@ cmd_up() {
 	printf '%s' "$token" > "$SECRETS/slurm/token"
 	chmod 600 "$SECRETS/slurm/token"
 
-	if [ -s "$SECRETS/openbao-bootstrap-token" ]; then
-		echo "e2e: storing Slurm credential in platform OpenBao..."
-		MSYS_NO_PATHCONV=1 cexec openbao env BAO_ADDR=https://openbao:8200 \
-			BAO_CACERT=/openbao/tls/openbao.crt \
-			BAO_NAMESPACE=custos \
-			BAO_TOKEN="$(cat "$SECRETS/openbao-bootstrap-token")" \
-			bao kv put kv/clusters/e2e token="$token" >/dev/null
+	if [ ! -s "$SECRETS/openbao-bootstrap-token" ]; then
+		die "platform OpenBao bootstrap token missing; reset the e2e stack with scripts/e2e.sh down and scripts/e2e.sh up to regenerate it"
 	fi
+	echo "e2e: storing Slurm credential in platform OpenBao..."
+	MSYS_NO_PATHCONV=1 cexec openbao env BAO_ADDR=https://openbao:8200 \
+		BAO_CACERT=/openbao/tls/openbao.crt \
+		BAO_NAMESPACE=custos \
+		BAO_TOKEN="$(cat "$SECRETS/openbao-bootstrap-token")" \
+		bao kv put kv/clusters/e2e token="$token" >/dev/null
 
 	echo "e2e: seeding the customer-managed OpenBao stand-in..."
 	cexec openbao-byo env BAO_ADDR=http://127.0.0.1:8200 BAO_TOKEN=e2e-byo-token \

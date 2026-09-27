@@ -10,7 +10,9 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/Exonical/custos/internal/admission"
+	"github.com/Exonical/custos/internal/allocations"
 	"github.com/Exonical/custos/internal/audit"
+	"github.com/Exonical/custos/internal/authn"
 	"github.com/Exonical/custos/internal/clusters"
 	"github.com/Exonical/custos/internal/executions"
 	"github.com/Exonical/custos/internal/jobs"
@@ -286,6 +288,10 @@ func admitTask(ctx context.Context, d Deps,
 		return denyFail("ADMISSION_DENIED", "placement",
 			"project has no enabled binding to this cluster")
 	}
+	bindingMeta, err := d.Projects.GetBindingByCluster(ctx, scope, e.ProjectID, cluster.ID)
+	if err != nil {
+		return err
+	}
 	pol, err := d.Policies.Effective(ctx, scope, e.TenantID, e.ProjectID)
 	if err != nil {
 		return err
@@ -329,20 +335,39 @@ func admitTask(ctx context.Context, d Deps,
 			Interpreter: interp,
 		}
 	}
+	var allocationResult allocations.CheckResult
 	built, denial := admission.Build(admission.BuildInput{
 		Spec: espec, Request: res, Policy: pol,
 		Binding: binding, Cluster: workflows.ClusterSnapshot(cluster),
+		Allocate: func(rr admission.ResolvedResources) (*admission.Denial, []admission.Warning) {
+			if d.Allocations == nil {
+				return nil, nil
+			}
+			result, err := d.Allocations.Check(ctx, scope, bindingMeta.ID, rr)
+			if err != nil {
+				return &admission.Denial{Code: "ALLOCATION_CHECK_FAILED", Field: "allocation", Message: "allocation check unavailable"}, nil
+			}
+			allocationResult = result
+			return result.Denial, result.Warnings
+		},
 	})
 	if denial != nil {
-		return denyFail("ADMISSION_DENIED", denial.Field,
-			denial.Code+": "+denial.Message)
+		if allocationResult.Denial != nil && d.Allocations != nil {
+			d.Allocations.Observe(ctx, allocationResult)
+		}
+		reason := "ADMISSION_DENIED"
+		if denial.Code == "ALLOCATION_EXHAUSTED" {
+			reason = denial.Code
+		}
+		return denyFail(reason, denial.Field, denial.Code+": "+denial.Message)
 	}
 	built.AdmittedAt = d.now()
 
 	now := d.now()
 	j := jobs.Job{
 		ID: jobID, TenantID: e.TenantID, ProjectID: e.ProjectID,
-		ClusterID: cluster.ID, CreatedBy: e.RequestedBy,
+		ClusterID: cluster.ID, BindingID: &bindingMeta.ID, CreatedBy: e.RequestedBy,
+		EstimatedCost:   built.Admission.EstimatedCost,
 		Name:            jobName(wf.Name, t),
 		State:           jobs.StateSubmitting,
 		ResourceRequest: res,
@@ -357,27 +382,46 @@ func admitTask(ctx context.Context, d Deps,
 	}
 	to := executions.TaskSubmitting
 	specDigest := built.Digest
-	_, err = d.Execs.AdmitTask(ctx, scope, t.ID,
-		executions.TaskAdmitting, t.Version, executions.TaskPatch{
-			State: &to, JobID: &jobID, Spec: &built,
-			SpecDigest: &specDigest, ValidationID: svID,
-		}, j, func(ex executions.Execer) error {
-			_, err := workqueue.Enqueue(ctx, ex,
-				workqueue.EnqueueRequest{
-					Kind:     jobssvc.KindSubmit,
-					Key:      "job:" + jobID.String(),
-					TenantID: &e.TenantID,
-					Payload: map[string]string{
-						"job_id": jobID.String()},
-					MaxAttempts: 8,
-				})
-			return err
+	patch := executions.TaskPatch{State: &to, JobID: &jobID, Spec: &built, SpecDigest: &specDigest, ValidationID: svID}
+	enqueue := func(ex executions.Execer) error {
+		_, err := workqueue.Enqueue(ctx, ex, workqueue.EnqueueRequest{Kind: jobssvc.KindSubmit, Key: "job:" + jobID.String(), TenantID: &e.TenantID, Payload: map[string]string{"job_id": jobID.String()}, MaxAttempts: 8})
+		return err
+	}
+	if d.Allocations != nil {
+		repo, ok := d.Execs.(executions.CheckedRepository)
+		if !ok {
+			return apperr.New(apperr.Internal, "ALLOCATION_CHECK_UNAVAILABLE", "transactional allocation checks are unavailable")
+		}
+		guard := executions.AdmissionGuard(func(guardCtx context.Context, tx any) error {
+			checked, checkErr := d.Allocations.CheckInTx(guardCtx, tx, bindingMeta.ID, built.Admission.EstimatedCost)
+			if checkErr != nil {
+				return checkErr
+			}
+			allocationResult = checked
+			if checked.Denial != nil {
+				return apperr.New(apperr.Validation, checked.Denial.Code, checked.Denial.Message)
+			}
+			return nil
 		})
+		_, err = repo.AdmitTaskChecked(ctx, scope, t.ID, executions.TaskAdmitting, t.Version, patch, j, guard, enqueue)
+	} else {
+		_, err = d.Execs.AdmitTask(ctx, scope, t.ID, executions.TaskAdmitting, t.Version, patch, j, enqueue)
+	}
 	if err != nil {
+		if allocationResult.Denial != nil && d.Allocations != nil {
+			d.Allocations.Observe(ctx, allocationResult)
+			return denyFail("ALLOCATION_EXHAUSTED", "allocation", allocationResult.Denial.Message)
+		}
 		if executions.IsStale(err) {
 			return nil
 		}
 		return err
+	}
+	if d.Allocations != nil {
+		d.Allocations.Observe(ctx, allocationResult)
+	}
+	if len(allocationResult.Soft) > 0 && d.Allocations != nil {
+		d.Allocations.AuditSoft(ctx, authn.Principal{UserID: e.RequestedBy, Kind: authn.KindUser}, e.TenantID, allocationResult)
 	}
 	d.record(ctx, audit.Event{
 		Actor:    audit.Actor{Type: audit.ActorSystem, ID: "custos"},

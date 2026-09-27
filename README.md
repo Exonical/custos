@@ -24,17 +24,19 @@ migrates today:
   ShellCheck sidecar, workflow versions with a publish gate, and the
   execution engine (`execution.advance`, `task.admit`, structured argv).
 - **M6** — secrets: OpenBao provider with tenant namespaces and one-use
-  child tokens, a default connector per tenant plus bring-your-own
-  OpenBao connectors, metadata-only `SecretReference` objects, and
-  submit-time delivery to jobs as environment values or response-wrapped
-  tokens.
+  child tokens, tenant default/BYO connectors, metadata-only references,
+  and submit-time environment or response-wrapped delivery.
+- **M7-A** — slurmdbd accounting collection, immutable usage records, daily
+  aggregates, bounded usage/top queries, and per-job resource usage.
+- **M7-B** — binding allocations with hard/soft admission enforcement and
+  read-only policy drift detection against Slurm.
 
 An end-to-end stack (`scripts/e2e.sh`, `deploy/e2e/`) runs the whole
 thing against a real Slurm 26.05 cluster, Keycloak 26.7 and OpenBao
-under Podman; `test/e2e` exercises authentication through secret
-delivery and workflow cancellation.
+under Podman; `test/e2e` exercises authentication, secret delivery,
+accounting, allocation enforcement, policy drift, and workflow cancellation.
 
-Next up: **M7** accounting/policy sync, **M8** the Next.js UI.
+Next up: **M8** the Next.js UI.
 
 ## Documentation
 
@@ -64,7 +66,7 @@ Next up: **M7** accounting/policy sync, **M8** the Next.js UI.
 - [API conventions](docs/api.md) — OpenAPI contract, routing, envelopes
 - [Threat model](docs/threat-model.md) — assets, actors, STRIDE threats
 - [Milestone 1 plan](docs/milestone-1.md) — foundation implementation plan
-- [Architecture Decision Records](docs/adr/README.md) — ADR-001 … ADR-018
+- [Architecture Decision Records](docs/adr/README.md) — ADR-001 … ADR-019
 
 ## Planned stack
 

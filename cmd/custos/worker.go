@@ -12,6 +12,8 @@ import (
 
 	"github.com/Exonical/custos/internal/accounting"
 	accountpg "github.com/Exonical/custos/internal/accounting/postgres"
+	"github.com/Exonical/custos/internal/allocations"
+	allocationpg "github.com/Exonical/custos/internal/allocations/postgres"
 	"github.com/Exonical/custos/internal/audit"
 	"github.com/Exonical/custos/internal/audit/pgaudit"
 	"github.com/Exonical/custos/internal/authz"
@@ -31,6 +33,7 @@ import (
 	"github.com/Exonical/custos/internal/platform/workqueue"
 	policypg "github.com/Exonical/custos/internal/policies/postgres"
 	policiesvc "github.com/Exonical/custos/internal/policies/service"
+	"github.com/Exonical/custos/internal/policysync"
 	projectpg "github.com/Exonical/custos/internal/projects/postgres"
 	projectsvc "github.com/Exonical/custos/internal/projects/service"
 	scriptpg "github.com/Exonical/custos/internal/scripts/postgres"
@@ -93,6 +96,9 @@ func cmdWorker(parent context.Context, configPath string, lookupEnv config.Looku
 	}
 	secretRepo := secretpg.New(pool)
 	tenantRepo := tenantpg.New(pool)
+	projectRepo := projectpg.New(pool)
+	allocationSvc := allocations.NewService(allocationpg.New(pool), projectRepo, authz.RBAC{}, recorder, projectRepo)
+	allocationSvc.SetMeterProvider(prov.Meter)
 	secretRuntime := secretrefs.NewRuntime(secretRepo, &secretrefs.ConnectorFactory{
 		Platform: sdeps.OpenBao,
 		Policy: safehttp.DialPolicy{AllowPrivate: sdeps.Policy.AllowPrivate,
@@ -115,8 +121,15 @@ func cmdWorker(parent context.Context, configPath string, lookupEnv config.Looku
 		logger.ErrorContext(ctx, "cluster.sync bootstrap", "error", err)
 		return 1
 	}
+	policyDeps := policysync.Deps{Clusters: clusterRepo, Bindings: projectRepo,
+		Factory: sdeps.Factory, Audit: recorder, Pool: pool, Metrics: policysync.NewMetrics(prov.Meter)}
+	q.Register(policysync.Kind, policysync.Handler(policyDeps))
+	if err := policysync.Bootstrap(ctx, pool, clusterRepo); err != nil {
+		logger.ErrorContext(ctx, "policy.sync bootstrap", "error", err)
+		return 1
+	}
 	accountDeps := accounting.WorkerDeps{Repo: accountpg.New(pool), Clusters: clusterRepo,
-		Factory: sdeps.Factory, Metrics: accounting.NewMetrics(prov.Meter)}
+		Factory: sdeps.Factory, Metrics: accounting.NewMetrics(prov.Meter), Allocations: allocationSvc}
 	q.Register(accounting.KindCollect, accounting.Collect(accountDeps))
 	q.Register(accounting.KindAggregate, accounting.Aggregate(accountDeps))
 	if err := accounting.Bootstrap(ctx, pool, clusterRepo); err != nil {
@@ -126,15 +139,16 @@ func cmdWorker(parent context.Context, configPath string, lookupEnv config.Looku
 
 	// Job handlers (docs/workers.md): submit, reconcile, cancel, sweep.
 	jdeps := jobsworker.Deps{
-		Jobs:     jobpg.New(pool),
-		Scripts:  scriptpg.New(pool),
-		Clusters: clusterRepo,
-		Factory:  sdeps.Factory,
-		Exec:     pool,
-		Execs:    execpg.New(pool),
-		Audit:    recorder,
-		Metrics:  jobsworker.NewMetrics(prov.Meter, jobpg.New(pool)),
-		Secrets:  secretSvc,
+		Jobs:        jobpg.New(pool),
+		Scripts:     scriptpg.New(pool),
+		Clusters:    clusterRepo,
+		Factory:     sdeps.Factory,
+		Exec:        pool,
+		Execs:       execpg.New(pool),
+		Audit:       recorder,
+		Metrics:     jobsworker.NewMetrics(prov.Meter, jobpg.New(pool)),
+		Secrets:     secretSvc,
+		Allocations: allocationSvc,
 	}
 	q.Register(jobssvc.KindSubmit, jobsworker.Submit(jdeps))
 	q.Register(jobsworker.KindReconcile, jobsworker.Reconcile(jdeps))
@@ -148,11 +162,11 @@ func cmdWorker(parent context.Context, configPath string, lookupEnv config.Looku
 		logger.ErrorContext(ctx, "validation setup", "error", err)
 		return 1
 	}
-	projectRepo := projectpg.New(pool)
 	execDeps := engine.Deps{
 		Execs:           execpg.New(pool),
 		Workflows:       wfpg.New(pool),
 		SecretReference: secretSvc.ReferenceInfo,
+		Allocations:     allocationSvc,
 		AuthorizeSecretUse: func(ctx context.Context, tenantID, projectID,
 			userID uuid.UUID, name string) error {
 			_, err := secretSvc.AuthorizeUserUse(ctx, tenantID, projectID, userID, name)

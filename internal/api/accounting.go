@@ -14,6 +14,7 @@ import (
 	"github.com/Exonical/custos/internal/platform/apperr"
 	"github.com/Exonical/custos/internal/platform/httpx"
 	"github.com/Exonical/custos/internal/platform/workqueue"
+	"github.com/Exonical/custos/internal/policysync"
 	"github.com/Exonical/custos/internal/tenants"
 )
 
@@ -22,6 +23,7 @@ type accountingHandlers struct {
 	clusters *clustersvc.Service
 	exec     workqueue.Execer
 	az       authz.Authorizer
+	policy   *policysync.SummaryService
 }
 
 func parseRange(r *http.Request) (time.Time, time.Time, error) {
@@ -120,6 +122,38 @@ func (h *accountingHandlers) trigger(w http.ResponseWriter, r *http.Request, agg
 	}
 	w.WriteHeader(http.StatusAccepted)
 }
+func (h *accountingHandlers) policySummary(w http.ResponseWriter, r *http.Request) {
+	p := authn.MustPrincipal(r.Context())
+	c, err := h.clusters.Get(r.Context(), p, r.PathValue("cluster"))
+	if err != nil {
+		httpx.WriteError(r.Context(), w, err)
+		return
+	}
+	s, err := h.policy.Summary(r.Context(), c.ID)
+	if err != nil {
+		httpx.WriteError(r.Context(), w, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, s)
+}
+func (h *accountingHandlers) policyTrigger(w http.ResponseWriter, r *http.Request) {
+	p := authn.MustPrincipal(r.Context())
+	c, err := h.clusters.Get(r.Context(), p, r.PathValue("cluster"))
+	if err != nil {
+		httpx.WriteError(r.Context(), w, err)
+		return
+	}
+	if err = authz.Require(r.Context(), h.az, p, authz.ClusterManage, authz.Resource{Kind: "cluster", ID: c.ID.String()}, nil); err != nil {
+		httpx.WriteError(r.Context(), w, err)
+		return
+	}
+	if _, err = workqueue.Enqueue(r.Context(), h.exec, workqueue.EnqueueRequest{Kind: policysync.Kind, Key: "cluster:" + c.ID.String()}); err != nil {
+		httpx.WriteError(r.Context(), w, err)
+		return
+	}
+	w.WriteHeader(http.StatusAccepted)
+}
+
 func mountAccountingRoutes(mux *http.ServeMux, h *accountingHandlers, bearer func(http.Handler) http.Handler, tr func(http.Handler) http.Handler) {
 	base := "/api/v1/tenants/{tenant}/accounting"
 	mux.Handle("GET "+base+"/usage", tr(http.HandlerFunc(h.usage)))
@@ -128,4 +162,8 @@ func mountAccountingRoutes(mux *http.ServeMux, h *accountingHandlers, bearer fun
 	mux.Handle("GET "+cb, bearer(http.HandlerFunc(h.cluster)))
 	mux.Handle("POST "+cb+"/collect", bearer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { h.trigger(w, r, false) })))
 	mux.Handle("POST "+cb+"/aggregate", bearer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { h.trigger(w, r, true) })))
+	if h.policy != nil {
+		mux.Handle("GET /api/v1/clusters/{cluster}/policy-sync", bearer(http.HandlerFunc(h.policySummary)))
+		mux.Handle("POST /api/v1/clusters/{cluster}/policy-sync", bearer(http.HandlerFunc(h.policyTrigger)))
+	}
 }

@@ -30,6 +30,7 @@ var auditorReadPerms = []Action{
 	WorkflowRead,
 	ExecutionReadSelf, ExecutionReadTenant,
 	JobReadSelf, JobReadTenant,
+	AllocationRead,
 	SecretReferenceRead, SecretConnectorRead,
 	AccountingReadSelf, AccountingReadProject, AccountingReadTenant,
 	AuditReadTenant,
@@ -40,7 +41,7 @@ var researcherPerms = []Action{
 	WorkflowRead, WorkflowExecute,
 	JobSubmit, JobReadSelf, JobCancelSelf,
 	ExecutionReadSelf, ExecutionCancelSelf,
-	AccountingReadSelf,
+	AccountingReadSelf, AllocationRead,
 	SecretReferenceRead, SecretReferenceCreate, SecretReferenceUse, SecretReferenceDelete,
 }
 
@@ -53,6 +54,7 @@ var rolePermissions = map[string][]Action{
 
 	RoleTenantAdmin: {
 		TenantRead, TenantManage, TenantMembersManage,
+		AllocationRead, AllocationManage,
 		ProjectRead, ProjectCreate, ProjectManage, ProjectMembersManage,
 		ClusterRead,
 		PolicyRead, PolicyManage,
@@ -65,7 +67,7 @@ var rolePermissions = map[string][]Action{
 		AuditReadTenant,
 	},
 	RoleTenantOperator: {
-		TenantRead, ProjectRead, ClusterRead,
+		TenantRead, ProjectRead, ClusterRead, AllocationRead,
 		JobReadTenant, JobCancelAny,
 		ExecutionReadTenant, ExecutionCancelAny,
 		AccountingReadTenant,
@@ -78,7 +80,7 @@ var rolePermissions = map[string][]Action{
 		JobReadSelf, ExecutionReadSelf, AccountingReadSelf,
 	},
 	RoleAuditor: {
-		TenantRead, ProjectRead, ClusterRead, WorkflowRead,
+		TenantRead, ProjectRead, ClusterRead, AllocationRead, WorkflowRead,
 		AuditReadTenant, AccountingReadTenant,
 		JobReadTenant, ExecutionReadTenant,
 	},
@@ -86,7 +88,7 @@ var rolePermissions = map[string][]Action{
 	// Project roles (granted via project_memberships; evaluated only when
 	// the request carries a matching project context).
 	"project-admin": {
-		ProjectRead, ProjectManage, ProjectMembersManage,
+		ProjectRead, ProjectManage, ProjectMembersManage, AllocationRead, AllocationManage,
 		WorkflowRead, WorkflowCreate, WorkflowPublish, WorkflowExecute,
 		JobSubmit, JobReadSelf, JobReadProject, JobCancelSelf,
 		ExecutionReadSelf, ExecutionReadProject, ExecutionCancelSelf,

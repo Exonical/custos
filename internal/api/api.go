@@ -17,6 +17,7 @@ import (
 	apiv1 "github.com/Exonical/custos/pkg/api/v1"
 
 	"github.com/Exonical/custos/internal/accounting"
+	"github.com/Exonical/custos/internal/allocations"
 	"github.com/Exonical/custos/internal/audit"
 	"github.com/Exonical/custos/internal/authn"
 	"github.com/Exonical/custos/internal/authz"
@@ -28,6 +29,7 @@ import (
 	"github.com/Exonical/custos/internal/platform/httpx"
 	"github.com/Exonical/custos/internal/platform/workqueue"
 	policiesvc "github.com/Exonical/custos/internal/policies/service"
+	"github.com/Exonical/custos/internal/policysync"
 	"github.com/Exonical/custos/internal/projects"
 	projectsvc "github.com/Exonical/custos/internal/projects/service"
 	"github.com/Exonical/custos/internal/scripts"
@@ -87,7 +89,9 @@ type Deps struct {
 	Executions     *execsvc.Service              // enables execution routes
 	SecretRefs     *secretrefs.Service           // enables connector/reference routes
 	Accounting     *accounting.Service           // enables usage/accounting routes
-	AZ             authz.Authorizer              // required for validate routes
+	Allocations    *allocations.Service          // enables allocation routes
+	PolicySync     *policysync.SummaryService
+	AZ             authz.Authorizer // required for validate routes
 }
 
 // Mount registers the v1 routes on mux. The generated types in
@@ -141,11 +145,23 @@ func Mount(mux *http.ServeMux, deps Deps) {
 			mountSecretRoutes(mux, &secretHandlers{svc: deps.SecretRefs}, tr)
 		}
 
+		if deps.Allocations != nil && deps.TenantRepo != nil {
+			tenantMW := tenants.Require(deps.TenantRepo, deps.Logger, deps.Audit)
+			tr := func(h http.Handler) http.Handler { return bearer(tenantMW(h)) }
+			mux.Handle("GET /api/v1/tenants/{tenant}/accounting/allocations",
+				tr(http.HandlerFunc((&allocationHandlers{svc: deps.Allocations}).tenantList)))
+			if deps.Projects != nil && deps.ProjectRepo != nil && deps.ProjectMembers != nil {
+				projectMW := projects.Require(deps.ProjectRepo, deps.ProjectMembers, deps.Logger)
+				pr := func(h http.Handler) http.Handler { return tr(projectMW(h)) }
+				mountAllocationProjectRoutes(mux, &allocationHandlers{svc: deps.Allocations}, pr)
+			}
+		}
+
 		if deps.Accounting != nil && deps.Clusters != nil && deps.JobExec != nil {
 			tenantMW := tenants.Require(deps.TenantRepo, deps.Logger, deps.Audit)
 			tr := func(h http.Handler) http.Handler { return bearer(tenantMW(h)) }
 			mountAccountingRoutes(mux, &accountingHandlers{svc: deps.Accounting,
-				clusters: deps.Clusters, exec: deps.JobExec, az: deps.AZ}, bearer, tr)
+				clusters: deps.Clusters, exec: deps.JobExec, az: deps.AZ, policy: deps.PolicySync}, bearer, tr)
 		}
 
 		if deps.Clusters != nil {

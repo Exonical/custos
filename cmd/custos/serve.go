@@ -18,6 +18,8 @@ import (
 
 	accountsvc "github.com/Exonical/custos/internal/accounting"
 	accountpg "github.com/Exonical/custos/internal/accounting/postgres"
+	"github.com/Exonical/custos/internal/allocations"
+	allocationpg "github.com/Exonical/custos/internal/allocations/postgres"
 	"github.com/Exonical/custos/internal/api"
 	"github.com/Exonical/custos/internal/audit"
 	"github.com/Exonical/custos/internal/audit/pgaudit"
@@ -39,6 +41,7 @@ import (
 	"github.com/Exonical/custos/internal/platform/safehttp"
 	policypg "github.com/Exonical/custos/internal/policies/postgres"
 	policiesvc "github.com/Exonical/custos/internal/policies/service"
+	"github.com/Exonical/custos/internal/policysync"
 	projectpg "github.com/Exonical/custos/internal/projects/postgres"
 	projectsvc "github.com/Exonical/custos/internal/projects/service"
 	scriptpg "github.com/Exonical/custos/internal/scripts/postgres"
@@ -180,6 +183,10 @@ func cmdServe(parent context.Context, configPath string, lookupEnv config.Lookup
 		tenantRepo, clusterRepo, authz.RBAC{}, recorder)
 	policySvc := policiesvc.NewService(policypg.New(pool), authz.RBAC{}, recorder)
 	accountingSvc := accountsvc.NewService(accountpg.New(pool), projectRepo, authz.RBAC{})
+	allocationRepo := allocationpg.New(pool)
+	allocationSvc := allocations.NewService(allocationRepo, projectRepo, authz.RBAC{}, recorder, projectRepo)
+	allocationSvc.SetMeterProvider(prov.Meter)
+	policySummary := policysync.NewSummaryService(pool, projectRepo)
 
 	// Validation pipeline: in-process validators always; ShellCheck via
 	// the loopback sidecar when enabled (docs/script-validation.md).
@@ -206,6 +213,7 @@ func cmdServe(parent context.Context, configPath string, lookupEnv config.Lookup
 		AZ:          authz.RBAC{},
 		Audit:       recorder,
 		Secrets:     secretSvc,
+		Allocations: allocationSvc,
 	})
 
 	wfSvc := wfsvc.New(wfsvc.Deps{
@@ -259,6 +267,8 @@ func cmdServe(parent context.Context, configPath string, lookupEnv config.Lookup
 		Executions:     execSvc,
 		SecretRefs:     secretSvc,
 		Accounting:     accountingSvc,
+		Allocations:    allocationSvc,
+		PolicySync:     policySummary,
 		AZ:             authz.RBAC{},
 	})
 

@@ -22,13 +22,19 @@ const (
 	aggregateInterval = time.Hour
 )
 
+// AllocationRefresher refreshes materialized budget consumption.
+type AllocationRefresher interface {
+	Refresh(context.Context, *uuid.UUID) (int, error)
+}
+
 // WorkerDeps wires accounting handlers.
 type WorkerDeps struct {
-	Repo     Repository
-	Clusters clusters.Repository
-	Factory  slurm.Factory
-	Metrics  *Metrics
-	Now      func() time.Time
+	Repo        Repository
+	Clusters    clusters.Repository
+	Factory     slurm.Factory
+	Metrics     *Metrics
+	Allocations AllocationRefresher
+	Now         func() time.Time
 }
 
 func (d WorkerDeps) now() time.Time {
@@ -148,11 +154,40 @@ func Collect(d WorkerDeps) workqueue.Handler {
 
 // Aggregate returns the hourly dirty-day aggregator.
 func Aggregate(d WorkerDeps) workqueue.Handler {
-	return func(ctx context.Context, _ workqueue.Item) error {
-		if _, err := d.Repo.AggregateDirty(ctx, 64); err != nil {
+	return func(ctx context.Context, it workqueue.Item) error {
+		var p struct {
+			Full bool `json:"full"`
+		}
+		_ = json.Unmarshal(it.Payload, &p)
+		limit := 64
+		if p.Full {
+			limit = 1 << 30
+		}
+		if _, err := d.Repo.AggregateDirty(ctx, limit); err != nil {
 			return err
 		}
-		return workqueue.RescheduleAt(d.now().Add(aggregateInterval))
+		if d.Allocations != nil {
+			var cluster *uuid.UUID
+			if !p.Full && len(it.Payload) > 0 {
+				var specific struct {
+					ClusterID string `json:"cluster_id"`
+				}
+				_ = json.Unmarshal(it.Payload, &specific)
+				if specific.ClusterID != "" {
+					if id, err := uuid.Parse(specific.ClusterID); err == nil {
+						cluster = &id
+					}
+				}
+			}
+			if _, err := d.Allocations.Refresh(ctx, cluster); err != nil {
+				return err
+			}
+		}
+		interval := aggregateInterval
+		if p.Full {
+			interval = 24 * time.Hour
+		}
+		return workqueue.RescheduleAt(d.now().Add(interval))
 	}
 }
 func clusterID(it workqueue.Item) (uuid.UUID, error) {
@@ -185,6 +220,9 @@ func Bootstrap(ctx context.Context, ex workqueue.Execer, repo clusters.Repositor
 			return err
 		}
 	}
-	_, err = workqueue.Enqueue(ctx, ex, workqueue.EnqueueRequest{Kind: KindAggregate, Key: "singleton"})
+	if _, err = workqueue.Enqueue(ctx, ex, workqueue.EnqueueRequest{Kind: KindAggregate, Key: "singleton"}); err != nil {
+		return err
+	}
+	_, err = workqueue.Enqueue(ctx, ex, workqueue.EnqueueRequest{Kind: KindAggregate, Key: "full-refresh", Payload: map[string]bool{"full": true}})
 	return err
 }

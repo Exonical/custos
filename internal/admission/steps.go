@@ -135,14 +135,14 @@ func CheckAdmission(req workflowspec.Resources, partition string,
 }
 
 // BuildInput carries everything Build needs (authn/authz already done
-// by the caller; allocation is a no-op hook for now).
+// by the caller).
 type BuildInput struct {
 	Spec     ExecutionSpec // identity, placement, payload refs prefilled
 	Request  workflowspec.Resources
 	Policy   ResourcePolicy
 	Binding  Binding
 	Cluster  validation.ClusterSnapshot
-	Allocate func() *Denial // nil → allow
+	Allocate func(ResolvedResources) (*Denial, []Warning) // nil → no budgets
 }
 
 // CheckArgv enforces the argv/payload invariant: a spec is either a
@@ -196,11 +196,6 @@ func Build(in BuildInput) (ExecutionSpec, *Denial) {
 	if d != nil {
 		return ExecutionSpec{}, d
 	}
-	if in.Allocate != nil {
-		if d := in.Allocate(); d != nil {
-			return ExecutionSpec{}, d
-		}
-	}
 	if d := CheckAdmission(in.Request, partition, in.Cluster); d != nil {
 		return ExecutionSpec{}, d
 	}
@@ -230,6 +225,14 @@ func Build(in BuildInput) (ExecutionSpec, *Denial) {
 	if in.Request.GPU != nil {
 		spec.Resources.GPUType = in.Request.GPU.Type
 		spec.Resources.GPUCount = in.Request.GPU.Count
+	}
+	spec.Admission.EstimatedCost = EstimateCost(spec.Resources)
+	if in.Allocate != nil {
+		denial, warnings := in.Allocate(spec.Resources)
+		if denial != nil {
+			return ExecutionSpec{}, denial
+		}
+		spec.Admission.Warnings = warnings
 	}
 	spec.AdmittedBy = "admission/v1"
 	if err := spec.Freeze(); err != nil {

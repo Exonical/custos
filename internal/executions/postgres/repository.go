@@ -569,12 +569,21 @@ func (r *Repository) TransitionTask(ctx context.Context,
 	return t, err
 }
 
+func jsonValue(v any) []byte {
+	if v == nil {
+		return nil
+	}
+	b, _ := json.Marshal(v)
+	return b
+}
+
 const admitJobCols = `id, tenant_id, project_id, cluster_id, created_by,
 	name, state, state_reason, slurm_job_id, slurm_state, exit_code,
 	exit_signal, resource_request, execution_spec,
 	execution_spec_digest, script_digest, script_language,
 	script_validation_id, task_execution_id, submitted_at, started_at,
-	ended_at, last_reconciled_at, version, created_at, updated_at`
+	ended_at, last_reconciled_at, version, created_at, updated_at,
+	resource_usage, binding_id, estimated_cost`
 
 // AdmitTask implements executions.Repository: freezes the spec,
 // transitions ADMITTING → SUBMITTING, inserts the job and runs
@@ -583,6 +592,16 @@ func (r *Repository) AdmitTask(ctx context.Context,
 	scope tenants.Scope, taskID uuid.UUID,
 	fromState executions.TaskState, fromVersion int64,
 	p executions.TaskPatch, j jobs.Job,
+	enqueue executions.EnqueueFunc) (executions.TaskExecution, error) {
+	return r.AdmitTaskChecked(ctx, scope, taskID, fromState, fromVersion, p, j, nil, enqueue)
+}
+
+// AdmitTaskChecked executes the allocation guard before inserting the job,
+// holding any advisory reservation lock until the admission transaction commits.
+func (r *Repository) AdmitTaskChecked(ctx context.Context,
+	scope tenants.Scope, taskID uuid.UUID,
+	fromState executions.TaskState, fromVersion int64,
+	p executions.TaskPatch, j jobs.Job, guard executions.AdmissionGuard,
 	enqueue executions.EnqueueFunc) (executions.TaskExecution, error) {
 	var t executions.TaskExecution
 	specJSON, err := json.Marshal(j.ExecutionSpec)
@@ -597,6 +616,20 @@ func (r *Repository) AdmitTask(ctx context.Context,
 		if err := applyScope(ctx, tx, scope); err != nil {
 			return err
 		}
+		if guard != nil {
+			var state string
+			var version int64
+			err := tx.QueryRow(ctx, `SELECT state,version FROM task_executions WHERE id=$1 FOR UPDATE`, taskID).Scan(&state, &version)
+			if errors.Is(err, pgx.ErrNoRows) || err == nil && (state != string(fromState) || version != fromVersion) {
+				return executions.ErrTransitionStale
+			}
+			if err != nil {
+				return db.MapError(err)
+			}
+			if err = guard(ctx, tx); err != nil {
+				return err
+			}
+		}
 		// The job row must exist before task_executions.job_id can
 		// reference it (the FK is checked immediately).
 		var scriptDigest []byte
@@ -606,14 +639,15 @@ func (r *Repository) AdmitTask(ctx context.Context,
 		if _, err := tx.Exec(ctx,
 			`INSERT INTO jobs (`+admitJobCols+`)
 			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,
-			        $16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)`,
+			        $16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29)`,
 			j.ID, scopeTenant(scope, j.TenantID), j.ProjectID, j.ClusterID,
 			j.CreatedBy, j.Name, string(j.State), nilStr(j.StateReason),
 			j.SlurmJobID, nilStr(j.SlurmState), j.ExitCode, j.ExitSignal,
 			reqJSON, specJSON, j.ExecutionSpecDigest[:], scriptDigest,
 			string(j.ScriptLanguage), j.ScriptValidationID,
 			j.TaskExecutionID, j.SubmittedAt, j.StartedAt, j.EndedAt,
-			j.LastReconciledAt, j.Version, j.CreatedAt, j.UpdatedAt); err != nil {
+			j.LastReconciledAt, j.Version, j.CreatedAt, j.UpdatedAt,
+			nil, j.BindingID, jsonValue(j.EstimatedCost)); err != nil {
 			return db.MapError(err)
 		}
 		set := []string{"version = version + 1", "updated_at = now()"}

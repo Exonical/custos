@@ -76,6 +76,10 @@ sketch in the brief because the two talk to different daemons
 (slurmctld vs slurmdbd), fail independently, and accounting is optional on
 some sites.
 
+`policy.sync` uses this accounting port only for reads. It compares binding
+accounts, associations, and QoS plus the Slurm partition snapshot; it does not
+write any slurmdbd associations or account records. See ADR-019.
+
 ### Neutral types (excerpt)
 
 ```go

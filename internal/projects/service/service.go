@@ -533,6 +533,19 @@ func (s *Service) DeleteBinding(ctx context.Context, p authn.Principal,
 	return nil
 }
 
+// GetBindingByCluster returns the enabled binding metadata for an internal admission caller.
+func (s *Service) GetBindingByCluster(ctx context.Context, scope tenants.Scope,
+	projectID, clusterID uuid.UUID) (projects.ClusterBinding, error) {
+	b, err := s.bindings.GetBindingByCluster(ctx, scope, projectID, clusterID)
+	if err != nil {
+		return b, err
+	}
+	if !b.Enabled {
+		return projects.ClusterBinding{}, apperr.New(apperr.NotFound, "NOT_FOUND", "binding disabled")
+	}
+	return b, nil
+}
+
 // ResolveBinding returns the admission.Binding for (project, cluster);
 // disabled bindings are invisible.
 func (s *Service) ResolveBinding(ctx context.Context, scope tenants.Scope,

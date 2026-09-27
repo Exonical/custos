@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/Exonical/custos/internal/admission"
+	"github.com/Exonical/custos/internal/allocations"
 	"github.com/Exonical/custos/internal/audit"
 	"github.com/Exonical/custos/internal/authn"
 	"github.com/Exonical/custos/internal/authz"
@@ -56,6 +57,7 @@ type Deps struct {
 	AZ          authz.Authorizer
 	Audit       audit.Recorder
 	Secrets     *secretrefs.Service
+	Allocations *allocations.Service
 }
 
 // Service is the jobs application service.
@@ -332,6 +334,10 @@ func (s *Service) Submit(ctx context.Context, p authn.Principal,
 		return Result{}, nil, apperr.New(apperr.Conflict, "CLUSTER_UNAVAILABLE",
 			"cluster capabilities are unavailable")
 	}
+	bindingMeta, err := s.d.Projects.GetBindingByCluster(ctx, scope, projectID, cluster.ID)
+	if err != nil {
+		return Result{}, nil, err
+	}
 	jobID := uuid.Must(uuid.NewV7())
 	name := in.Name
 	if name == "" {
@@ -365,25 +371,43 @@ func (s *Service) Submit(ctx context.Context, p authn.Principal,
 			WrappedTokenRefs:  wrappedHandles,
 		},
 	}
+	var allocationResult allocations.CheckResult
 	built, denial := admission.Build(admission.BuildInput{
 		Spec: spec, Request: in.Resources, Policy: pol,
 		Binding: binding, Cluster: *snap,
+		Allocate: func(res admission.ResolvedResources) (*admission.Denial, []admission.Warning) {
+			if s.d.Allocations == nil {
+				return nil, nil
+			}
+			result, err := s.d.Allocations.Check(ctx, tenants.ScopeFor(&tc), bindingMeta.ID, res)
+			if err != nil {
+				return &admission.Denial{Code: "ALLOCATION_CHECK_FAILED", Field: "allocation", Message: "allocation check unavailable", Severity: validation.SeverityError}, nil
+			}
+			allocationResult = result
+			return result.Denial, result.Warnings
+		},
 	})
 	if denial != nil {
+		if allocationResult.Denial != nil && s.d.Allocations != nil {
+			s.d.Allocations.Observe(ctx, allocationResult)
+		}
 		s.audit(ctx, p, tenantID, "job.submit_denied", "project",
 			projectID.String(), denial.Code, audit.ResultDeny,
 			map[string]any{
 				"field":         denial.Field,
 				"script_digest": digest.String(),
 			})
+		code := "POLICY_VIOLATION"
+		if denial.Code == "ALLOCATION_EXHAUSTED" {
+			code = denial.Code
+		}
 		return Result{}, []validation.Diagnostic{{
 			Source:   "admission",
 			Code:     denial.Code,
 			Severity: denial.Severity,
 			Field:    denial.Field,
 			Message:  denial.Message,
-		}}, apperr.New(apperr.Validation,
-			"POLICY_VIOLATION",
+		}}, apperr.New(apperr.Validation, code,
 			fmt.Sprintf("%s: %s", denial.Field, denial.Message))
 	}
 	built.AdmittedAt = time.Now().UTC()
@@ -392,33 +416,60 @@ func (s *Service) Submit(ctx context.Context, p authn.Principal,
 	now := time.Now().UTC()
 	j := jobs.Job{
 		ID: jobID, TenantID: tenantID, ProjectID: projectID,
-		ClusterID: cluster.ID, CreatedBy: p.UserID, Name: name,
+		ClusterID: cluster.ID, BindingID: &bindingMeta.ID, CreatedBy: p.UserID, Name: name,
 		State: jobs.StateSubmitting, ResourceRequest: in.Resources,
 		ExecutionSpec: built, ExecutionSpecDigest: built.Digest,
-		ScriptDigest: digest, ScriptLanguage: in.Script.Language,
+		EstimatedCost: built.Admission.EstimatedCost,
+		ScriptDigest:  digest, ScriptLanguage: in.Script.Language,
 		ScriptValidationID: &sv.ID,
 		Version:            1, CreatedAt: now, UpdatedAt: now,
 	}
-	res, err := s.d.Jobs.CreateWithIdempotency(ctx, scope, j,
-		jobs.IdemRecord{
-			Key: idemKey, RequestHash: requestHash,
-			Status: 202, ResourceID: jobID,
-			ExpiresAt: now.Add(24 * time.Hour),
-		}, func(ex jobs.Execer) error {
-			_, err := workqueue.Enqueue(ctx, ex, workqueue.EnqueueRequest{
-				Kind:        KindSubmit,
-				Key:         "job:" + jobID.String(),
-				TenantID:    &tenantID,
-				Payload:     map[string]string{"job_id": jobID.String()},
-				MaxAttempts: 8,
-			})
-			return err
+	idem := jobs.IdemRecord{Key: idemKey, RequestHash: requestHash,
+		Status: 202, ResourceID: jobID, ExpiresAt: now.Add(24 * time.Hour)}
+	enqueue := func(ex jobs.Execer) error {
+		_, err := workqueue.Enqueue(ctx, ex, workqueue.EnqueueRequest{
+			Kind: KindSubmit, Key: "job:" + jobID.String(), TenantID: &tenantID,
+			Payload: map[string]string{"job_id": jobID.String()}, MaxAttempts: 8,
 		})
+		return err
+	}
+	var res jobs.CreateResult
+	if s.d.Allocations != nil {
+		repo, ok := s.d.Jobs.(jobs.CheckedRepository)
+		if !ok {
+			return Result{}, nil, apperr.New(apperr.Internal, "ALLOCATION_CHECK_UNAVAILABLE", "transactional allocation checks are unavailable")
+		}
+		guard := jobs.TxGuard(func(guardCtx context.Context, tx any) error {
+			checked, checkErr := s.d.Allocations.CheckInTx(guardCtx, tx, bindingMeta.ID, built.Admission.EstimatedCost)
+			if checkErr != nil {
+				return checkErr
+			}
+			allocationResult = checked
+			if checked.Denial != nil {
+				return apperr.New(apperr.Validation, checked.Denial.Code, checked.Denial.Message)
+			}
+			return nil
+		})
+		res, err = repo.CreateWithIdempotencyChecked(ctx, scope, j, idem, guard, enqueue)
+	} else {
+		res, err = s.d.Jobs.CreateWithIdempotency(ctx, scope, j, idem, enqueue)
+	}
 	if err != nil {
+		if allocationResult.Denial != nil && s.d.Allocations != nil {
+			s.d.Allocations.Observe(ctx, allocationResult)
+			s.audit(ctx, p, tenantID, "job.submit_denied", "project", projectID.String(), allocationResult.Denial.Code, audit.ResultDeny, map[string]any{"field": allocationResult.Denial.Field, "script_digest": digest.String()})
+			return Result{}, []validation.Diagnostic{{Source: "admission", Code: allocationResult.Denial.Code, Severity: allocationResult.Denial.Severity, Field: allocationResult.Denial.Field, Message: allocationResult.Denial.Message}}, apperr.New(apperr.Validation, allocationResult.Denial.Code, fmt.Sprintf("%s: %s", allocationResult.Denial.Field, allocationResult.Denial.Message))
+		}
 		return Result{}, nil, err
 	}
 	if res.Replayed {
 		return Result{Job: res.Job, Replayed: true}, nil, nil
+	}
+	if s.d.Allocations != nil {
+		s.d.Allocations.Observe(ctx, allocationResult)
+	}
+	if len(allocationResult.Soft) > 0 && s.d.Allocations != nil {
+		s.d.Allocations.AuditSoft(ctx, p, tenantID, allocationResult)
 	}
 	s.audit(ctx, p, tenantID, "job.submitted", "job", jobID.String(), "",
 		audit.ResultAllow, map[string]any{

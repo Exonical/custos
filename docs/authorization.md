@@ -56,6 +56,7 @@ execution.read.self        execution.read.project execution.read.tenant executio
 job.submit                 job.read.self         job.read.project  job.read.tenant   job.cancel.self   job.cancel.any
 secret.reference.read      secret.reference.create  secret.reference.use  secret.reference.delete
 secret.connector.read      secret.connector.manage
+allocation.read            allocation.manage
 accounting.read.self       accounting.read.project  accounting.read.tenant
 audit.read.tenant
 ```
@@ -91,12 +92,13 @@ Sketch:
 ```text
 platform-admin   : platform.manage + everything
 platform-auditor : platform.audit.read, *.read.* (all tenants), audit.read.tenant
-tenant-admin     : tenant.*, project.*, policy.*, workflow.*, execution.*.any, job.*.any, secret.reference.*, secret.connector.*, accounting.read.tenant, audit.read.tenant
-tenant-operator  : tenant.read, project.read, cluster.read, job.read.tenant, job.cancel.any, execution.read.tenant, execution.cancel.any, accounting.read.tenant
+tenant-admin     : tenant.*, project.*, policy.*, workflow.*, execution.*.any, job.*.any, secret.reference.*, secret.connector.*, allocation.*, accounting.read.tenant, audit.read.tenant
+tenant-operator  : tenant.read, project.read, cluster.read, job.read.tenant, job.cancel.any, execution.read.tenant, execution.cancel.any, accounting.read.tenant, allocation.read
 workflow-author  : workflow.read/create/publish + researcher
-researcher       : tenant.read, project.read, cluster.read, workflow.read, workflow.execute, job.submit, job.read.self, job.cancel.self, execution.*.self, accounting.read.self, secret.reference.read/create/use/delete
+researcher       : tenant.read, project.read, cluster.read, workflow.read, workflow.execute, job.submit, job.read.self, job.cancel.self, execution.*.self, accounting.read.self, allocation.read, secret.reference.read/create/use/delete
+project-admin    : allocation.read/manage on its project
 viewer           : *.read.self, tenant.read, project.read, cluster.read, workflow.read
-auditor          : tenant.read, project.read, cluster.read, workflow.read, audit.read.tenant, accounting.read.tenant, *.read.tenant
+auditor          : tenant.read, project.read, cluster.read, workflow.read, audit.read.tenant, accounting.read.tenant, allocation.read, *.read.tenant
 project-admin    : project.read/manage/members.manage, workflow.read/create/publish/execute,
                    job.submit/read.self/read.project/cancel.self, execution.read.self/read.project/cancel.self,
                    accounting.read.self/read.project (on that project)

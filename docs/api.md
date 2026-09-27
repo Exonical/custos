@@ -208,7 +208,12 @@ GET    /api/v1/tenants/{tenant}/jobs                     tenant-wide; job.read.t
 GET    /api/v1/tenants/{tenant}/projects/{project}/jobs/{job}/output?stream=stdout   (Milestone 7+, via cluster file access policy)
 GET    /api/v1/tenants/{tenant}/accounting/usage?group_by=user|project|cluster|account|partition|day&from=&to=   accounting.read.self/project/tenant; max 400 days
 GET    /api/v1/tenants/{tenant}/accounting/top?metric=cpu_seconds|gpu_seconds|jobs&by=user|project&from=&to=    top ≤50 under the same scope
-GET    /api/v1/tenants/{tenant}/accounting/allocations                         later M7 allocation slice
+GET    /api/v1/tenants/{tenant}/projects/{project}/allocations                allocation.read; list project budgets
+POST   /api/v1/tenants/{tenant}/projects/{project}/allocations                allocation.manage; create budget
+GET    /api/v1/tenants/{tenant}/projects/{project}/allocations/{allocation}   allocation.read
+PATCH  /api/v1/tenants/{tenant}/projects/{project}/allocations/{allocation}  allocation.manage; optimistic version
+DELETE /api/v1/tenants/{tenant}/projects/{project}/allocations/{allocation}  allocation.manage
+GET    /api/v1/tenants/{tenant}/accounting/allocations                       visible budgets with consumed/remaining/percent_used
 GET    /api/v1/tenants/{tenant}/audit-events
 GET    /api/v1/clusters                             platform registry list
 POST   /api/v1/clusters                             register cluster (SSRF-vetted base_url, token_ref)
@@ -219,6 +224,8 @@ POST   /api/v1/clusters/{cluster}/test-connection   open + ping + capabilities (
 GET    /api/v1/clusters/{cluster}/accounting        watermark/error/unattributed collector status
 POST   /api/v1/clusters/{cluster}/accounting/collect     cluster.manage; enqueue collection
 POST   /api/v1/clusters/{cluster}/accounting/aggregate   cluster.manage; enqueue dirty-day aggregation
+GET    /api/v1/clusters/{cluster}/policy-sync           cluster.read; binding drift summary
+POST   /api/v1/clusters/{cluster}/policy-sync           cluster.manage; enqueue read-only drift check
 GET    /api/v1/clusters/{cluster}/tenants           list assignments
 PUT    /api/v1/clusters/{cluster}/tenants/{tenant}  assign (defaults)
 DELETE /api/v1/clusters/{cluster}/tenants/{tenant}  unassign

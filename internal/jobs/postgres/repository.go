@@ -54,10 +54,24 @@ const jobCols = `id, tenant_id, project_id, cluster_id, created_by, name,
 	resource_request, execution_spec, execution_spec_digest, script_digest,
 	script_language, script_validation_id, task_execution_id,
 	submitted_at, started_at, ended_at, last_reconciled_at, version,
-	created_at, updated_at, resource_usage`
+	created_at, updated_at, resource_usage, binding_id, estimated_cost`
 
 // nilDigest returns nil for the zero digest so script_digest stores
 // NULL on command (payload-less) jobs.
+func jsonMaybe(v any) []byte {
+	if v == nil {
+		return nil
+	}
+	b, _ := json.Marshal(v)
+	return b
+}
+func nullableUUID(v *uuid.UUID) any {
+	if v == nil {
+		return nil
+	}
+	return *v
+}
+
 func nilDigest(d validation.Digest) []byte {
 	if d == (validation.Digest{}) {
 		return nil
@@ -69,7 +83,7 @@ func scanJob(row pgx.Row) (jobs.Job, error) {
 	var j jobs.Job
 	var reason, slurmState *string
 	var state, lang string
-	var specJSON, reqJSON, usageJSON []byte
+	var specJSON, reqJSON, usageJSON, costJSON []byte
 	var specDigest, scriptDigest []byte
 	err := row.Scan(&j.ID, &j.TenantID, &j.ProjectID, &j.ClusterID,
 		&j.CreatedBy, &j.Name, &state, &reason, &j.SlurmJobID,
@@ -77,7 +91,7 @@ func scanJob(row pgx.Row) (jobs.Job, error) {
 		&specDigest, &scriptDigest, &lang, &j.ScriptValidationID,
 		&j.TaskExecutionID, &j.SubmittedAt,
 		&j.StartedAt, &j.EndedAt, &j.LastReconciledAt, &j.Version,
-		&j.CreatedAt, &j.UpdatedAt, &usageJSON)
+		&j.CreatedAt, &j.UpdatedAt, &usageJSON, &j.BindingID, &costJSON)
 	if err != nil {
 		return j, db.MapError(err)
 	}
@@ -102,12 +116,17 @@ func scanJob(row pgx.Row) (jobs.Job, error) {
 			return j, fmt.Errorf("jobs: resource_usage: %w", err)
 		}
 	}
+	if len(costJSON) > 0 {
+		if err := json.Unmarshal(costJSON, &j.EstimatedCost); err != nil {
+			return j, fmt.Errorf("jobs: estimated_cost: %w", err)
+		}
+	}
 	return j, nil
 }
 
 const insertJobSQL = `INSERT INTO jobs (` + jobCols + `)
 	VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,
-	        $17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)`
+	        $17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29)`
 
 // Create inserts a job and runs enqueue in one transaction (workflow
 // task admissions; ad-hoc submissions use CreateWithIdempotency).
@@ -133,7 +152,7 @@ func (r *Repository) Create(ctx context.Context, scope tenants.Scope,
 			nilDigest(j.ScriptDigest), string(j.ScriptLanguage),
 			j.ScriptValidationID, j.TaskExecutionID, j.SubmittedAt,
 			j.StartedAt, j.EndedAt, j.LastReconciledAt, j.Version,
-			j.CreatedAt, j.UpdatedAt, nil); err != nil {
+			j.CreatedAt, j.UpdatedAt, jsonMaybe(j.ResourceUsage), nullableUUID(j.BindingID), jsonMaybe(j.EstimatedCost)); err != nil {
 			return db.MapError(err)
 		}
 		if enqueue != nil {
@@ -147,6 +166,14 @@ func (r *Repository) Create(ctx context.Context, scope tenants.Scope,
 func (r *Repository) CreateWithIdempotency(ctx context.Context,
 	scope tenants.Scope, j jobs.Job, idem jobs.IdemRecord,
 	enqueue jobs.EnqueueFunc) (jobs.CreateResult, error) {
+	return r.CreateWithIdempotencyChecked(ctx, scope, j, idem, nil, enqueue)
+}
+
+// CreateWithIdempotencyChecked runs guard after idempotency replay detection
+// and before job insertion in the same transaction.
+func (r *Repository) CreateWithIdempotencyChecked(ctx context.Context,
+	scope tenants.Scope, j jobs.Job, idem jobs.IdemRecord,
+	guard jobs.TxGuard, enqueue jobs.EnqueueFunc) (jobs.CreateResult, error) {
 	var res jobs.CreateResult
 	specJSON, err := json.Marshal(j.ExecutionSpec)
 	if err != nil {
@@ -202,6 +229,11 @@ func (r *Repository) CreateWithIdempotency(ctx context.Context,
 			}
 			return nil
 		}
+		if guard != nil {
+			if err := guard(ctx, tx); err != nil {
+				return err
+			}
+		}
 		if _, err := tx.Exec(ctx, insertJobSQL,
 			j.ID, tid, j.ProjectID, j.ClusterID, j.CreatedBy, j.Name,
 			string(j.State), nilStr(j.StateReason), j.SlurmJobID,
@@ -210,7 +242,7 @@ func (r *Repository) CreateWithIdempotency(ctx context.Context,
 			string(j.ScriptLanguage), j.ScriptValidationID,
 			j.TaskExecutionID, j.SubmittedAt,
 			j.StartedAt, j.EndedAt, j.LastReconciledAt, j.Version,
-			j.CreatedAt, j.UpdatedAt, nil); err != nil {
+			j.CreatedAt, j.UpdatedAt, jsonMaybe(j.ResourceUsage), nullableUUID(j.BindingID), jsonMaybe(j.EstimatedCost)); err != nil {
 			return db.MapError(err)
 		}
 		if enqueue != nil {
