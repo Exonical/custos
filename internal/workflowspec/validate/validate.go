@@ -457,21 +457,6 @@ func checkExprs(w workflowspec.Workflow, _ map[string]bool) []FieldError {
 			p, ok := e.SoleRef()
 			return ok && p.String() == "array.taskId"
 		}
-		secretWholeOK := func(tpl *expr.Template, refs []expr.Path) bool {
-			var secret bool
-			for _, r := range refs {
-				secret = secret || len(r) > 0 && r[0] == "secrets"
-			}
-			if !secret {
-				return true
-			}
-			e, ok := tpl.SoleExpr()
-			if !ok {
-				return false
-			}
-			p, ok := e.SoleRef()
-			return ok && len(p) == 2 && p[0] == "secrets"
-		}
 		parse := func(src, path string, bare, allowRuntime bool) {
 			if bare {
 				e, err := expr.BareExpr(src)
@@ -578,19 +563,9 @@ func checkExprs(w workflowspec.Workflow, _ map[string]bool) []FieldError {
 				errs = append(errs, checkRef(r, sc,
 					"spec.defaults.env."+k)...)
 			}
-			for _, r := range refs {
-				if len(r) > 0 && r[0] == "secrets" {
-					e, ok := tpl.SoleExpr()
-					p, sole := expr.Path(nil), false
-					if ok {
-						p, sole = e.SoleRef()
-					}
-					if !sole || len(p) != 2 || p[0] != "secrets" {
-						errs = append(errs, fe("spec.defaults.env."+k,
-							"REF_SECRET_WHOLE", "secrets.<handle> must be the whole env value"))
-					}
-					break
-				}
+			if !secretWholeOK(tpl, refs) {
+				errs = append(errs, fe("spec.defaults.env."+k,
+					"REF_SECRET_WHOLE", "secrets.<handle> must be the whole env value"))
 			}
 		}
 		if d.WorkingDirectory != "" {
@@ -686,4 +661,22 @@ func checkRef(r expr.Path, sc taskScope, path string) []FieldError {
 			"unknown namespace "+r[0])}
 	}
 	return nil
+}
+
+// secretWholeOK reports whether tpl either references no secrets or is
+// exactly one secrets.<handle> reference.
+func secretWholeOK(tpl *expr.Template, refs []expr.Path) bool {
+	var secret bool
+	for _, r := range refs {
+		secret = secret || len(r) > 0 && r[0] == "secrets"
+	}
+	if !secret {
+		return true
+	}
+	e, ok := tpl.SoleExpr()
+	if !ok {
+		return false
+	}
+	p, ok := e.SoleRef()
+	return ok && len(p) == 2 && p[0] == "secrets"
 }
