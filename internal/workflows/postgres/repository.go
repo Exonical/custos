@@ -16,16 +16,6 @@ import (
 	"github.com/Exonical/custos/internal/workflows"
 )
 
-var errNotFound = apperr.New(apperr.NotFound, "NOT_FOUND", "not found")
-
-func applyScope(ctx context.Context, tx pgx.Tx, s tenants.Scope) error {
-	if s.IsPlatform() {
-		return db.SetPlatformScope(ctx, tx)
-	}
-	id, _ := s.TenantID()
-	return db.SetTenant(ctx, tx, id)
-}
-
 func versionConflict() error {
 	return apperr.New(apperr.Conflict, "VERSION_CONFLICT",
 		"stale version; reload and retry")
@@ -54,7 +44,7 @@ func scanWf(row pgx.Row) (workflows.Workflow, error) {
 func (r *Repository) Create(ctx context.Context, scope tenants.Scope,
 	w workflows.Workflow) error {
 	return db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		_, err := tx.Exec(ctx, `
@@ -73,7 +63,7 @@ func (r *Repository) Get(ctx context.Context, scope tenants.Scope,
 	tenantID, id uuid.UUID) (workflows.Workflow, error) {
 	var w workflows.Workflow
 	err := db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		var err error
@@ -83,7 +73,7 @@ func (r *Repository) Get(ctx context.Context, scope tenants.Scope,
 		return err
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
-		return workflows.Workflow{}, errNotFound
+		return workflows.Workflow{}, db.ErrNotFound
 	}
 	return w, err
 }
@@ -93,7 +83,7 @@ func (r *Repository) List(ctx context.Context, scope tenants.Scope,
 	tenantID uuid.UUID, projectID *uuid.UUID) ([]workflows.Workflow, error) {
 	var out []workflows.Workflow
 	err := db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		q := `SELECT ` + wfCols + ` FROM workflows WHERE tenant_id=$1`
@@ -125,7 +115,7 @@ func (r *Repository) List(ctx context.Context, scope tenants.Scope,
 func (r *Repository) Update(ctx context.Context, scope tenants.Scope,
 	w workflows.Workflow, expectVersion int64) error {
 	return db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		tag, err := tx.Exec(ctx, `
@@ -165,7 +155,7 @@ func scanVer(row pgx.Row) (workflows.Version, error) {
 func (r *Repository) CreateVersion(ctx context.Context,
 	scope tenants.Scope, v workflows.Version) error {
 	return db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		_, err := tx.Exec(ctx, `
@@ -185,7 +175,7 @@ func (r *Repository) GetVersion(ctx context.Context, scope tenants.Scope,
 	tenantID, workflowID, versionID uuid.UUID) (workflows.Version, error) {
 	var v workflows.Version
 	err := db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		var err error
@@ -196,7 +186,7 @@ func (r *Repository) GetVersion(ctx context.Context, scope tenants.Scope,
 		return err
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
-		return workflows.Version{}, errNotFound
+		return workflows.Version{}, db.ErrNotFound
 	}
 	return v, err
 }
@@ -206,7 +196,7 @@ func (r *Repository) ListVersions(ctx context.Context,
 	scope tenants.Scope, tenantID, workflowID uuid.UUID) ([]workflows.Version, error) {
 	var out []workflows.Version
 	err := db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		rows, err := tx.Query(ctx, `
@@ -233,7 +223,7 @@ func (r *Repository) ListVersions(ctx context.Context,
 func (r *Repository) UpdateDraftSpec(ctx context.Context,
 	scope tenants.Scope, v workflows.Version, expectVersion int64) error {
 	return db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		tag, err := tx.Exec(ctx, `
@@ -258,7 +248,7 @@ func (r *Repository) UpdateDraftSpec(ctx context.Context,
 func (r *Repository) UpdateLayout(ctx context.Context,
 	scope tenants.Scope, v workflows.Version, expectVersion int64) error {
 	return db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		tag, err := tx.Exec(ctx, `
@@ -284,7 +274,7 @@ func (r *Repository) SetVersionState(ctx context.Context,
 	scope tenants.Scope, v workflows.Version, to workflows.VersionState,
 	expectVersion int64) error {
 	return db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		var pub *time.Time
@@ -324,7 +314,7 @@ func (r *Repository) NextVersionNumber(ctx context.Context,
 	scope tenants.Scope, workflowID uuid.UUID) (int, error) {
 	var n int
 	err := db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		return tx.QueryRow(ctx, `

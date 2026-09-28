@@ -30,25 +30,6 @@ type Repository struct {
 // New returns a Repository on pool.
 func New(pool *pgxpool.Pool) *Repository { return &Repository{pool: pool} }
 
-var errNotFound = apperr.New(apperr.NotFound, "NOT_FOUND", "not found")
-
-func applyScope(ctx context.Context, tx pgx.Tx, s tenants.Scope) error {
-	if s.IsPlatform() {
-		return db.SetPlatformScope(ctx, tx)
-	}
-	id, _ := s.TenantID()
-	return db.SetTenant(ctx, tx, id)
-}
-
-// scopeTenant returns the RLS tenant when scoped; uuid.Nil under the
-// platform scope (callers pass the job's tenant_id explicitly then).
-func scopeTenant(s tenants.Scope, tenantID uuid.UUID) uuid.UUID {
-	if id, ok := s.TenantID(); ok {
-		return id
-	}
-	return tenantID
-}
-
 const jobCols = `id, tenant_id, project_id, cluster_id, created_by, name,
 	state, state_reason, slurm_job_id, slurm_state, exit_code, exit_signal,
 	resource_request, execution_spec, execution_spec_digest, script_digest,
@@ -141,11 +122,11 @@ func (r *Repository) Create(ctx context.Context, scope tenants.Scope,
 		return fmt.Errorf("jobs: marshal resource_request: %w", err)
 	}
 	return db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		if _, err := tx.Exec(ctx, insertJobSQL,
-			j.ID, scopeTenant(scope, j.TenantID), j.ProjectID, j.ClusterID,
+			j.ID, db.ScopeTenant(scope, j.TenantID), j.ProjectID, j.ClusterID,
 			j.CreatedBy, j.Name, string(j.State), nilStr(j.StateReason),
 			j.SlurmJobID, nilStr(j.SlurmState), j.ExitCode, j.ExitSignal,
 			reqJSON, specJSON, j.ExecutionSpecDigest[:],
@@ -184,10 +165,10 @@ func (r *Repository) CreateWithIdempotencyChecked(ctx context.Context,
 		return res, fmt.Errorf("jobs: marshal resource_request: %w", err)
 	}
 	err = db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
-		tid := scopeTenant(scope, j.TenantID)
+		tid := db.ScopeTenant(scope, j.TenantID)
 		// Insert the idempotency key first: a racing duplicate key
 		// blocks until the winner commits, then replays its response.
 		var inserted uuid.UUID
@@ -268,7 +249,7 @@ func (r *Repository) Get(ctx context.Context, scope tenants.Scope,
 	id uuid.UUID) (jobs.Job, error) {
 	var j jobs.Job
 	err := db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		var err error
@@ -277,7 +258,7 @@ func (r *Repository) Get(ctx context.Context, scope tenants.Scope,
 		return err
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
-		return j, errNotFound
+		return j, db.ErrNotFound
 	}
 	return j, err
 }
@@ -289,7 +270,7 @@ func (r *Repository) List(ctx context.Context, scope tenants.Scope,
 	var out []jobs.Job
 	var next string
 	err := db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		where := []string{"true"}
@@ -384,7 +365,7 @@ func (r *Repository) Transition(ctx context.Context, scope tenants.Scope,
 	id uuid.UUID, fromVersion int, p jobs.Patch) (jobs.Job, error) {
 	var out jobs.Job
 	err := db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		sets := []string{"version = version + 1", "updated_at = now()", "adopt_version_conflicts = 0"}
@@ -439,7 +420,7 @@ func (r *Repository) Transition(ctx context.Context, scope tenants.Scope,
 				return db.MapError(err)
 			}
 			if !exists {
-				return errNotFound
+				return db.ErrNotFound
 			}
 			return apperr.New(apperr.Conflict, "VERSION_CONFLICT",
 				"job was modified concurrently")
@@ -461,7 +442,7 @@ func (r *Repository) RecordAdoptVersionConflict(ctx context.Context, id uuid.UUI
 		}
 		err := tx.QueryRow(ctx, `UPDATE jobs SET adopt_version_conflicts=adopt_version_conflicts+1, updated_at=now() WHERE id=$1 RETURNING adopt_version_conflicts`, id).Scan(&count)
 		if errors.Is(err, pgx.ErrNoRows) {
-			return errNotFound
+			return db.ErrNotFound
 		}
 		return db.MapError(err)
 	})

@@ -29,16 +29,6 @@ type Repository struct {
 // New returns a Repository on pool.
 func New(pool *pgxpool.Pool) *Repository { return &Repository{pool: pool} }
 
-var errNotFound = apperr.New(apperr.NotFound, "NOT_FOUND", "not found")
-
-func applyScope(ctx context.Context, tx pgx.Tx, s tenants.Scope) error {
-	if s.IsPlatform() {
-		return db.SetPlatformScope(ctx, tx)
-	}
-	id, _ := s.TenantID()
-	return db.SetTenant(ctx, tx, id)
-}
-
 func itoa(i int) string { return strconv.Itoa(i) }
 
 // strs normalizes a nil slice to the empty array the NOT NULL columns
@@ -48,15 +38,6 @@ func strs(s []string) []string {
 		return []string{}
 	}
 	return s
-}
-
-// tid returns the tenant id a tenant scope constrains to; platform
-// scope takes the explicit tenantID argument instead.
-func tid(s tenants.Scope, tenantID uuid.UUID) uuid.UUID {
-	if id, ok := s.TenantID(); ok {
-		return id
-	}
-	return tenantID
 }
 
 const projectCols = `id, tenant_id, slug, name, description, state,
@@ -86,13 +67,13 @@ func (r *Repository) Create(ctx context.Context, scope tenants.Scope, p projects
 		return err
 	}
 	return db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		_, err := tx.Exec(ctx, `
 			INSERT INTO projects (id, tenant_id, slug, name, description, state, settings)
 			VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-			p.ID, tid(scope, p.TenantID), p.Slug, p.Name, p.Description,
+			p.ID, db.ScopeTenant(scope, p.TenantID), p.Slug, p.Name, p.Description,
 			string(p.State), settings)
 		return db.MapError(err)
 	})
@@ -104,18 +85,18 @@ func (r *Repository) GetBySlugOrID(ctx context.Context, scope tenants.Scope,
 	tenantID uuid.UUID, ref string) (projects.Project, error) {
 	var p projects.Project
 	err := db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		var err error
 		p, err = scanProject(tx.QueryRow(ctx,
 			`SELECT `+projectCols+` FROM projects
 			 WHERE tenant_id = $1 AND (slug = $2 OR id::text = $2)`,
-			tid(scope, tenantID), ref))
+			db.ScopeTenant(scope, tenantID), ref))
 		return err
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
-		return projects.Project{}, errNotFound
+		return projects.Project{}, db.ErrNotFound
 	}
 	return p, err
 }
@@ -135,11 +116,11 @@ func (r *Repository) List(ctx context.Context, scope tenants.Scope,
 	var out []projects.Project
 	var next string
 	err := db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		where := " WHERE tenant_id = $1"
-		args := []any{tid(scope, tenantID)}
+		args := []any{db.ScopeTenant(scope, tenantID)}
 		if ks != nil {
 			where += " AND (created_at, id) > ($2, $3)"
 			args = append(args, ks.CreatedAt, ks.ID)
@@ -176,7 +157,7 @@ func (r *Repository) ListForUser(ctx context.Context, scope tenants.Scope,
 	tenantID, userID uuid.UUID) ([]projects.Project, error) {
 	var out []projects.Project
 	err := db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		rows, err := tx.Query(ctx,
@@ -184,7 +165,7 @@ func (r *Repository) ListForUser(ctx context.Context, scope tenants.Scope,
 			 WHERE p.tenant_id = $1
 			   AND EXISTS (SELECT 1 FROM project_memberships m
 			               WHERE m.project_id = p.id AND m.user_id = $2)
-			 ORDER BY p.created_at, p.id`, tid(scope, tenantID), userID)
+			 ORDER BY p.created_at, p.id`, db.ScopeTenant(scope, tenantID), userID)
 		if err != nil {
 			return err
 		}
@@ -208,14 +189,14 @@ func (r *Repository) Update(ctx context.Context, scope tenants.Scope, p projects
 		return err
 	}
 	return db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		tag, err := tx.Exec(ctx, `
 			UPDATE projects SET name=$3, description=$4, state=$5, settings=$6,
 			       updated_at=now(), version=version+1
 			WHERE id=$1 AND tenant_id=$2 AND version=$7`,
-			p.ID, tid(scope, p.TenantID), p.Name, p.Description,
+			p.ID, db.ScopeTenant(scope, p.TenantID), p.Name, p.Description,
 			string(p.State), settings, p.Version)
 		if err != nil {
 			return db.MapError(err)
@@ -226,11 +207,11 @@ func (r *Repository) Update(ctx context.Context, scope tenants.Scope, p projects
 		var exists bool
 		if err := tx.QueryRow(ctx,
 			`SELECT EXISTS (SELECT 1 FROM projects WHERE id=$1 AND tenant_id=$2)`,
-			p.ID, tid(scope, p.TenantID)).Scan(&exists); err != nil {
+			p.ID, db.ScopeTenant(scope, p.TenantID)).Scan(&exists); err != nil {
 			return err
 		}
 		if !exists {
-			return errNotFound
+			return db.ErrNotFound
 		}
 		return apperr.New(apperr.Conflict, "VERSION_CONFLICT", "version mismatch")
 	})
@@ -251,7 +232,7 @@ func (r *Repository) GetMembership(ctx context.Context, scope tenants.Scope,
 	projectID, userID uuid.UUID) (projects.Membership, error) {
 	var m projects.Membership
 	err := db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		var err error
@@ -261,7 +242,7 @@ func (r *Repository) GetMembership(ctx context.Context, scope tenants.Scope,
 		return err
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
-		return projects.Membership{}, errNotFound
+		return projects.Membership{}, db.ErrNotFound
 	}
 	return m, err
 }
@@ -282,7 +263,7 @@ func (r *Repository) ListMemberships(ctx context.Context, scope tenants.Scope,
 	var out []projects.Membership
 	var next string
 	err := db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		where := " WHERE project_id = $1"
@@ -322,7 +303,7 @@ func (r *Repository) ListMemberships(ctx context.Context, scope tenants.Scope,
 func (r *Repository) UpsertMembership(ctx context.Context, scope tenants.Scope,
 	m projects.Membership) error {
 	return db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		_, err := tx.Exec(ctx, `
@@ -330,7 +311,7 @@ func (r *Repository) UpsertMembership(ctx context.Context, scope tenants.Scope,
 			VALUES ($1,$2,$3,$4,$5)
 			ON CONFLICT (project_id, user_id)
 			DO UPDATE SET roles=$4, source=$5, updated_at=now()`,
-			tid(scope, m.TenantID), m.ProjectID, m.UserID, m.Roles, m.Source)
+			db.ScopeTenant(scope, m.TenantID), m.ProjectID, m.UserID, m.Roles, m.Source)
 		return db.MapError(err)
 	})
 }
@@ -339,7 +320,7 @@ func (r *Repository) UpsertMembership(ctx context.Context, scope tenants.Scope,
 func (r *Repository) DeleteMembership(ctx context.Context, scope tenants.Scope,
 	projectID, userID uuid.UUID) error {
 	return db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		tag, err := tx.Exec(ctx,
@@ -349,7 +330,7 @@ func (r *Repository) DeleteMembership(ctx context.Context, scope tenants.Scope,
 			return db.MapError(err)
 		}
 		if tag.RowsAffected() == 0 {
-			return errNotFound
+			return db.ErrNotFound
 		}
 		return nil
 	})
@@ -360,7 +341,7 @@ func (r *Repository) CountProjectAdmins(ctx context.Context, scope tenants.Scope
 	projectID uuid.UUID) (int, error) {
 	var n int
 	err := db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		return tx.QueryRow(ctx, `
@@ -376,13 +357,13 @@ func (r *Repository) ListMembershipsForUser(ctx context.Context, scope tenants.S
 	tenantID, userID uuid.UUID) ([]projects.Membership, error) {
 	var out []projects.Membership
 	err := db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		rows, err := tx.Query(ctx,
 			`SELECT `+membershipCols+` FROM project_memberships
 			 WHERE tenant_id = $1 AND user_id = $2
-			 ORDER BY created_at, project_id`, tid(scope, tenantID), userID)
+			 ORDER BY created_at, project_id`, db.ScopeTenant(scope, tenantID), userID)
 		if err != nil {
 			return err
 		}
@@ -420,7 +401,7 @@ func scanBinding(row pgx.Row) (projects.ClusterBinding, error) {
 func (r *Repository) CreateBinding(ctx context.Context, scope tenants.Scope,
 	b projects.ClusterBinding) error {
 	return db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		_, err := tx.Exec(ctx, `
@@ -428,7 +409,7 @@ func (r *Repository) CreateBinding(ctx context.Context, scope tenants.Scope,
 			  (id, tenant_id, project_id, cluster_id, slurm_account,
 			   default_partition, allowed_partitions, default_qos, allowed_qos, enabled)
 			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-			b.ID, tid(scope, b.TenantID), b.ProjectID, b.ClusterID,
+			b.ID, db.ScopeTenant(scope, b.TenantID), b.ProjectID, b.ClusterID,
 			b.SlurmAccount, b.DefaultPartition, strs(b.AllowedPartitions),
 			b.DefaultQoS, strs(b.AllowedQoS), b.Enabled)
 		return db.MapError(err)
@@ -440,7 +421,7 @@ func (r *Repository) GetBinding(ctx context.Context, scope tenants.Scope,
 	projectID, bindingID uuid.UUID) (projects.ClusterBinding, error) {
 	var b projects.ClusterBinding
 	err := db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		var err error
@@ -450,7 +431,7 @@ func (r *Repository) GetBinding(ctx context.Context, scope tenants.Scope,
 		return err
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
-		return projects.ClusterBinding{}, errNotFound
+		return projects.ClusterBinding{}, db.ErrNotFound
 	}
 	return b, err
 }
@@ -460,7 +441,7 @@ func (r *Repository) GetBindingByCluster(ctx context.Context, scope tenants.Scop
 	projectID, clusterID uuid.UUID) (projects.ClusterBinding, error) {
 	var b projects.ClusterBinding
 	err := db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		var err error
@@ -470,7 +451,7 @@ func (r *Repository) GetBindingByCluster(ctx context.Context, scope tenants.Scop
 		return err
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
-		return projects.ClusterBinding{}, errNotFound
+		return projects.ClusterBinding{}, db.ErrNotFound
 	}
 	return b, err
 }
@@ -480,7 +461,7 @@ func (r *Repository) ListBindings(ctx context.Context, scope tenants.Scope,
 	projectID uuid.UUID) ([]projects.ClusterBinding, error) {
 	var out []projects.ClusterBinding
 	err := db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		rows, err := tx.Query(ctx,
@@ -507,7 +488,7 @@ func (r *Repository) ListBindings(ctx context.Context, scope tenants.Scope,
 func (r *Repository) UpdateBinding(ctx context.Context, scope tenants.Scope,
 	b projects.ClusterBinding) error {
 	return db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		tag, err := tx.Exec(ctx, `
@@ -532,7 +513,7 @@ func (r *Repository) UpdateBinding(ctx context.Context, scope tenants.Scope,
 			return err
 		}
 		if !exists {
-			return errNotFound
+			return db.ErrNotFound
 		}
 		return apperr.New(apperr.Conflict, "VERSION_CONFLICT", "version mismatch")
 	})
@@ -550,7 +531,7 @@ func (r *Repository) BindingByID(ctx context.Context, bindingID uuid.UUID) (proj
 		return err
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
-		return projects.ClusterBinding{}, errNotFound
+		return projects.ClusterBinding{}, db.ErrNotFound
 	}
 	return b, err
 }
@@ -595,7 +576,7 @@ func (r *Repository) SetBindingDrift(ctx context.Context, bindingID uuid.UUID, s
 			return db.MapError(e)
 		}
 		if tag.RowsAffected() == 0 {
-			return errNotFound
+			return db.ErrNotFound
 		}
 		out, e = scanBinding(tx.QueryRow(ctx, `SELECT `+bindingCols+` FROM project_cluster_bindings WHERE id=$1`, bindingID))
 		return e
@@ -607,7 +588,7 @@ func (r *Repository) SetBindingDrift(ctx context.Context, bindingID uuid.UUID, s
 func (r *Repository) DeleteBinding(ctx context.Context, scope tenants.Scope,
 	projectID, bindingID uuid.UUID) error {
 	return db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		tag, err := tx.Exec(ctx,
@@ -617,7 +598,7 @@ func (r *Repository) DeleteBinding(ctx context.Context, scope tenants.Scope,
 			return db.MapError(err)
 		}
 		if tag.RowsAffected() == 0 {
-			return errNotFound
+			return db.ErrNotFound
 		}
 		return nil
 	})
@@ -628,7 +609,7 @@ func (r *Repository) DeleteBinding(ctx context.Context, scope tenants.Scope,
 func (r *Repository) ListAllForUser(ctx context.Context, userID uuid.UUID) ([]projects.MembershipRef, error) {
 	var out []projects.MembershipRef
 	err := db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, tenants.PlatformScope()); err != nil {
+		if err := db.ApplyScope(ctx, tx, tenants.PlatformScope()); err != nil {
 			return err
 		}
 		rows, err := tx.Query(ctx, `
