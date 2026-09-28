@@ -159,6 +159,43 @@ func slurmRelease(meta *api.V0045OpenapiMeta) string {
 	return *meta.Slurm.Release
 }
 
+// eslurmAccessDenied is Slurm's ESLURM_ACCESS_DENIED errno
+// (slurm/slurm_errno.h), which slurmrestd reports as errors[].error_number
+// when slurmctld or slurmdbd refuses an operation for lack of privilege.
+const eslurmAccessDenied = 2002
+
+// forbiddenPhrases are lower-case substrings of slurmrestd's error and
+// description text that indicate an authorization failure. Message text is
+// not a stable contract, so this is a heuristic fallback for failures that
+// do not carry eslurmAccessDenied; extend it when new phrasings appear.
+var forbiddenPhrases = []string{
+	"permission",
+	"not authorized",
+	"access denied",
+}
+
+// isForbiddenError reports whether a slurmrestd error is an authorization
+// failure, keyed on eslurmAccessDenied first and forbiddenPhrases otherwise.
+func isForbiddenError(e api.V0045OpenapiError) bool {
+	if e.ErrorNumber != nil && *e.ErrorNumber == eslurmAccessDenied {
+		return true
+	}
+	message := ""
+	if e.Error != nil {
+		message += *e.Error
+	}
+	if e.Description != nil {
+		message += " " + *e.Description
+	}
+	lower := strings.ToLower(message)
+	for _, phrase := range forbiddenPhrases {
+		if strings.Contains(lower, phrase) {
+			return true
+		}
+	}
+	return false
+}
+
 // apiError merges slurmrestd's errors[]/warnings[] into one error. Tokens
 // are never included — slurmrestd error strings are not user-controlled
 // secret material, but only the code, short error, and source are kept.
@@ -168,15 +205,7 @@ func apiError(errs *api.V0045OpenapiErrors, status int) error {
 		forbidden := false
 		for _, e := range *errs {
 			code := i32(e.ErrorNumber)
-			message := ""
-			if e.Error != nil {
-				message += *e.Error
-			}
-			if e.Description != nil {
-				message += " " + *e.Description
-			}
-			lower := strings.ToLower(message)
-			if strings.Contains(lower, "permission") || strings.Contains(lower, "not authorized") || strings.Contains(lower, "access denied") {
+			if isForbiddenError(e) {
 				forbidden = true
 			}
 			switch {
