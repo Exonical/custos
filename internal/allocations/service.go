@@ -13,6 +13,7 @@ import (
 	"github.com/Exonical/custos/internal/authn"
 	"github.com/Exonical/custos/internal/authz"
 	"github.com/Exonical/custos/internal/platform/apperr"
+	"github.com/Exonical/custos/internal/platform/db"
 	"github.com/Exonical/custos/internal/platform/workqueue"
 	"github.com/Exonical/custos/internal/policysync/kind"
 	"github.com/Exonical/custos/internal/projects"
@@ -291,7 +292,7 @@ func (s *Service) Check(ctx context.Context, scope tenants.Scope, bindingID uuid
 }
 
 // CheckInTx rechecks allocations and in-flight jobs inside the job-persist transaction.
-func (s *Service) CheckInTx(ctx context.Context, tx any, bindingID uuid.UUID, estimate map[string]float64) (CheckResult, error) {
+func (s *Service) CheckInTx(ctx context.Context, tx db.Tx, bindingID uuid.UUID, estimate map[string]float64) (CheckResult, error) {
 	return s.repo.CheckInTx(ctx, tx, bindingID, estimate)
 }
 

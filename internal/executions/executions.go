@@ -6,6 +6,7 @@ package executions
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
@@ -13,6 +14,7 @@ import (
 	"github.com/Exonical/custos/internal/admission"
 	"github.com/Exonical/custos/internal/jobs"
 	"github.com/Exonical/custos/internal/platform/apperr"
+	"github.com/Exonical/custos/internal/platform/db"
 	"github.com/Exonical/custos/internal/platform/workqueue"
 	"github.com/Exonical/custos/internal/tenants"
 	"github.com/Exonical/custos/internal/validation"
@@ -168,7 +170,7 @@ type Execer = workqueue.Execer
 type EnqueueFunc func(ex Execer) error
 
 // AdmissionGuard checks resource budgets in the task-admission transaction.
-type AdmissionGuard func(context.Context, any) error
+type AdmissionGuard func(context.Context, db.Tx) error
 
 // IdemRecord is the idempotency_keys row written with the execution
 // insert (same table/semantics as jobs).
@@ -248,5 +250,10 @@ type CheckedRepository interface {
 var ErrTransitionStale = apperr.New(apperr.Conflict, "TRANSITION_STALE",
 	"state or version changed underneath the worker")
 
-// IsStale reports whether err is a stale-transition conflict.
-func IsStale(err error) bool { return apperr.Is(err, apperr.Conflict) }
+// IsStale reports whether err is (or wraps) ErrTransitionStale. Other
+// Conflict-kind errors are not stale transitions.
+func IsStale(err error) bool {
+	var e *apperr.Error
+	return errors.As(err, &e) && e.Kind == ErrTransitionStale.Kind &&
+		e.Code == ErrTransitionStale.Code
+}

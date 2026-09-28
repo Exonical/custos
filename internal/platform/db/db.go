@@ -230,6 +230,16 @@ func GrantAppRole(ctx context.Context, pool *pgxpool.Pool, role string) error {
 	return nil
 }
 
+// Tx is the in-transaction query handle admission guards receive, so
+// domain packages can name it without importing pgx. pgx.Tx satisfies it.
+type Tx interface {
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+}
+
+var _ Tx = pgx.Tx(nil)
+
 // WithTx runs fn inside a transaction, committing on success and rolling
 // back on error or panic (the panic is re-raised after rollback).
 func WithTx(ctx context.Context, pool *pgxpool.Pool, fn func(pgx.Tx) error) error {
