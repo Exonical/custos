@@ -335,26 +335,14 @@ func admitTask(ctx context.Context, d Deps,
 			Interpreter: interp,
 		}
 	}
-	var allocationResult allocations.CheckResult
+	alloc := allocations.NewEnforcement(d.Allocations, scope, bindingMeta.ID)
 	built, denial := admission.Build(admission.BuildInput{
 		Spec: espec, Request: res, Policy: pol,
 		Binding: binding, Cluster: workflows.ClusterSnapshot(cluster),
-		Allocate: func(rr admission.ResolvedResources) (*admission.Denial, []admission.Warning) {
-			if d.Allocations == nil {
-				return nil, nil
-			}
-			result, err := d.Allocations.Check(ctx, scope, bindingMeta.ID, rr)
-			if err != nil {
-				return &admission.Denial{Code: "ALLOCATION_CHECK_FAILED", Field: "allocation", Message: "allocation check unavailable"}, nil
-			}
-			allocationResult = result
-			return result.Denial, result.Warnings
-		},
+		Allocate: alloc.Allocate(ctx),
 	})
 	if denial != nil {
-		if allocationResult.Denial != nil && d.Allocations != nil {
-			d.Allocations.Observe(ctx, allocationResult)
-		}
+		alloc.ObserveDenial(ctx)
 		reason := "ADMISSION_DENIED"
 		if denial.Code == "ALLOCATION_EXHAUSTED" {
 			reason = denial.Code
@@ -387,42 +375,27 @@ func admitTask(ctx context.Context, d Deps,
 		_, err := workqueue.Enqueue(ctx, ex, workqueue.EnqueueRequest{Kind: jobssvc.KindSubmit, Key: "job:" + jobID.String(), TenantID: &e.TenantID, Payload: map[string]string{"job_id": jobID.String()}, MaxAttempts: 8})
 		return err
 	}
-	if d.Allocations != nil {
+	if alloc.Enabled() {
 		repo, ok := d.Execs.(executions.CheckedRepository)
 		if !ok {
 			return apperr.New(apperr.Internal, "ALLOCATION_CHECK_UNAVAILABLE", "transactional allocation checks are unavailable")
 		}
-		guard := executions.AdmissionGuard(func(guardCtx context.Context, tx any) error {
-			checked, checkErr := d.Allocations.CheckInTx(guardCtx, tx, bindingMeta.ID, built.Admission.EstimatedCost)
-			if checkErr != nil {
-				return checkErr
-			}
-			allocationResult = checked
-			if checked.Denial != nil {
-				return apperr.New(apperr.Validation, checked.Denial.Code, checked.Denial.Message)
-			}
-			return nil
-		})
+		guard := executions.AdmissionGuard(alloc.Guard(built.Admission.EstimatedCost))
 		_, err = repo.AdmitTaskChecked(ctx, scope, t.ID, executions.TaskAdmitting, t.Version, patch, j, guard, enqueue)
 	} else {
 		_, err = d.Execs.AdmitTask(ctx, scope, t.ID, executions.TaskAdmitting, t.Version, patch, j, enqueue)
 	}
 	if err != nil {
-		if allocationResult.Denial != nil && d.Allocations != nil {
-			d.Allocations.Observe(ctx, allocationResult)
-			return denyFail("ALLOCATION_EXHAUSTED", "allocation", allocationResult.Denial.Message)
+		if denied := alloc.Denial(); denied != nil {
+			alloc.ObserveDenial(ctx)
+			return denyFail("ALLOCATION_EXHAUSTED", "allocation", denied.Message)
 		}
 		if executions.IsStale(err) {
 			return nil
 		}
 		return err
 	}
-	if d.Allocations != nil {
-		d.Allocations.Observe(ctx, allocationResult)
-	}
-	if len(allocationResult.Soft) > 0 && d.Allocations != nil {
-		d.Allocations.AuditSoft(ctx, authn.Principal{UserID: e.RequestedBy, Kind: authn.KindUser}, e.TenantID, allocationResult)
-	}
+	alloc.Admitted(ctx, authn.Principal{UserID: e.RequestedBy, Kind: authn.KindUser}, e.TenantID)
 	d.record(ctx, audit.Event{
 		Actor:    audit.Actor{Type: audit.ActorSystem, ID: "custos"},
 		Action:   "workflow.task.admit",
