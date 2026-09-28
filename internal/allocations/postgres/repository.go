@@ -225,6 +225,9 @@ func (r *Repository) CheckInTx(ctx context.Context, transaction any, bindingID u
 	return allocations.Check(active, reserved, estimate), nil
 }
 
+// unitColumns maps allocation units to their usage_daily seconds column.
+var unitColumns = map[string]string{"cpu_hours": "cpu_seconds", "gpu_hours": "gpu_seconds", "node_hours": "node_seconds"}
+
 // Refresh recomputes allocation consumption, optionally for one cluster.
 func (r *Repository) Refresh(ctx context.Context, clusterID *uuid.UUID) (int, error) {
 	n := 0
@@ -259,7 +262,10 @@ func (r *Repository) Refresh(ctx context.Context, clusterID *uuid.UUID) (int, er
 			all = append(all, x)
 		}
 		for _, x := range all {
-			col := map[string]string{"cpu_hours": "cpu_seconds", "gpu_hours": "gpu_seconds", "node_hours": "node_seconds"}[x.unit]
+			col, ok := unitColumns[x.unit]
+			if !ok {
+				continue
+			}
 			var consumed float64
 			q := `SELECT coalesce(sum(` + col + `),0)/3600.0 FROM usage_daily WHERE project_id=$1 AND cluster_id=$2 AND account=$3 AND day >= $4::timestamptz::date AND day <= ($5::timestamptz - interval '1 microsecond')::date`
 			if err = tx.QueryRow(ctx, q, x.pid, x.cid, x.account, x.start, x.end).Scan(&consumed); err != nil {
