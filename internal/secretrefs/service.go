@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"regexp"
 	"slices"
 	"strings"
@@ -42,12 +43,14 @@ type Service struct {
 	platformNS string
 	members    tenants.Repository
 	delivered  metric.Int64Counter
+	logger     *slog.Logger
 }
 
 // NewService wires the tenant secret application service.
 func NewService(repo Repository, runtime *Runtime, az authz.Authorizer, rec audit.Recorder, platform CredentialStore, platformNS string, members ...tenants.Repository) *Service {
 	s := &Service{repo: repo, runtime: runtime, az: az, audit: rec,
-		platform: platform, platformNS: strings.TrimSuffix(platformNS, "/")}
+		platform: platform, platformNS: strings.TrimSuffix(platformNS, "/"),
+		logger: slog.Default()}
 	if len(members) > 0 {
 		s.members = members[0]
 	}
@@ -60,6 +63,25 @@ func (s *Service) SetMeterProvider(mp metric.MeterProvider) {
 		s.delivered, _ = mp.Meter("custos/secrets").Int64Counter(
 			"custos_secrets_delivered_total")
 	}
+}
+
+// SetLogger sets the logger for best-effort connector cleanup failures.
+func (s *Service) SetLogger(l *slog.Logger) {
+	if l != nil {
+		s.logger = l
+	}
+}
+
+// deleteCredential best-effort removes a connector's OpenBao credential,
+// logging failures so orphaned credential material is traceable.
+func (s *Service) deleteCredential(ctx context.Context, connectorID uuid.UUID, ref secrets.Reference) error {
+	err := s.platform.Delete(ctx, ref.Namespace, ref.Mount, ref.Path)
+	if err != nil {
+		s.logger.WarnContext(ctx, "secret connector credential delete failed",
+			"connector_id", connectorID.String(), "namespace", ref.Namespace,
+			"mount", ref.Mount, "path", ref.Path, "error", err)
+	}
+	return err
 }
 
 // CreateConnector is the connector creation input; Credential is write-only.
@@ -191,7 +213,7 @@ func (s *Service) CreateConnector(ctx context.Context, p authn.Principal, tc ten
 	}
 	c.CredentialRef = &ref
 	if err := s.repo.CreateConnector(ctx, tenants.ScopeFor(&tc), c); err != nil {
-		_ = s.platform.Delete(ctx, ref.Namespace, ref.Mount, ref.Path)
+		_ = s.deleteCredential(ctx, c.ID, ref)
 		return Connector{}, err
 	}
 	c, _ = s.repo.GetConnector(ctx, tenants.ScopeFor(&tc), tc.Tenant.ID, c.ID.String())
@@ -201,8 +223,11 @@ func (s *Service) CreateConnector(ctx context.Context, p authn.Principal, tc ten
 	}
 	if checkErr != nil {
 		s.runtime.Invalidate(c.ID)
-		_ = s.repo.DeleteConnector(ctx, tenants.ScopeFor(&tc), tc.Tenant.ID, c.ID)
-		_ = s.platform.Delete(ctx, ref.Namespace, ref.Mount, ref.Path)
+		if err := s.repo.DeleteConnector(ctx, tenants.ScopeFor(&tc), tc.Tenant.ID, c.ID); err != nil {
+			s.logger.WarnContext(ctx, "secret connector rollback delete failed",
+				"connector_id", c.ID.String(), "error", err)
+		}
+		_ = s.deleteCredential(ctx, c.ID, ref)
 		var ae *apperr.Error
 		if errors.As(checkErr, &ae) && (ae.Kind == apperr.Forbidden || ae.Kind == apperr.Invalid) {
 			return Connector{}, apperr.New(apperr.Validation, "CONNECTOR_ENDPOINT_DENIED", "connector endpoint or authentication configuration is denied")
@@ -308,10 +333,16 @@ func (s *Service) DeleteConnector(ctx context.Context, p authn.Principal, tc ten
 		return err
 	}
 	s.runtime.Invalidate(c.ID)
+	details := map[string]any{"kind": c.Kind}
 	if c.CredentialRef != nil {
-		_ = s.platform.Delete(ctx, c.CredentialRef.Namespace, c.CredentialRef.Mount, c.CredentialRef.Path)
+		if err := s.deleteCredential(ctx, c.ID, *c.CredentialRef); err != nil {
+			details["credential_cleanup"] = "failed"
+			details["credential_namespace"] = c.CredentialRef.Namespace
+			details["credential_mount"] = c.CredentialRef.Mount
+			details["credential_path"] = c.CredentialRef.Path
+		}
 	}
-	s.record(ctx, p, tc.Tenant.ID, "secret.connector.deleted", "secret-connector", c.ID.String(), map[string]any{"kind": c.Kind})
+	s.record(ctx, p, tc.Tenant.ID, "secret.connector.deleted", "secret-connector", c.ID.String(), details)
 	return nil
 }
 

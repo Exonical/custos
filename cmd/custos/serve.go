@@ -167,6 +167,7 @@ func cmdServe(parent context.Context, configPath string, lookupEnv config.Lookup
 	secretSvc := secretrefs.NewService(secretRepo, secretRuntime, authz.RBAC{},
 		recorder, sdeps.OpenBao, platformNS, tenantRepo)
 	secretSvc.SetMeterProvider(prov.Meter)
+	secretSvc.SetLogger(logger)
 	tenantSvc := tenantsvc.NewService(tenantRepo, tenantRepo, tenantRepo,
 		userRepo, authz.RBAC{}, recorder, secretSvc)
 	clusterRepo := clusterpg.New(pool)
