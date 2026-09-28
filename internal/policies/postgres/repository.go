@@ -10,7 +10,6 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/Exonical/custos/internal/platform/apperr"
 	"github.com/Exonical/custos/internal/platform/db"
 	"github.com/Exonical/custos/internal/policies"
 	"github.com/Exonical/custos/internal/tenants"
@@ -24,16 +23,6 @@ type Repository struct {
 // New returns a Repository on pool.
 func New(pool *pgxpool.Pool) *Repository { return &Repository{pool: pool} }
 
-var errNotFound = apperr.New(apperr.NotFound, "NOT_FOUND", "not found")
-
-func applyScope(ctx context.Context, tx pgx.Tx, s tenants.Scope) error {
-	if s.IsPlatform() {
-		return db.SetPlatformScope(ctx, tx)
-	}
-	id, _ := s.TenantID()
-	return db.SetTenant(ctx, tx, id)
-}
-
 // Upsert implements policies.Repository (insert or replace by scope key).
 func (r *Repository) Upsert(ctx context.Context, scope tenants.Scope, p policies.Policy) error {
 	body, err := json.Marshal(p.Policy)
@@ -41,13 +30,10 @@ func (r *Repository) Upsert(ctx context.Context, scope tenants.Scope, p policies
 		return err
 	}
 	return db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
-		tid := p.TenantID
-		if id, ok := scope.TenantID(); ok {
-			tid = id
-		}
+		tid := db.ScopeTenant(scope, p.TenantID)
 		var projectID any
 		if p.ProjectID != nil {
 			projectID = *p.ProjectID
@@ -75,7 +61,7 @@ func (r *Repository) get(ctx context.Context, scope tenants.Scope,
 	var body []byte
 	var scopeStr string
 	err := db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		return tx.QueryRow(ctx, `
@@ -85,7 +71,7 @@ func (r *Repository) get(ctx context.Context, scope tenants.Scope,
 				&p.Version, &p.CreatedAt, &p.UpdatedAt)
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
-		return policies.Policy{}, errNotFound
+		return policies.Policy{}, db.ErrNotFound
 	}
 	if err != nil {
 		return policies.Policy{}, err
@@ -100,10 +86,7 @@ func (r *Repository) get(ctx context.Context, scope tenants.Scope,
 // GetTenant implements policies.Repository.
 func (r *Repository) GetTenant(ctx context.Context, scope tenants.Scope,
 	tenantID uuid.UUID) (policies.Policy, error) {
-	tid := tenantID
-	if id, ok := scope.TenantID(); ok {
-		tid = id
-	}
+	tid := db.ScopeTenant(scope, tenantID)
 	return r.get(ctx, scope, `tenant_id=$1 AND scope='tenant'`, tid)
 }
 

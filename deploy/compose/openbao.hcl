@@ -1,7 +1,7 @@
 ui = false
 
 storage "file" {
-  path = "/openbao/data"
+  path = "/openbao/file"
 }
 
 listener "tcp" {

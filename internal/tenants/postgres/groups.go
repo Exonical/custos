@@ -27,7 +27,7 @@ func scanGroup(row pgx.Row) (tenants.Group, error) {
 // CreateGroup implements tenants.GroupRepository.
 func (r *Repository) CreateGroup(ctx context.Context, scope tenants.Scope, g tenants.Group) error {
 	return db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		_, err := tx.Exec(ctx, `
@@ -42,7 +42,7 @@ func (r *Repository) CreateGroup(ctx context.Context, scope tenants.Scope, g ten
 func (r *Repository) GetGroup(ctx context.Context, scope tenants.Scope, tenantID uuid.UUID, ref string) (tenants.Group, error) {
 	var g tenants.Group
 	err := db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		var err error
@@ -53,7 +53,7 @@ func (r *Repository) GetGroup(ctx context.Context, scope tenants.Scope, tenantID
 		return err
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
-		return tenants.Group{}, errNotFound
+		return tenants.Group{}, db.ErrNotFound
 	}
 	return g, err
 }
@@ -71,7 +71,7 @@ func (r *Repository) ListGroups(ctx context.Context, scope tenants.Scope, tenant
 	}
 	var out []tenants.Group
 	err := db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		where := " WHERE tenant_id = $1"
@@ -111,7 +111,7 @@ func (r *Repository) ListGroups(ctx context.Context, scope tenants.Scope, tenant
 // UpdateGroup implements tenants.GroupRepository (optimistic version).
 func (r *Repository) UpdateGroup(ctx context.Context, scope tenants.Scope, g tenants.Group) error {
 	return db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		tag, err := tx.Exec(ctx, `
@@ -130,7 +130,7 @@ func (r *Repository) UpdateGroup(ctx context.Context, scope tenants.Scope, g ten
 			`SELECT 1 FROM groups WHERE id=$1 AND tenant_id=$2`,
 			g.ID, g.TenantID).Scan(&exists)
 		if errors.Is(err, pgx.ErrNoRows) {
-			return errNotFound
+			return db.ErrNotFound
 		}
 		if err != nil {
 			return err
@@ -142,7 +142,7 @@ func (r *Repository) UpdateGroup(ctx context.Context, scope tenants.Scope, g ten
 // DeleteGroup implements tenants.GroupRepository.
 func (r *Repository) DeleteGroup(ctx context.Context, scope tenants.Scope, tenantID, groupID uuid.UUID) error {
 	return db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		tag, err := tx.Exec(ctx,
@@ -151,7 +151,7 @@ func (r *Repository) DeleteGroup(ctx context.Context, scope tenants.Scope, tenan
 			return db.MapError(err)
 		}
 		if tag.RowsAffected() == 0 {
-			return errNotFound
+			return db.ErrNotFound
 		}
 		return nil
 	})
@@ -181,7 +181,7 @@ func (r *Repository) ListGroupMembers(ctx context.Context, scope tenants.Scope, 
 	}
 	var out []tenants.GroupMembership
 	err := db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		where := " WHERE tenant_id = $1 AND group_id = $2"
@@ -221,7 +221,7 @@ func (r *Repository) ListGroupMembers(ctx context.Context, scope tenants.Scope, 
 // UpsertGroupMember implements tenants.GroupRepository.
 func (r *Repository) UpsertGroupMember(ctx context.Context, scope tenants.Scope, m tenants.GroupMembership) error {
 	return db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		_, err := tx.Exec(ctx, `
@@ -237,7 +237,7 @@ func (r *Repository) UpsertGroupMember(ctx context.Context, scope tenants.Scope,
 // DeleteGroupMember implements tenants.GroupRepository.
 func (r *Repository) DeleteGroupMember(ctx context.Context, scope tenants.Scope, tenantID, groupID, userID uuid.UUID) error {
 	return db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		tag, err := tx.Exec(ctx,
@@ -248,7 +248,7 @@ func (r *Repository) DeleteGroupMember(ctx context.Context, scope tenants.Scope,
 			return db.MapError(err)
 		}
 		if tag.RowsAffected() == 0 {
-			return errNotFound
+			return db.ErrNotFound
 		}
 		return nil
 	})
@@ -259,7 +259,7 @@ func (r *Repository) DeleteGroupMember(ctx context.Context, scope tenants.Scope,
 func (r *Repository) ListIDPGroupMembershipsForUser(ctx context.Context, userID uuid.UUID) ([]tenants.GroupMembership, error) {
 	var out []tenants.GroupMembership
 	err := db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, tenants.PlatformScope()); err != nil {
+		if err := db.ApplyScope(ctx, tx, tenants.PlatformScope()); err != nil {
 			return err
 		}
 		rows, err := tx.Query(ctx,
@@ -294,7 +294,7 @@ func scanClaimRule(row pgx.Row) (tenants.ClaimRule, error) {
 // CreateClaimRule implements tenants.ClaimRuleRepository.
 func (r *Repository) CreateClaimRule(ctx context.Context, scope tenants.Scope, cr tenants.ClaimRule) error {
 	return db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		_, err := tx.Exec(ctx, `
@@ -311,7 +311,7 @@ func (r *Repository) CreateClaimRule(ctx context.Context, scope tenants.Scope, c
 func (r *Repository) GetClaimRule(ctx context.Context, scope tenants.Scope, tenantID, ruleID uuid.UUID) (tenants.ClaimRule, error) {
 	var cr tenants.ClaimRule
 	err := db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		var err error
@@ -321,7 +321,7 @@ func (r *Repository) GetClaimRule(ctx context.Context, scope tenants.Scope, tena
 		return err
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
-		return tenants.ClaimRule{}, errNotFound
+		return tenants.ClaimRule{}, db.ErrNotFound
 	}
 	return cr, err
 }
@@ -340,7 +340,7 @@ func (r *Repository) ListClaimRules(ctx context.Context, scope tenants.Scope, te
 	}
 	var out []tenants.ClaimRule
 	err := db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		where := " WHERE tenant_id = $1"
@@ -380,7 +380,7 @@ func (r *Repository) ListClaimRules(ctx context.Context, scope tenants.Scope, te
 // UpdateClaimRule implements tenants.ClaimRuleRepository (optimistic).
 func (r *Repository) UpdateClaimRule(ctx context.Context, scope tenants.Scope, cr tenants.ClaimRule) error {
 	return db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		tag, err := tx.Exec(ctx, `
@@ -399,7 +399,7 @@ func (r *Repository) UpdateClaimRule(ctx context.Context, scope tenants.Scope, c
 			`SELECT 1 FROM claim_mapping_rules WHERE id=$1 AND tenant_id=$2`,
 			cr.ID, cr.TenantID).Scan(&exists)
 		if errors.Is(err, pgx.ErrNoRows) {
-			return errNotFound
+			return db.ErrNotFound
 		}
 		if err != nil {
 			return err
@@ -411,7 +411,7 @@ func (r *Repository) UpdateClaimRule(ctx context.Context, scope tenants.Scope, c
 // DeleteClaimRule implements tenants.ClaimRuleRepository.
 func (r *Repository) DeleteClaimRule(ctx context.Context, scope tenants.Scope, tenantID, ruleID uuid.UUID) error {
 	return db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		tag, err := tx.Exec(ctx,
@@ -421,7 +421,7 @@ func (r *Repository) DeleteClaimRule(ctx context.Context, scope tenants.Scope, t
 			return db.MapError(err)
 		}
 		if tag.RowsAffected() == 0 {
-			return errNotFound
+			return db.ErrNotFound
 		}
 		return nil
 	})
@@ -450,7 +450,7 @@ func (r *Repository) MatchRules(ctx context.Context, claims map[string][]string)
 	}
 	var out []tenants.ClaimRule
 	err := db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, tenants.PlatformScope()); err != nil {
+		if err := db.ApplyScope(ctx, tx, tenants.PlatformScope()); err != nil {
 			return err
 		}
 		rows, err := tx.Query(ctx, `
@@ -483,7 +483,7 @@ func (r *Repository) MatchRules(ctx context.Context, claims map[string][]string)
 func (r *Repository) ListIDPMembershipsForUser(ctx context.Context, userID uuid.UUID) ([]tenants.Membership, error) {
 	var out []tenants.Membership
 	err := db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, tenants.PlatformScope()); err != nil {
+		if err := db.ApplyScope(ctx, tx, tenants.PlatformScope()); err != nil {
 			return err
 		}
 		rows, err := tx.Query(ctx,
