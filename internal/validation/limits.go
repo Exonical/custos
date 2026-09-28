@@ -44,16 +44,14 @@ func CheckLimits(script []byte, lim Limits) []Diagnostic {
 		add("CUSTOS013", SeverityError, 1,
 			"byte-order mark at start of script would be executed as a command")
 	}
-	lines := bytes.Split(script, []byte("\n"))
-	if n := len(lines); script[len(script)-1] == '\n' || len(script) == 0 {
-		n--
-		if n > lim.MaxLines {
-			add("CUSTOS901", SeverityError, 0, "script exceeds maximum line count")
-		}
-	} else if n > lim.MaxLines {
+	n := bytes.Count(script, []byte("\n"))
+	if len(script) > 0 && script[len(script)-1] != '\n' {
+		n++
+	}
+	if n > lim.MaxLines {
 		add("CUSTOS901", SeverityError, 0, "script exceeds maximum line count")
 	}
-	for i, ln := range lines {
+	for i, ln := range bytes.Split(script, []byte("\n")) {
 		if len(ln) > lim.MaxLineBytes {
 			add("CUSTOS901", SeverityError, i+1, "line exceeds maximum length")
 			break

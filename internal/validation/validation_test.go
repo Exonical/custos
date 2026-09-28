@@ -16,6 +16,10 @@ func TestCheckLimits(t *testing.T) {
 		wantSev  validation.Severity
 	}{
 		{"ok", []byte("#!/bin/bash\necho hi\n"), "", ""},
+		{"empty", []byte{}, "", ""},
+		{"max-lines-trailing-newline", []byte(strings.Repeat("x\n", lim.MaxLines)), "", ""},
+		{"max-lines-no-trailing-newline", []byte(strings.Repeat("x\n", lim.MaxLines-1) + "x"), "", ""},
+		{"too-many-lines-no-trailing-newline", []byte(strings.Repeat("x\n", lim.MaxLines) + "x"), "CUSTOS901", validation.SeverityError},
 		{"nul", []byte("echo \x00"), "CUSTOS901", validation.SeverityError},
 		{"bad-utf8", []byte{0xff, 0xfe}, "CUSTOS901", validation.SeverityError},
 		{"bom", []byte{0xEF, 0xBB, 0xBF, '#'}, "CUSTOS013", validation.SeverityError},
