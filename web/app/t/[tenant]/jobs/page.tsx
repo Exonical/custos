@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { ApiError, createApiClient, toApiError, type ProjectList } from "@/lib/api/client";
+import { ApiError, createApiClient, toApiError, type ProjectList, type TenantClusterList } from "@/lib/api/client";
 import { ApiErrorNotice } from "@/components/api-error-notice";
 import { JobsTable } from "@/components/jobs/jobs-table";
 import { requireServerSession } from "@/lib/session/server";
@@ -13,23 +13,29 @@ export default async function JobsPage({
   searchParams,
 }: {
   params: Promise<{ tenant: string }>;
-  searchParams: Promise<{ project?: string | string[]; state?: string | string[]; cursor?: string | string[] }>;
+  searchParams: Promise<{ project?: string | string[]; state?: string | string[]; cursor?: string | string[]; mock_fail?: string | string[] }>;
 }) {
   const { tenant } = await params;
   const query = await searchParams;
   const projectFilter = first(query.project);
   const state = first(query.state);
   const cursor = first(query.cursor);
+  const mockFail = first(query.mock_fail);
   const session = await requireServerSession(`/t/${encodeURIComponent(tenant)}/jobs`);
-  const api = createApiClient(session.accessToken);
-  const projectResponse = await api.GET("/tenants/{tenant}/projects", {
-    params: { path: { tenant }, query: { limit: 100 } },
-  });
+  const api = createApiClient(session.accessToken, { mockFail });
+  const [projectResponse, clusterResponse] = await Promise.all([
+    api.GET("/tenants/{tenant}/projects", { params: { path: { tenant }, query: { limit: 100 } } }),
+    api.GET("/tenants/{tenant}/clusters", { params: { path: { tenant } } }),
+  ]);
   if (projectResponse.error) {
     if (projectResponse.response.status === 401) redirect(`/auth/login?returnTo=${encodeURIComponent(`/t/${tenant}/jobs`)}`);
     return <ApiErrorNotice error={toApiError(projectResponse.error, projectResponse.response.status)} />;
   }
+  if (clusterResponse.error && clusterResponse.response.status === 401) {
+    redirect(`/auth/login?returnTo=${encodeURIComponent(`/t/${tenant}/jobs`)}`);
+  }
   const projects: ProjectList["items"] = projectResponse.data.items;
+  const clusters: TenantClusterList["items"] = clusterResponse.data?.items ?? [];
 
   if (projectFilter) {
     const selected = projects.find((project) => project.slug === projectFilter || project.id === projectFilter);
@@ -44,14 +50,14 @@ export default async function JobsPage({
       if (response.response.status === 401) redirect(`/auth/login?returnTo=${encodeURIComponent(`/t/${tenant}/jobs`)}`);
       return <ApiErrorNotice error={toApiError(response.error, response.response.status)} />;
     }
-    return <JobsTable tenant={tenant} jobs={response.data.items} projects={projects} selectedProject={selected.slug} selectedState={state} nextCursor={response.data.next_cursor ?? null} />;
+    return <JobsTable tenant={tenant} jobs={response.data.items} projects={projects} clusters={clusters} selectedProject={selected.slug} selectedState={state} cursor={cursor} nextCursor={response.data.next_cursor ?? null} />;
   }
 
   const tenantResponse = await api.GET("/tenants/{tenant}/jobs", {
     params: { path: { tenant }, query: { cursor: cursor || undefined, limit: 50, state: state || undefined } },
   });
   if (!tenantResponse.error) {
-    return <JobsTable tenant={tenant} jobs={tenantResponse.data.items} projects={projects} selectedProject="" selectedState={state} nextCursor={tenantResponse.data.next_cursor ?? null} />;
+    return <JobsTable tenant={tenant} jobs={tenantResponse.data.items} projects={projects} clusters={clusters} selectedProject="" selectedState={state} cursor={cursor} nextCursor={tenantResponse.data.next_cursor ?? null} />;
   }
   if (tenantResponse.response.status === 401) redirect(`/auth/login?returnTo=${encodeURIComponent(`/t/${tenant}/jobs`)}`);
   if (tenantResponse.response.status !== 403) {
@@ -67,5 +73,5 @@ export default async function JobsPage({
     if (fallback.response.status === 401) redirect(`/auth/login?returnTo=${encodeURIComponent(`/t/${tenant}/jobs`)}`);
     return <ApiErrorNotice error={toApiError(fallback.error, fallback.response.status)} />;
   }
-  return <JobsTable tenant={tenant} jobs={fallback.data.items} projects={projects} selectedProject={firstProject.slug} selectedState={state} nextCursor={fallback.data.next_cursor ?? null} />;
+  return <JobsTable tenant={tenant} jobs={fallback.data.items} projects={projects} clusters={clusters} selectedProject={firstProject.slug} selectedState={state} cursor={cursor} nextCursor={fallback.data.next_cursor ?? null} />;
 }

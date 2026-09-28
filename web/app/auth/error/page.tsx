@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { Button } from "@/components/ui/button";
 
 const messages: Record<string, string> = {
   AccessDenied: "Your identity provider denied access to Custos.",
@@ -18,14 +18,14 @@ export default async function AuthErrorPage({ searchParams }: {
   const requested = typeof params.error === "string" ? params.error : params.code;
   const code = typeof requested === "string" && requested in messages ? requested : "Configuration";
   return (
-    <main className="mx-auto flex min-h-screen max-w-xl flex-col justify-center gap-5 px-6">
-      <p className="text-sm font-semibold uppercase tracking-wide text-teal-700">Sign-in error</p>
-      <h1 className="text-3xl font-bold">We could not sign you in</h1>
-      <p className="text-slate-600">{messages[code]}</p>
-      <p className="font-mono text-sm text-slate-500">{code}</p>
-      <Link className="w-fit rounded-md bg-teal-700 px-4 py-2 text-white" href="/auth/login">
-        Try again
-      </Link>
+    <main className="mx-auto flex min-h-screen max-w-xl flex-col justify-center px-5 py-12">
+      <div className="space-y-4 border border-border bg-card p-6">
+        <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-primary">{"// Sign-in error"}</p>
+        <h1 className="font-mono text-lg font-semibold uppercase tracking-[0.12em]">We could not sign you in</h1>
+        <p className="text-sm text-muted-foreground">{messages[code]}</p>
+        <p className="font-mono text-xs uppercase tracking-[0.1em] text-muted-foreground">{code}</p>
+        <Button className="w-fit" nativeButton={false} render={<a href="/auth/login">Try again</a>} />
+      </div>
     </main>
   );
 }

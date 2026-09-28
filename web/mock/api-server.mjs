@@ -192,4 +192,17 @@ const server = http.createServer(async (request, response) => {
   return sendError(response, 404, "NOT_FOUND", "Resource not found", id);
 });
 
+server.once("error", (error) => {
+  /** @type {NodeJS.ErrnoException} */
+  const serverError = error;
+  const release = process.platform === "win32"
+    ? `netstat -ano | findstr :${port}, then taskkill /PID <PID> /F`
+    : `lsof -ti tcp:${port} | xargs kill`;
+  if (serverError.code === "EADDRINUSE") {
+    process.stderr.write(`Mock port ${port} is already in use; free it with ${release}.\n`);
+    process.exit(73);
+  }
+  process.stderr.write(`Mock API server failed on port ${port}: ${serverError.message}\n`);
+  process.exit(1);
+});
 server.listen(port, "127.0.0.1", () => process.stdout.write(`mock API ready on 127.0.0.1:${port}\n`));

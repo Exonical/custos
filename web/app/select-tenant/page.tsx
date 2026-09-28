@@ -21,15 +21,15 @@ export default async function SelectTenantPage() {
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-2xl flex-col justify-center gap-6 px-6 py-12">
-      <header className="space-y-2">
-        <p className="text-sm font-semibold uppercase tracking-wide text-teal-700">Custos</p>
-        <h1 className="text-3xl font-bold tracking-tight">Choose a tenant</h1>
-        <p className="text-slate-600">Select a workspace to view its jobs and clusters.</p>
+    <main className="mx-auto flex min-h-screen max-w-3xl flex-col justify-center gap-6 px-5 py-12">
+      <header className="space-y-3">
+        <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">{"// Workspace selection"}</p>
+        <h1 className="font-mono text-xl font-semibold uppercase tracking-[0.12em]">Choose a tenant</h1>
+        <p className="max-w-xl text-sm text-muted-foreground">Select a workspace to view its jobs and clusters.</p>
       </header>
       {me.memberships.length === 0 ? (
         <Card>
-          <CardContent className="py-6 text-sm text-slate-600">
+          <CardContent className="py-6 text-sm text-muted-foreground">
             You do not have a tenant membership yet. Ask a tenant administrator to grant access.
           </CardContent>
         </Card>
@@ -41,13 +41,11 @@ export default async function SelectTenantPage() {
                 <CardHeader className="flex flex-row items-center justify-between gap-4">
                   <div>
                     <h2 className="font-semibold">{membership.name}</h2>
-                    <p className="text-sm text-slate-500">{membership.slug}</p>
+                    <p className="mt-1 font-mono text-xs tracking-[0.08em] text-muted-foreground">{membership.slug}</p>
                   </div>
-                  <Button asChild>
-                    <Link href={`/t/${encodeURIComponent(membership.slug)}`}>Open tenant</Link>
-                  </Button>
+                  <Button nativeButton={false} render={<Link href={`/t/${encodeURIComponent(membership.slug)}`}>Open tenant</Link>} />
                 </CardHeader>
-                <CardContent className="pt-3 text-xs text-slate-500">
+                <CardContent className="pt-3 font-mono text-[10px] tracking-[0.08em] text-muted-foreground">
                   Roles: {membership.roles.join(", ")}
                 </CardContent>
               </Card>

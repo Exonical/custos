@@ -31,12 +31,13 @@ export default async function TenantLayout({
   const current = tenantOptions.find((item) => item.slug === tenant);
   if (!current) notFound();
   const userLabel = me.principal.name || me.principal.email || "Account";
+  const userEmail = me.principal.email || "";
   const logoutUrl = await createEndSessionUrl()
     .then((url) => url.toString())
     .catch(() => new URL("/signed-out", getConfig().publicOrigin).toString());
 
   return (
-    <TenantShell tenant={current} tenants={tenantOptions} userLabel={userLabel} csrfToken={session.csrfToken} logoutUrl={logoutUrl}>
+    <TenantShell tenant={current} tenants={tenantOptions} userLabel={userLabel} userEmail={userEmail} csrfToken={session.csrfToken} logoutUrl={logoutUrl}>
       {children}
     </TenantShell>
   );

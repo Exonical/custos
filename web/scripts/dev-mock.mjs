@@ -5,6 +5,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
+import { createServer } from "node:net";
 
 const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const nextBin = resolve(root, "node_modules/next/dist/bin/next");
@@ -49,6 +50,31 @@ function parseWebArgs(args) {
     }
   }
   return { hostname, port, forwarded };
+}
+
+/** @param {number} port */
+function portInUseMessage(port) {
+  const release = process.platform === "win32"
+    ? `netstat -ano | findstr :${port}, then taskkill /PID <PID> /F`
+    : `lsof -ti tcp:${port} | xargs kill`;
+  return `Mock port ${port} is already in use; free it with ${release}.`;
+}
+
+/** @param {number} port */
+function assertPortAvailable(port) {
+  /** @type {Promise<void>} */
+  return new Promise((resolvePort, rejectPort) => {
+    const probe = createServer();
+    probe.once("error", (error) => {
+      /** @type {NodeJS.ErrnoException} */
+      const socketError = error;
+      if (socketError.code === "EADDRINUSE") rejectPort(new Error(portInUseMessage(port)));
+      else rejectPort(socketError);
+    });
+    probe.listen(port, "127.0.0.1", () => {
+      probe.close((error) => error ? rejectPort(error) : resolvePort(undefined));
+    });
+  });
 }
 
 /** @param {ChildRecord} record */
@@ -130,6 +156,10 @@ function startChild(name, command, args, env) {
   });
   child.once("exit", (code, signal) => {
     if (!stopping) {
+      if (code === 73) {
+        void shutdown(1);
+        return;
+      }
       process.stderr.write(`${name} exited unexpectedly (${signal ?? code ?? "unknown"})\n`);
       void shutdown(name === "next" && code === 0 ? 0 : 1);
     }
@@ -159,6 +189,7 @@ process.on("exit", () => {
 });
 
 try {
+  await Promise.all([assertPortAvailable(oidcPort), assertPortAvailable(apiPort)]);
   const oidcEnv = {
     ...process.env,
     MOCK_OIDC_PORT: String(oidcPort),
@@ -203,6 +234,7 @@ try {
   await waitForExit(next);
   await shutdown(typeof process.exitCode === "number" ? process.exitCode : 0);
 } catch (error) {
-  process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+  const portConflict = children.some((record) => record.child.exitCode === 73);
+  if (!stopping && !portConflict) process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
   await shutdown(1);
 }

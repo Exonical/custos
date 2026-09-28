@@ -1,12 +1,22 @@
 import Link from "next/link";
-import { createApiClient, toApiError, type Job, type ProjectList, type TenantClusterList } from "@/lib/api/client";
+import { redirect } from "next/navigation";
+import { TenantDisplayName } from "@/components/tenant-shell";
 import { ApiErrorNotice } from "@/components/api-error-notice";
 import { Badge, StateBadge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { createApiClient, toApiError, type Job, type ProjectList, type TenantClusterList } from "@/lib/api/client";
 import { requireServerSession } from "@/lib/session/server";
-import { redirect } from "next/navigation";
 
 const JOB_STATES = ["SUBMITTING", "QUEUED", "RUNNING", "COMPLETED", "FAILED", "CANCELED"] as const;
+const STATE_MARKER_STYLES: Record<(typeof JOB_STATES)[number], string> = {
+  SUBMITTING: "text-status-queued",
+  QUEUED: "text-status-queued",
+  RUNNING: "text-status-running",
+  COMPLETED: "text-status-completed",
+  FAILED: "text-status-failed",
+  CANCELED: "text-status-canceled",
+};
 
 export default async function TenantDashboard({ params }: { params: Promise<{ tenant: string }> }) {
   const { tenant } = await params;
@@ -30,14 +40,12 @@ export default async function TenantDashboard({ params }: { params: Promise<{ te
   const projects: ProjectList["items"] = projectResponse.data.items;
   const clusters: TenantClusterList["items"] = clusterResponse.data.items;
   let jobs: Job[] = tenantJobResponse.error ? [] : tenantJobResponse.data.items;
-  let jobsFromVisibleProjects = false;
 
   if (tenantJobResponse.error) {
     if (tenantJobResponse.response.status === 401) redirect(`/auth/login?returnTo=${encodeURIComponent(`/t/${tenant}`)}`);
     if (tenantJobResponse.response.status !== 403) {
       return <ApiErrorNotice error={toApiError(tenantJobResponse.error, tenantJobResponse.response.status)} />;
     }
-    jobsFromVisibleProjects = true;
     const responses = await Promise.all(projects.slice(0, 8).map((project) =>
       api.GET("/tenants/{tenant}/projects/{project}/jobs", {
         params: { path: { tenant, project: project.slug }, query: { limit: 100 } },
@@ -58,60 +66,69 @@ export default async function TenantDashboard({ params }: { params: Promise<{ te
     <div className="space-y-8">
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="text-sm font-semibold uppercase tracking-wide text-teal-700">Overview</p>
-          <h1 className="mt-1 text-3xl font-bold tracking-tight">{tenant}</h1>
-          <p className="mt-2 text-slate-600">Recent activity across the projects and clusters visible to you.</p>
+          <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">{"// Overview"}</p>
+          <h1 className="mt-2 text-2xl font-semibold tracking-[0.12em]"><TenantDisplayName fallback={tenant} /></h1>
+          <p className="mt-2 max-w-xl text-sm text-muted-foreground">Recent activity across the projects and clusters visible to you.</p>
         </div>
-        <Link className="text-sm font-semibold text-teal-800 hover:underline" href={`/t/${encodeURIComponent(tenant)}/jobs`}>View jobs</Link>
+        <Button variant="outline" size="sm" nativeButton={false} render={<Link href={`/t/${encodeURIComponent(tenant)}/jobs`}>View jobs</Link>} />
       </header>
 
-      <section aria-label="Job counts" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {JOB_STATES.map((state) => (
-          <Card key={state}>
-            <CardContent className="flex items-center justify-between py-5">
-              <div><p className="text-sm text-slate-500">{state.toLowerCase()}</p><p className="mt-1 text-3xl font-bold">{counts.get(state) ?? 0}</p></div>
-              <StateBadge state={state} />
+      <section aria-label="Job counts" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        {JOB_STATES.map((state, index) => (
+          <Card key={state} className="panel-frame">
+            <CardContent className="flex items-center justify-between py-4">
+              <div>
+                <p className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground"><span aria-hidden="true" className={STATE_MARKER_STYLES[state]}>■</span>{String(index + 1).padStart(2, "0")} — {state}</p>
+                <p className="mt-2 font-mono text-3xl font-medium tabular-nums">{counts.get(state) ?? 0}</p>
+              </div>
             </CardContent>
           </Card>
         ))}
       </section>
-      <p className="-mt-6 text-xs text-slate-500">
-        Counts reflect the loaded {jobsFromVisibleProjects ? "recent pages from visible projects" : "tenant jobs page"}; no total-count endpoint is exposed.
-      </p>
+      <p className="-mt-5 font-mono text-[10px] text-muted-foreground">Last {jobs.length} jobs — counts by state</p>
 
-      <section className="grid gap-6 xl:grid-cols-[minmax(0,1.4fr)_minmax(18rem,1fr)]">
-        <Card>
-          <CardHeader className="flex items-center justify-between">
-            <h2 className="font-semibold">Recent jobs</h2>
-            <Badge className="bg-slate-100 text-slate-600">{jobs.length} loaded</Badge>
-          </CardHeader>
-          <CardContent className="space-y-3">
+      <section className="grid gap-0 border border-border bg-card xl:grid-cols-[minmax(0,1.4fr)_minmax(18rem,1fr)]">
+        <section className="min-w-0 border-b border-border xl:border-b-0 xl:border-r" aria-labelledby="recent-jobs-heading">
+          <header className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
+            <h2 id="recent-jobs-heading" className="font-mono text-[11px] font-semibold uppercase tracking-[0.12em]">Recent jobs</h2>
+            <Badge variant="outline">{jobs.length} loaded</Badge>
+          </header>
+          <div className="space-y-2 p-3">
             {jobs.slice(0, 8).map((job) => {
               const project = projectById.get(job.project_id);
               const projectRef = project?.slug ?? job.project_id;
+              const cluster = clusterById.get(job.cluster_id);
               return (
-                <Link key={job.id} href={`/t/${encodeURIComponent(tenant)}/jobs/${job.id}?project=${encodeURIComponent(projectRef)}`} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-100 p-3 hover:bg-slate-50">
-                  <div className="min-w-0"><p className="truncate font-medium">{job.name || job.id.slice(0, 8)}</p><p className="mt-1 text-xs text-slate-500">{project?.name ?? projectRef} · {clusterById.get(job.cluster_id)?.name ?? job.cluster_id.slice(0, 8)}</p></div>
+                <Link key={job.id} href={`/t/${encodeURIComponent(tenant)}/jobs/${job.id}?project=${encodeURIComponent(projectRef)}`} className="flex flex-wrap items-center justify-between gap-3 border border-border bg-card p-3 hover:bg-foreground/[0.04]">
+                  <div className="min-w-0">
+                    <p className="truncate font-medium">{job.name || job.id.slice(0, 8)}</p>
+                    <p className="mt-1 font-mono text-[10px] tracking-[0.08em] text-muted-foreground">{project?.name ?? projectRef} · {cluster?.name ?? cluster?.display_name ?? job.cluster_id}</p>
+                  </div>
                   <StateBadge state={job.state} />
                 </Link>
               );
             })}
-            {jobs.length === 0 ? <p className="py-6 text-sm text-slate-500">No jobs are visible yet.</p> : null}
-          </CardContent>
-        </Card>
+            {jobs.length === 0 ? <p className="py-6 text-sm text-muted-foreground">No jobs are visible yet.</p> : null}
+          </div>
+        </section>
 
-        <Card>
-          <CardHeader><h2 className="font-semibold">Clusters</h2></CardHeader>
-          <CardContent className="space-y-3">
+        <section className="min-w-0" aria-labelledby="clusters-heading">
+          <header className="border-b border-border px-4 py-3"><h2 id="clusters-heading" className="font-mono text-[11px] font-semibold uppercase tracking-[0.12em]">Clusters</h2></header>
+          <div className="space-y-2 p-3">
             {clusters.map((cluster) => (
-              <div key={cluster.id} className="flex items-start justify-between gap-3 rounded-lg border border-slate-100 p-3">
-                <div><p className="font-medium">{cluster.display_name}</p><p className="mt-1 text-xs text-slate-500">{cluster.name}{cluster.slurm_version ? ` · Slurm ${cluster.slurm_version}` : ""}</p></div>
-                <Badge className={cluster.state === "active" ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}>{cluster.state}</Badge>
+              <div key={cluster.id} className="flex items-start justify-between gap-3 border border-border p-3">
+                <div>
+                  <p className="font-medium">{cluster.display_name}</p>
+                  <p className="mt-1 font-mono text-[10px] text-muted-foreground">{cluster.name}{cluster.slurm_version ? ` · SLURM ${cluster.slurm_version}` : ""}</p>
+                </div>
+                <Badge variant="outline" className={cluster.state === "active" ? "border-status-active/35 bg-status-active/10 text-status-active" : "border-status-degraded/35 bg-status-degraded/10 text-status-degraded"}>
+                  <span aria-hidden="true">■</span>{cluster.state}
+                </Badge>
               </div>
             ))}
-            {clusters.length === 0 ? <p className="py-4 text-sm text-slate-500">No clusters are assigned to this tenant.</p> : null}
-          </CardContent>
-        </Card>
+            {clusters.length === 0 ? <p className="py-4 text-sm text-muted-foreground">No clusters are assigned to this tenant.</p> : null}
+          </div>
+        </section>
       </section>
     </div>
   );

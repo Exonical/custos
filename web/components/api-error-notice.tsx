@@ -1,5 +1,5 @@
 import { ApiError } from "@/lib/api/client";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 
 export function ApiErrorNotice({ error }: { error: unknown }) {
   const status = error instanceof ApiError ? error.status : 500;
@@ -12,11 +12,14 @@ export function ApiErrorNotice({ error }: { error: unknown }) {
       : "Custos could not load this information. Try again later.";
 
   return (
-    <Card role="alert" className="max-w-2xl border-rose-200">
-      <CardContent className="space-y-2">
-        <h2 className="font-semibold text-slate-900">{message}</h2>
-        <p className="font-mono text-xs text-slate-600">{code}</p>
-        {requestId ? <p className="text-xs text-slate-500">Request ID: {requestId}</p> : null}
+    <Card role="alert" className="max-w-2xl border-destructive/35">
+      <CardHeader className="border-b border-border pb-3">
+        <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-destructive">{`// API error ${String(status)}`}</p>
+      </CardHeader>
+      <CardContent className="space-y-2 pt-4">
+        <h2 className="text-sm font-semibold">{message}</h2>
+        <p className="font-mono text-xs uppercase tracking-[0.08em] text-muted-foreground">{code}</p>
+        {requestId ? <p className="font-mono text-[10px] text-muted-foreground">Request ID: {requestId}</p> : null}
       </CardContent>
     </Card>
   );

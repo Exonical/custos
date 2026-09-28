@@ -87,14 +87,17 @@ function completeAuthorization(state, username, response) {
 /** @param {string} state */
 function pickerHtml(state) {
   const choices = [
-    ["alice", "Alice Researcher"],
-    ["admin", "Platform Admin"],
-    ["bob", "Bob Newcomer"],
+    ["alice", "Alice Researcher", "RESEARCHER · ACME"],
+    ["admin", "Platform Admin", "PLATFORM ADMIN · ACME / GLOBEX"],
+    ["bob", "Bob Newcomer", "NO TENANT MEMBERSHIP"],
   ];
-  const buttons = choices.map(([value, label]) =>
-    `<form method="post" action="/realms/custos/protocol/openid-connect/auth/select"><input type="hidden" name="state" value="${state}"><button type="submit" name="user" value="${value}">${label}</button></form>`,
+  const buttons = choices.map(([value, label, details], index) =>
+    `<form method="post" action="/realms/custos/protocol/openid-connect/auth/select"><input type="hidden" name="state" value="${state}"><button class="user-choice" type="submit" name="user" value="${value}" aria-label="${label}"><span class="user-index" aria-hidden="true">0${index + 1}</span><span class="user-copy"><span class="user-name">${label}</span><span class="user-details" aria-hidden="true">${details}</span></span><span class="user-mark" aria-hidden="true">↗</span></button></form>`,
   ).join("\n");
-  return `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Mock sign in</title><main><h1>Choose a mock user</h1><p>This local-only identity provider issues no real credentials.</p>${buttons}</main></html>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><meta name="color-scheme" content="dark"><title>Mock sign in · Custos</title><style>
+:root{color-scheme:dark;--background:oklch(0.13 0 0);--surface:oklch(0.17 0 0);--foreground:oklch(0.96 0 0);--muted:oklch(0.68 0 0);--border:oklch(1 0 0 / 10%);--signal:oklch(0.70 0.19 45)}
+*{box-sizing:border-box}body{min-height:100vh;margin:0;display:grid;place-items:center;padding:24px;background-color:var(--background);background-image:linear-gradient(to right,oklch(1 0 0 / 3.5%) 1px,transparent 1px),linear-gradient(to bottom,oklch(1 0 0 / 3.5%) 1px,transparent 1px);background-size:36px 36px;color:var(--foreground);font-family:ui-sans-serif,system-ui,sans-serif}main{position:relative;width:min(100%,620px);padding:32px;border:1px solid var(--border);background:var(--surface)}main:before,main:after{position:absolute;width:14px;height:14px;border-color:var(--signal);content:"";pointer-events:none}main:before{top:-1px;left:-1px;border-top:1px solid;border-left:1px solid}main:after{right:-1px;bottom:-1px;border-right:1px solid;border-bottom:1px solid}.eyebrow,.user-index,.user-details{font-family:ui-monospace,SFMono-Regular,Consolas,monospace}.eyebrow{margin:0 0 12px;color:var(--muted);font-size:10px;letter-spacing:.14em;text-transform:uppercase}h1{margin:0;font-size:clamp(22px,4vw,30px);font-weight:600;letter-spacing:.12em;text-transform:uppercase}.intro{max-width:460px;margin:12px 0 24px;color:var(--muted);font-size:14px;line-height:1.6}.users{display:grid;gap:8px}.user-choice{display:flex;width:100%;min-height:68px;align-items:center;gap:16px;padding:12px 14px;border:1px solid var(--border);background:transparent;color:var(--foreground);text-align:left;cursor:pointer;font:inherit}.user-choice:hover,.user-choice:focus-visible{border-color:var(--signal);background:oklch(1 0 0 / 3%);outline:2px solid oklch(0.70 0.19 45 / 35%);outline-offset:2px}.user-index{color:var(--signal);font-size:11px}.user-copy{display:grid;gap:5px}.user-name{font-size:14px;font-weight:600}.user-details{color:var(--muted);font-size:9px;letter-spacing:.1em}.user-mark{margin-left:auto;color:var(--signal);font-family:ui-monospace,monospace}@media(max-width:480px){main{padding:24px}}
+</style></head><body><main><p class="eyebrow">// CUSTOS · LOCAL IDENTITY</p><h1>Choose a mock user</h1><p class="intro">This development-only identity provider issues no real credentials. Select a profile to continue.</p><div class="users">${buttons}</div></main></body></html>`;
 }
 
 /** @param {http.IncomingMessage} request @param {http.ServerResponse} response */
@@ -239,5 +242,18 @@ const server = http.createServer((request, response) => {
     if (!response.headersSent) sendJson(response, 500, { error: "mock_oidc_error" });
     else response.destroy();
   });
+});
+server.once("error", (error) => {
+  /** @type {NodeJS.ErrnoException} */
+  const serverError = error;
+  const release = process.platform === "win32"
+    ? `netstat -ano | findstr :${port}, then taskkill /PID <PID> /F`
+    : `lsof -ti tcp:${port} | xargs kill`;
+  if (serverError.code === "EADDRINUSE") {
+    process.stderr.write(`Mock port ${port} is already in use; free it with ${release}.\n`);
+    process.exit(73);
+  }
+  process.stderr.write(`Mock OIDC server failed on port ${port}: ${serverError.message}\n`);
+  process.exit(1);
 });
 server.listen(port, host, () => process.stdout.write(`mock OIDC ready at ${issuer}\n`));

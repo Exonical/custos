@@ -80,7 +80,7 @@ mode, and workflow cancellation.
   clients (baseline Slurm 26.05 / slurmrestd v0.0.45; Slurm 25.11 /
   v0.0.44 also supported), OpenTelemetry + Prometheus.
 - **Frontend**: Next.js 16 (App Router, TypeScript strict) as a BFF;
-  shadcn/ui + Tailwind, TanStack Table, and stateless Auth.js v5 JWT sessions.
+  shadcn/ui on Base UI + Tailwind, TanStack Table, and stateless Auth.js v5 JWT sessions.
   M8-A implements the tenant shell, Dashboard, and Jobs; workflow tooling is
   deferred.
 - **Deploy**: container image, Helm chart; API and workers as separate

@@ -1,8 +1,18 @@
 "use client";
 
-import * as AlertDialog from "@radix-ui/react-alert-dialog";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 
 export function CancelJobButton({
@@ -47,29 +57,24 @@ export function CancelJobButton({
 
   return (
     <div className="space-y-2">
-      <AlertDialog.Root>
-        <AlertDialog.Trigger asChild>
-          <Button type="button" variant="destructive" disabled={pending}>Cancel job</Button>
-        </AlertDialog.Trigger>
-        <AlertDialog.Portal>
-          <AlertDialog.Overlay className="fixed inset-0 z-40 bg-slate-950/40" />
-          <AlertDialog.Content className="fixed left-1/2 top-1/2 z-50 w-[min(92vw,28rem)] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-slate-200 bg-white p-6 shadow-xl">
-            <AlertDialog.Title className="text-lg font-semibold">Cancel this job?</AlertDialog.Title>
-            <AlertDialog.Description className="mt-2 text-sm text-slate-600">
+      <AlertDialog>
+        <AlertDialogTrigger render={<Button type="button" variant="destructive" disabled={pending} />}>Cancel job</AlertDialogTrigger>
+        <AlertDialogContent className="w-[min(92vw,28rem)] border-primary/25 bg-popover shadow-none">
+          <AlertDialogHeader className="text-left">
+            <AlertDialogTitle className="font-mono text-sm uppercase tracking-[0.12em]">Cancel this job?</AlertDialogTitle>
+            <AlertDialogDescription className="mt-2 text-sm text-muted-foreground">
               Custos will request cancellation from Slurm. This action cannot be undone.
-            </AlertDialog.Description>
-            <div className="mt-6 flex justify-end gap-3">
-              <AlertDialog.Cancel asChild><Button type="button" variant="outline">Keep job</Button></AlertDialog.Cancel>
-              <AlertDialog.Action asChild>
-                <Button type="button" variant="destructive" disabled={pending} onClick={() => { void cancel(); }}>
-                  {pending ? "Requesting…" : "Confirm cancel"}
-                </Button>
-              </AlertDialog.Action>
-            </div>
-          </AlertDialog.Content>
-        </AlertDialog.Portal>
-      </AlertDialog.Root>
-      {message ? <p role="alert" className="text-sm text-rose-700">Cancellation was not accepted ({message}).</p> : null}
+            </AlertDialogDescription>
+            {message ? <p role="alert" className="font-mono text-xs text-destructive">CANCEL REJECTED: {message}</p> : null}
+          </AlertDialogHeader>
+          <AlertDialogFooter className="border-border bg-muted/30">
+            <AlertDialogCancel>Keep job</AlertDialogCancel>
+            <AlertDialogAction type="button" variant="destructive" disabled={pending} onClick={() => { void cancel(); }}>
+              {pending ? "Requesting…" : "Confirm cancel"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -22,11 +22,18 @@ export type Job = components["schemas"]["Job"];
 export type JobList = components["schemas"]["JobList"];
 export type ExecutionSpec = Record<string, unknown>;
 
-export function createApiClient(accessToken: string) {
+export function createApiClient(accessToken: string, options: { mockFail?: string } = {}) {
   const config = getConfig();
+  const headers = new Headers({ Authorization: `Bearer ${accessToken}` });
+  if (
+    config.devMode &&
+    process.env.NODE_ENV !== "production" &&
+    options.mockFail &&
+    /^\d{3}$/.test(options.mockFail)
+  ) headers.set("X-Mock-Fail", options.mockFail);
   return createClient<paths>({
     baseUrl: new URL("/api/v1", config.apiUrl).toString().replace(/\/$/, ""),
-    headers: { Authorization: `Bearer ${accessToken}` },
+    headers,
     fetch: createSafeFetch(config.apiCaFile, 30_000),
   });
 }

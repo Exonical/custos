@@ -85,13 +85,28 @@ logging, and no debug endpoints).
 
 - Next.js 16 App Router at the `web/` project root, TypeScript `strict`, and
   standalone production output. Server Components handle read-heavy pages.
-- UI library: **shadcn/ui on Radix primitives + Tailwind 4**. Accessible,
-  desktop-friendly dense tables; components are vendored.
+- UI library: **shadcn/ui `base-nova` on Base UI primitives + Tailwind 4**.
+  Accessible, desktop-friendly dense tables; components are vendored.
 - Jobs use TanStack Table with API keyset cursors and state/project filters.
   Forms use react-hook-form + zod; API types are generated from OpenAPI.
 - M8-A implements Dashboard and Jobs list/detail. Workflows, executions,
   clusters, usage, and admin pages are future sections; Monaco, React Flow,
   and charts are out of scope for this slice.
+
+## Design system
+
+The UI uses shadcn/ui `base-nova` on Base UI primitives, Tailwind 4, and a
+single dark theme. `app/globals.css` defines the OKLCH tokens `--background`,
+`--foreground`, `--card`, `--popover`, `--secondary`, `--muted`,
+`--muted-foreground`, `--border`, `--input`, `--primary`, `--accent`, `--ring`,
+`--destructive`, chart colors, and `--status-*`. IBM Plex Sans is used for body
+copy; IBM Plex Mono is used for IDs, timestamps, numbers, table headings, and
+badges. Both use `next/font/local` with the latin WOFF2 assets from exact-pinned
+`@fontsource/ibm-plex-sans@5.3.0` and `@fontsource/ibm-plex-mono@5.3.0`, so builds
+need no Google Fonts network access. Status tokens distinguish running/active green, queued/draining amber,
+failed red, completed steel, and canceled gray. New UI must use these semantic
+tokens rather than raw Tailwind palette colors. There is no light theme or
+switcher for now.
 
 ## Future workflow-editor contract (not implemented in M8-A)
 
@@ -119,9 +134,20 @@ projections:
 Implemented: tenant selection, Dashboard, and Jobs (keyset-paginated list,
 detail, read-only ExecutionSpec/resource usage, and CSRF-protected cancel).
 The shell includes tenant switching, logout, and disabled coming-soon entries
-for Workflows, Executions, Clusters, Usage, and Admin. Tenant pages live under
+for Workflows, Templates, Interactive, Projects, Secrets, Usage, Clusters, and
+Policies. Tenant pages live under
 `/t/{tenant}/...`, mirroring the API. The browser UI never calls the API
 directly; Server Components use the server API client and mutations use the BFF.
+The Job API currently exposes job reads, cancellation, and ExecutionSpec only;
+there are no Events or Logs endpoints, so the detail view shows a Details tab.
+
+### Future: interactive jobs
+
+The job detail header reserves space for a future Connect action and the side
+panel can host a Terminal tab; neither is implemented. Interactive sessions
+must be proxied through Custos, not connected directly from the browser to a
+node. A separate ADR must specify the WebSocket/stream path through the BFF,
+authorization, and audit requirements before implementation.
 
 ## Security headers (BFF and API)
 
