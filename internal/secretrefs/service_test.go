@@ -1,19 +1,22 @@
 package secretrefs_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
 
+	"github.com/Exonical/custos/internal/audit"
 	"github.com/Exonical/custos/internal/authn"
 	"github.com/Exonical/custos/internal/authz"
 	"github.com/Exonical/custos/internal/secretrefs"
+	"github.com/Exonical/custos/internal/secrets"
 	"github.com/Exonical/custos/internal/tenants"
 )
-
-var errRead = errors.New("transient read failure")
 
 type allowAll struct{}
 
@@ -21,14 +24,129 @@ func (allowAll) Check(context.Context, authn.Principal, authz.Action, authz.Reso
 	return authz.Decision{Allow: true}, nil
 }
 
-type nopStore struct{ deleted int }
+type fakeRepo struct {
+	secretrefs.Repository
+	connector secretrefs.Connector
+	createErr error
+	deleted   bool
+}
 
-func (*nopStore) Put(context.Context, string, string, string, string, []byte) error { return nil }
-func (s *nopStore) Delete(context.Context, string, string, string) error {
-	s.deleted++
+func (r *fakeRepo) CreateConnector(context.Context, tenants.Scope, secretrefs.Connector) error {
+	return r.createErr
+}
+
+func (r *fakeRepo) GetConnector(context.Context, tenants.Scope, uuid.UUID, string) (secretrefs.Connector, error) {
+	return r.connector, nil
+}
+
+func (r *fakeRepo) ConnectorReferenceCount(context.Context, tenants.Scope, uuid.UUID) (int, error) {
+	return 0, nil
+}
+
+func (r *fakeRepo) DeleteConnector(context.Context, tenants.Scope, uuid.UUID, uuid.UUID) error {
+	r.deleted = true
 	return nil
 }
-func (*nopStore) EnsureTenantNamespace(context.Context, string) error { return nil }
+
+type fakeStore struct {
+	deleteErr error
+	deletes   []string
+}
+
+func (f *fakeStore) Put(context.Context, string, string, string, string, []byte) error { return nil }
+
+func (f *fakeStore) Delete(_ context.Context, ns, mount, path string) error {
+	f.deletes = append(f.deletes, ns+"|"+mount+"|"+path)
+	return f.deleteErr
+}
+
+func (f *fakeStore) EnsureTenantNamespace(context.Context, string) error { return nil }
+
+type captureRecorder struct{ events []audit.Event }
+
+func (c *captureRecorder) Record(_ context.Context, e audit.Event) error {
+	c.events = append(c.events, e)
+	return nil
+}
+
+func newService(repo *fakeRepo, store *fakeStore, rec audit.Recorder, logs *bytes.Buffer) *secretrefs.Service {
+	svc := secretrefs.NewService(repo, secretrefs.NewRuntime(repo, nil, nil), allowAll{}, rec, store, "custos")
+	svc.SetLogger(slog.New(slog.NewTextHandler(logs, nil)))
+	return svc
+}
+
+func tenantContext() tenants.TenantContext {
+	return tenants.TenantContext{Tenant: tenants.Tenant{ID: uuid.Must(uuid.NewV7())}}
+}
+
+func TestDeleteConnectorCredentialCleanupFailureIsLoggedAndAudited(t *testing.T) {
+	tc := tenantContext()
+	ref := secrets.Reference{Namespace: "custos/tenants/" + tc.Tenant.ID.String(), Mount: "kv", Path: "connectors/x", Key: "credential"}
+	repo := &fakeRepo{connector: secretrefs.Connector{ID: uuid.Must(uuid.NewV7()), TenantID: tc.Tenant.ID, Name: "byo", Kind: "openbao", CredentialRef: &ref}}
+	store := &fakeStore{deleteErr: errors.New("openbao unavailable")}
+	rec := &captureRecorder{}
+	var logs bytes.Buffer
+	svc := newService(repo, store, rec, &logs)
+
+	if err := svc.DeleteConnector(context.Background(), authn.Principal{UserID: uuid.Must(uuid.NewV7())}, tc, "byo"); err != nil {
+		t.Fatalf("DeleteConnector() error = %v, want nil (best-effort cleanup)", err)
+	}
+	if !repo.deleted || len(store.deletes) != 1 {
+		t.Fatalf("deleted=%v credential deletes=%v", repo.deleted, store.deletes)
+	}
+	if !strings.Contains(logs.String(), "level=WARN") || !strings.Contains(logs.String(), "path=connectors/x") {
+		t.Fatalf("missing cleanup warning in logs: %s", logs.String())
+	}
+	if len(rec.events) != 1 || rec.events[0].Action != "secret.connector.deleted" {
+		t.Fatalf("events = %+v", rec.events)
+	}
+	d := rec.events[0].Details
+	if d["credential_cleanup"] != "failed" || d["credential_path"] != "connectors/x" || d["credential_mount"] != "kv" {
+		t.Fatalf("audit details = %v", d)
+	}
+}
+
+func TestDeleteConnectorCredentialCleanupSuccessIsSilent(t *testing.T) {
+	tc := tenantContext()
+	ref := secrets.Reference{Namespace: "ns", Mount: "kv", Path: "connectors/x"}
+	repo := &fakeRepo{connector: secretrefs.Connector{ID: uuid.Must(uuid.NewV7()), TenantID: tc.Tenant.ID, Name: "byo", Kind: "openbao", CredentialRef: &ref}}
+	rec := &captureRecorder{}
+	var logs bytes.Buffer
+	svc := newService(repo, &fakeStore{}, rec, &logs)
+
+	if err := svc.DeleteConnector(context.Background(), authn.Principal{UserID: uuid.Must(uuid.NewV7())}, tc, "byo"); err != nil {
+		t.Fatal(err)
+	}
+	if logs.Len() != 0 {
+		t.Fatalf("unexpected logs: %s", logs.String())
+	}
+	if len(rec.events) != 1 || len(rec.events[0].Details) != 1 || rec.events[0].Details["kind"] != "openbao" {
+		t.Fatalf("events = %+v", rec.events)
+	}
+}
+
+func TestCreateConnectorRollbackCredentialFailureIsLogged(t *testing.T) {
+	tc := tenantContext()
+	createErr := errors.New("insert failed")
+	repo := &fakeRepo{createErr: createErr}
+	store := &fakeStore{deleteErr: errors.New("openbao unavailable")}
+	var logs bytes.Buffer
+	svc := newService(repo, store, nil, &logs)
+
+	_, err := svc.CreateConnector(context.Background(), authn.Principal{UserID: uuid.Must(uuid.NewV7())}, tc,
+		secretrefs.CreateConnector{Name: "byo", Kind: "openbao", Credential: map[string]string{"token": "t"}})
+	if !errors.Is(err, createErr) {
+		t.Fatalf("CreateConnector() error = %v, want %v", err, createErr)
+	}
+	if len(store.deletes) != 1 {
+		t.Fatalf("credential deletes = %v", store.deletes)
+	}
+	if !strings.Contains(logs.String(), "secret connector credential delete failed") {
+		t.Fatalf("missing rollback warning in logs: %s", logs.String())
+	}
+}
+
+var errRead = errors.New("transient read failure")
 
 // flakyRepo serves stored rows until a write happens, after which every
 // read fails, simulating a transient failure on the post-write re-fetch.
@@ -87,10 +205,10 @@ func (r *flakyRepo) GetReference(_ context.Context, _ tenants.Scope, _ uuid.UUID
 	return x, nil
 }
 
-func setup(t *testing.T) (*secretrefs.Service, *flakyRepo, *nopStore, authn.Principal, tenants.TenantContext) {
+func setupFlaky(t *testing.T) (*secretrefs.Service, *flakyRepo, *fakeStore, authn.Principal, tenants.TenantContext) {
 	t.Helper()
 	repo := &flakyRepo{connectors: map[string]secretrefs.Connector{}, references: map[string]secretrefs.Reference{}}
-	store := &nopStore{}
+	store := &fakeStore{}
 	svc := secretrefs.NewService(repo, secretrefs.NewRuntime(repo, nil, nil), allowAll{}, nil, store, "custos")
 	p := authn.Principal{UserID: uuid.New()}
 	tc := tenants.TenantContext{Tenant: tenants.Tenant{ID: uuid.New()}}
@@ -98,7 +216,7 @@ func setup(t *testing.T) (*secretrefs.Service, *flakyRepo, *nopStore, authn.Prin
 }
 
 func TestCreateConnectorRefetchErrorPropagatesWithoutRollback(t *testing.T) {
-	svc, repo, store, p, tc := setup(t)
+	svc, repo, store, p, tc := setupFlaky(t)
 	c, err := svc.CreateConnector(context.Background(), p, tc, secretrefs.CreateConnector{
 		Name: "ext", Kind: "openbao", Config: map[string]any{}, Credential: map[string]string{"token": "[REDACTED]"},
 	})
@@ -108,13 +226,13 @@ func TestCreateConnectorRefetchErrorPropagatesWithoutRollback(t *testing.T) {
 	if c.ID != uuid.Nil {
 		t.Fatalf("connector = %+v, want zero value on error", c)
 	}
-	if repo.deletedConnectors != 0 || store.deleted != 0 {
-		t.Fatalf("rollback ran: repo deletes=%d, store deletes=%d", repo.deletedConnectors, store.deleted)
+	if repo.deletedConnectors != 0 || len(store.deletes) != 0 {
+		t.Fatalf("rollback ran: repo deletes=%d, store deletes=%v", repo.deletedConnectors, store.deletes)
 	}
 }
 
 func TestUpdateConnectorRefetchErrorPropagates(t *testing.T) {
-	svc, repo, _, p, tc := setup(t)
+	svc, repo, _, p, tc := setupFlaky(t)
 	id := uuid.New()
 	repo.connectors[id.String()] = secretrefs.Connector{ID: id, TenantID: tc.Tenant.ID, Name: "ext", Kind: "openbao", State: "active"}
 	disabled := "disabled"
@@ -128,7 +246,7 @@ func TestUpdateConnectorRefetchErrorPropagates(t *testing.T) {
 }
 
 func TestCreateReferenceRefetchErrorPropagates(t *testing.T) {
-	svc, repo, _, p, tc := setup(t)
+	svc, repo, _, p, tc := setupFlaky(t)
 	id := uuid.New()
 	repo.connectors["ext"] = secretrefs.Connector{ID: id, TenantID: tc.Tenant.ID, Name: "ext", Kind: "openbao", State: "active", Config: map[string]any{"mount": "kv"}}
 	x, err := svc.CreateReference(context.Background(), p, tc, secretrefs.CreateReference{
@@ -143,7 +261,7 @@ func TestCreateReferenceRefetchErrorPropagates(t *testing.T) {
 }
 
 func TestUpdateReferenceRefetchErrorPropagates(t *testing.T) {
-	svc, repo, _, p, tc := setup(t)
+	svc, repo, _, p, tc := setupFlaky(t)
 	id := uuid.New()
 	repo.references[id.String()] = secretrefs.Reference{ID: id, TenantID: tc.Tenant.ID, OwnerID: &p.UserID, Name: "ref", Mount: "kv", Path: "app/db", Key: "password", Kind: "generic"}
 	name := "renamed"

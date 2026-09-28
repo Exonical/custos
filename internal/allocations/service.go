@@ -14,11 +14,10 @@ import (
 	"github.com/Exonical/custos/internal/authz"
 	"github.com/Exonical/custos/internal/platform/apperr"
 	"github.com/Exonical/custos/internal/platform/workqueue"
+	"github.com/Exonical/custos/internal/policysync/kind"
 	"github.com/Exonical/custos/internal/projects"
 	"github.com/Exonical/custos/internal/tenants"
 )
-
-const policySyncKind = "policy.sync"
 
 // Service implements allocation management and admission checks.
 type Service struct {
@@ -47,7 +46,7 @@ func (s *Service) enqueuePolicySync(ctx context.Context, clusterID uuid.UUID) er
 	if s.enq == nil {
 		return nil
 	}
-	_, err := workqueue.Enqueue(ctx, s.enq, workqueue.EnqueueRequest{Kind: policySyncKind, Key: "cluster:" + clusterID.String()})
+	_, err := workqueue.Enqueue(ctx, s.enq, workqueue.EnqueueRequest{Kind: kind.PolicySync, Key: "cluster:" + clusterID.String()})
 	return err
 }
 

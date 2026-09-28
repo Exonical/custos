@@ -114,6 +114,7 @@ func cmdWorker(parent context.Context, configPath string, lookupEnv config.Looku
 	secretSvc := secretrefs.NewService(secretRepo, secretRuntime, authz.RBAC{},
 		recorder, sdeps.OpenBao, platformNS, tenantRepo)
 	secretSvc.SetMeterProvider(prov.Meter)
+	secretSvc.SetLogger(logger)
 	clusterRepo := clusterpg.New(pool)
 	q.Register(clustersync.Kind, clustersync.Handler(clusterRepo,
 		sdeps.Factory, cfg.Worker.ClusterSyncInterval,
@@ -141,16 +142,15 @@ func cmdWorker(parent context.Context, configPath string, lookupEnv config.Looku
 
 	// Job handlers (docs/workers.md): submit, reconcile, cancel, sweep.
 	jdeps := jobsworker.Deps{
-		Jobs:        jobpg.New(pool),
-		Scripts:     scriptpg.New(pool),
-		Clusters:    clusterRepo,
-		Factory:     sdeps.Factory,
-		Exec:        pool,
-		Execs:       execpg.New(pool),
-		Audit:       recorder,
-		Metrics:     jobsworker.NewMetrics(prov.Meter, jobpg.New(pool)),
-		Secrets:     secretSvc,
-		Allocations: allocationSvc,
+		Jobs:     jobpg.New(pool),
+		Scripts:  scriptpg.New(pool),
+		Clusters: clusterRepo,
+		Factory:  sdeps.Factory,
+		Exec:     pool,
+		Execs:    execpg.New(pool),
+		Audit:    recorder,
+		Metrics:  jobsworker.NewMetrics(prov.Meter, jobpg.New(pool)),
+		Secrets:  secretSvc,
 	}
 	q.Register(jobssvc.KindSubmit, jobsworker.Submit(jdeps))
 	q.Register(jobsworker.KindReconcile, jobsworker.Reconcile(jdeps))

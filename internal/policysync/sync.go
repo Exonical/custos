@@ -18,12 +18,13 @@ import (
 	"github.com/Exonical/custos/internal/clusters"
 	"github.com/Exonical/custos/internal/platform/db"
 	"github.com/Exonical/custos/internal/platform/workqueue"
+	"github.com/Exonical/custos/internal/policysync/kind"
 	"github.com/Exonical/custos/internal/projects"
 	"github.com/Exonical/custos/internal/slurm"
 )
 
 // Kind is the policy drift worker kind.
-const Kind = "policy.sync"
+const Kind = kind.PolicySync
 const interval = 15 * time.Minute
 
 // ErrNoAccounting identifies clusters that do not enable slurmdbd.

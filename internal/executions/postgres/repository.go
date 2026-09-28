@@ -550,14 +550,6 @@ func (r *Repository) TransitionTask(ctx context.Context,
 	return t, err
 }
 
-func jsonValue(v any) []byte {
-	if v == nil {
-		return nil
-	}
-	b, _ := json.Marshal(v)
-	return b
-}
-
 const admitJobCols = `id, tenant_id, project_id, cluster_id, created_by,
 	name, state, state_reason, slurm_job_id, slurm_state, exit_code,
 	exit_signal, resource_request, execution_spec,
@@ -628,7 +620,7 @@ func (r *Repository) AdmitTaskChecked(ctx context.Context,
 			string(j.ScriptLanguage), j.ScriptValidationID,
 			j.TaskExecutionID, j.SubmittedAt, j.StartedAt, j.EndedAt,
 			j.LastReconciledAt, j.Version, j.CreatedAt, j.UpdatedAt,
-			nil, j.BindingID, jsonValue(j.EstimatedCost)); err != nil {
+			nil, j.BindingID, db.JSONOrNil(j.EstimatedCost)); err != nil {
 			return db.MapError(err)
 		}
 		set := []string{"version = version + 1", "updated_at = now()"}
