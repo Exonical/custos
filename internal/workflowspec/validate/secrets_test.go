@@ -47,6 +47,9 @@ func TestSecretStaticValidation(t *testing.T) {
 			w.Spec.Secrets["hf-token"] = u
 		}, "SECRET_ENV_CONTROLLED"},
 		{"non-whole reference", func(w *workflowspec.Workflow) { w.Spec.Tasks[0].Env["TOKEN"] = "prefix-{{ secrets.hf-token }}" }, "REF_SECRET_WHOLE"},
+		{"non-whole defaults reference", func(w *workflowspec.Workflow) {
+			w.Spec.Defaults = &workflowspec.Defaults{Env: map[string]string{"DEFAULT_TOKEN": "prefix-{{ secrets.hf-token }}"}}
+		}, "REF_SECRET_WHOLE"},
 		{"outside env", func(w *workflowspec.Workflow) { w.Spec.Tasks[0].Command = []string{"{{ secrets.hf-token }}"} }, "REF_SECRET_SCOPE"},
 		{"wrapped reference", func(w *workflowspec.Workflow) {
 			u := w.Spec.Secrets["hf-token"]
