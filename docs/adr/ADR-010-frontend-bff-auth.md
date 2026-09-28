@@ -3,6 +3,8 @@
 Status: Accepted
 Date: 2026-09-14
 
+Amended by ADR-021 (2026-09-27): use Auth.js v5 JWT sessions; the BFF has no session database.
+
 ## Context
 
 Browsers need to use the bearer-only Go API without exposing tokens to
@@ -14,11 +16,12 @@ browser path and CLI path must converge on the same API auth model.
 
 The Next.js server is a **Backend-for-Frontend**:
 
-- Runs OIDC Authorization Code + PKCE (`openid-client` or Auth.js
-  generic OIDC — provider decision deferred to Milestone 8).
-- Holds `access_token`/`refresh_token`/`id_token` **server-side** in an
-  encrypted session: sealed cookie (AES-GCM, ≤4KB) or, when tokens are
-  large, a PostgreSQL `web_sessions` table in the same database.
+- Uses Auth.js v5 with one generic OIDC provider and Authorization Code + PKCE
+  S256, state, and nonce. `openid-client` remains for refresh, revocation, and
+  end-session URLs.
+- Holds access and refresh tokens **server-side** in Auth.js's encrypted JWT
+  session cookie, which Auth.js chunks when needed. The ID token is not stored;
+  there is no adapter or session database.
 - Sets `HttpOnly; Secure; SameSite=Lax; Path=/` session cookie; nothing
   token-like ever reaches browser JS.
 - `/api/bff/*` Route Handlers proxy to the Go API attaching the bearer
@@ -44,12 +47,12 @@ The Next.js server is a **Backend-for-Frontend**:
 ## Consequences
 
 - The Next.js server is a **trusted component holding refresh tokens**:
-  deploy it with API-level care (TLS, sealed-cookie key from OpenBao, no
-  debug endpoints, short session TTL).
+  deploy it with API-level care (TLS, `CUSTOS_WEB_AUTH_SECRETS` sourced from
+  OpenBao, no token logging, and a short session TTL).
 - CSRF handling is mandatory and layered (token + SameSite + Origin);
   mutations are non-GET only.
-- Session storage must handle large tokens — plan for the `web_sessions`
-  table rather than assuming sealed cookies suffice.
+- Auth.js chunks the encrypted JWT when large tokens approach cookie limits.
+  ADR-021 settles on stateless JWT sessions with no session database.
 
 Source: docs/frontend.md (Architecture, Tradeoffs); docs/threat-model.md
 TM-19/TM-20/TM-21.

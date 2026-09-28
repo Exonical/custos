@@ -26,6 +26,7 @@ decisions get a new ADR that references the old one.
 | [ADR-018](ADR-018-accounting-attribution.md) | Ordered Slurm accounting attribution with immutable facts and recomputable daily aggregates | [observability.md](../observability.md) |
 | [ADR-019](ADR-019-policy-sync-read-only.md) | Superseded: read-only Slurm policy drift detection | [workers.md](../workers.md), [slurm.md](../slurm.md) |
 | [ADR-020](ADR-020-slurmdbd-policy-administration.md) | Reconcile binding accounts, service-user associations, and hard allocation limits into slurmdbd; report mode is the escape hatch | [workers.md](../workers.md), [slurm.md](../slurm.md) |
+| [ADR-021](ADR-021-authjs-stateless-sessions.md) | Auth.js v5 JWT sessions, no adapter/database, server-only bearer tokens, CSRF double-submit | [frontend.md](../frontend.md), [web.md](../web.md) |
 
 ## Process
 

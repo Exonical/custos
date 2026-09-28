@@ -1,0 +1,48 @@
+import "server-only";
+import createClient from "openapi-fetch";
+import type { components, paths } from "@/lib/api/schema";
+import { getConfig } from "@/lib/config";
+import { createSafeFetch } from "@/lib/http";
+
+export class ApiError extends Error {
+  constructor(
+    readonly status: number,
+    readonly code: string,
+    readonly requestId: string | null,
+  ) {
+    super(code);
+    this.name = "ApiError";
+  }
+}
+
+export type Me = components["schemas"]["Me"];
+export type TenantClusterList = components["schemas"]["ClusterSummaryList"];
+export type ProjectList = components["schemas"]["ProjectList"];
+export type Job = components["schemas"]["Job"];
+export type JobList = components["schemas"]["JobList"];
+export type ExecutionSpec = Record<string, unknown>;
+
+export function createApiClient(accessToken: string) {
+  const config = getConfig();
+  return createClient<paths>({
+    baseUrl: new URL("/api/v1", config.apiUrl).toString().replace(/\/$/, ""),
+    headers: { Authorization: `Bearer ${accessToken}` },
+    fetch: createSafeFetch(config.apiCaFile, 30_000),
+  });
+}
+
+export function toApiError(error: unknown, status: number): ApiError {
+  const record = error && typeof error === "object" ? (error as Record<string, unknown>) : {};
+  const detail = record.error && typeof record.error === "object"
+    ? (record.error as Record<string, unknown>)
+    : {};
+  const code = typeof detail.code === "string" ? detail.code : "UPSTREAM_ERROR";
+  const requestId = typeof detail.request_id === "string" ? detail.request_id : null;
+  return new ApiError(status, code, requestId);
+}
+
+export async function getMe(accessToken: string): Promise<Me> {
+  const { data, error, response } = await createApiClient(accessToken).GET("/me", {});
+  if (error) throw toApiError(error, response.status);
+  return data;
+}

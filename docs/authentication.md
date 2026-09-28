@@ -10,9 +10,11 @@ identities and never sees passwords.
 | CLI, automation, service-to-service | `Authorization: Bearer <JWT>` access token issued by the IdP | Stateless; standard for APIs |
 | Browser (Next.js UI) | HttpOnly, Secure, SameSite=Lax session cookie issued by the Next.js server (BFF) | Tokens never reach browser JS; no localStorage |
 
-The Go API accepts **only** bearer JWTs. The BFF holds the user's tokens
-server-side and attaches the access token when it calls the API. See
-`docs/frontend.md` for the BFF design and tradeoffs.
+The Go API accepts **only** bearer JWTs. The Next.js BFF is a separate OIDC
+relying party using Auth.js v5 and an encrypted JWT session cookie. Access and
+refresh tokens stay server-side; the ID token is not stored. The BFF attaches the
+access token when it calls the API and has no adapter, database, or Redis session
+store. See `docs/frontend.md` and ADR-021 for the BFF design.
 
 ## Configuration
 

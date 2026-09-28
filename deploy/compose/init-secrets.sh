@@ -47,4 +47,13 @@ printf 'postgres://custos_app:%s@postgres:5432/custos' \
 	"$(cat "$d/custos-app-password")" > "$d/custos-app-url"
 chmod 600 "$d/custos-migrate-url" "$d/custos-app-url"
 
+if [ ! -s "$d/custos-web-client-secret" ]; then
+	gen > "$d/custos-web-client-secret"
+	chmod 600 "$d/custos-web-client-secret"
+fi
+if [ ! -s "$d/custos-web-auth-secrets" ]; then
+	openssl rand -base64 32 | tr -d '\r\n' > "$d/custos-web-auth-secrets"
+	chmod 600 "$d/custos-web-auth-secrets"
+fi
+
 echo "secrets ready in $d/"

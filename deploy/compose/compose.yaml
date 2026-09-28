@@ -20,6 +20,10 @@ secrets:
     file: ./.secrets/server.key
   pg-server-ca:
     file: ./.secrets/server.crt
+  custos-web-dev-client-secret:
+    file: ./.secrets/custos-web-client-secret
+  custos-web-dev-auth-secrets:
+    file: ./.secrets/custos-web-auth-secrets
 
 volumes:
   pgdata:
@@ -202,4 +206,33 @@ services:
     network_mode: "service:worker"
     depends_on:
       worker:
+        condition: service_started
+
+  web:
+    image: custos-web:local
+    build:
+      context: ../..
+      dockerfile: web/Containerfile
+      target: dev
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        export CUSTOS_WEB_AUTH_SECRETS="$$(cat /run/secrets/custos-web-dev-auth-secrets)" &&
+        exec pnpm dev -- --hostname 0.0.0.0 --port 3000
+    environment:
+      NODE_ENV: development
+      CUSTOS_WEB_ISSUER: ${CUSTOS_WEB_ISSUER:-http://localhost:8082/realms/custos}
+      CUSTOS_WEB_CLIENT_ID: ${CUSTOS_WEB_CLIENT_ID:-custos-web}
+      CUSTOS_WEB_CLIENT_SECRET_FILE: /run/secrets/custos-web-dev-client-secret
+      CUSTOS_WEB_PUBLIC_ORIGIN: ${CUSTOS_WEB_PUBLIC_ORIGIN:-http://localhost:3001}
+      CUSTOS_API_URL: ${CUSTOS_API_URL:-http://custos:8080}
+      CUSTOS_WEB_DEV: "1"
+      CUSTOS_WEB_INSECURE_COOKIES: "1"
+    secrets:
+      - custos-web-dev-client-secret
+      - custos-web-dev-auth-secrets
+    ports:
+      - "127.0.0.1:3001:3000"
+    depends_on:
+      custos:
         condition: service_started

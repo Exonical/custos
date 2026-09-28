@@ -36,3 +36,22 @@ deploy/compose/.secrets/
 
 # generated e2e stack secrets (scripts/e2e.sh)
 deploy/e2e/.secrets/
+
+# web (Next.js)
+web/node_modules/
+web/.next/
+web/out/
+web/next-env.d.ts
+web/*.tsbuildinfo
+web/coverage/
+web/test-results/
+web/playwright-report/
+web/blob-report/
+web/playwright/.cache/
+web/.env*
+!web/.env.example
+web/.pnpm-store/
+web/.vercel/
+web/.turbo/
+.pnpm-debug.log*
+npm-debug.log*

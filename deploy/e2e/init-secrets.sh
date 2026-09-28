@@ -92,6 +92,18 @@ if [ ! -s "$d/openbao-client-secret" ]; then
 	printf 'e2e-openbao-secret' > "$d/openbao-client-secret"
 	chmod 600 "$d/openbao-client-secret"
 fi
+if [ ! -s "$d/custos-web-client-secret" ]; then
+	gen > "$d/custos-web-client-secret"
+	chmod 600 "$d/custos-web-client-secret"
+fi
+if [ ! -s "$d/custos-web-auth-secrets" ]; then
+	openssl rand -base64 32 | tr -d '\r\n' > "$d/custos-web-auth-secrets"
+	chmod 600 "$d/custos-web-auth-secrets"
+fi
+web_client_secret=$(cat "$d/custos-web-client-secret")
+sed "s/__CUSTOS_WEB_CLIENT_SECRET__/$web_client_secret/g" \
+	keycloak/realm-custos.json > "$d/realm-custos.json"
+chmod 644 "$d/realm-custos.json"
 # Keycloak bootstrap admin (test-only, used only for emergency console
 # access — tests never log in as admin).
 if [ ! -s "$d/keycloak-admin-password" ]; then

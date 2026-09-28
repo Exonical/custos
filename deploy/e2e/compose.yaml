@@ -176,7 +176,7 @@ services:
       KC_BOOTSTRAP_ADMIN_USERNAME: admin
       KC_BOOTSTRAP_ADMIN_PASSWORD: e2e-admin-password
     volumes:
-      - ./keycloak/realm-custos.json:/opt/keycloak/data/import/realm-custos.json:ro
+      - ./.secrets/realm-custos.json:/opt/keycloak/data/import/realm-custos.json:ro
     healthcheck:
       # Management interface (health endpoints) is port 9000 in KC 26.
       test:
@@ -210,6 +210,8 @@ services:
       - ./.secrets/keycloak.key:/etc/nginx/tls/keycloak.key:ro
       - ./.secrets/openbao-byo.crt:/etc/nginx/tls/openbao-byo.crt:ro
       - ./.secrets/openbao-byo.key:/etc/nginx/tls/openbao-byo.key:ro
+      - ./.secrets/api.crt:/etc/nginx/tls/web.crt:ro
+      - ./.secrets/api.key:/etc/nginx/tls/web.key:ro
     networks:
       default:
         aliases:
@@ -220,6 +222,7 @@ services:
       # Host-side Go tests reach the same issuer and Slurm REST endpoint.
       - "127.0.0.1:8443:8443"
       - "127.0.0.1:6820:6820"
+      - "127.0.0.1:3000:3000"
     depends_on:
       keycloak:
         condition: service_healthy
@@ -242,6 +245,10 @@ services:
         condition: service_completed_successfully
       nginx:
         condition: service_started
+    networks:
+      default:
+        aliases:
+          - custos.e2e
 
   worker:
     volumes:
@@ -254,9 +261,60 @@ services:
       migrate:
         condition: service_completed_successfully
 
+  web:
+    build:
+      target: runner
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        export CUSTOS_WEB_AUTH_SECRETS="$$(cat /run/secrets/custos-e2e-web-auth-secrets)" &&
+        exec node server.js
+    environment:
+      NODE_ENV: production
+      CUSTOS_WEB_ISSUER: https://keycloak.e2e:8443/realms/custos
+      CUSTOS_WEB_CLIENT_ID: custos-web
+      CUSTOS_WEB_CLIENT_SECRET_FILE: /run/secrets/custos-e2e-web-client-secret
+      CUSTOS_WEB_PUBLIC_ORIGIN: https://127.0.0.1:3000
+      CUSTOS_API_URL: https://custos.e2e:8080
+      CUSTOS_WEB_TRUSTED_PROXY_HOPS: "1"
+      CUSTOS_API_CA_FILE: /run/secrets/e2e-ca
+      CUSTOS_WEB_CA_FILE: /run/secrets/e2e-ca
+      CUSTOS_WEB_DEV: "0"
+      CUSTOS_WEB_INSECURE_COOKIES: "0"
+    secrets:
+      - custos-e2e-web-client-secret
+      - custos-e2e-web-auth-secrets
+      - e2e-ca
+    expose:
+      - "3000"
+    ports: !reset []
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 30s
+    depends_on:
+      custos:
+        condition: service_healthy
+      nginx:
+        condition: service_started
+
 secrets:
   slurmdb-password:
     file: ./.secrets/slurmdb-password
+  custos-e2e-web-client-secret:
+    file: ./.secrets/custos-web-client-secret
+  custos-e2e-web-auth-secrets:
+    file: ./.secrets/custos-web-auth-secrets
+  e2e-ca:
+    file: ./.secrets/e2e-ca.crt
 
 volumes:
   slurmctld_state:

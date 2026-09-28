@@ -1,0 +1,34 @@
+FROM node:26.7.0-alpine AS base
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
+RUN npm install --global --allow-scripts=pnpm pnpm@12.6.0
+WORKDIR /app/web
+
+FROM base AS deps
+COPY web/package.json web/pnpm-lock.yaml web/pnpm-workspace.yaml ./
+RUN pnpm install --frozen-lockfile
+
+FROM deps AS dev
+COPY web/ ./
+COPY api/openapi/v1.yaml /app/api/openapi/v1.yaml
+EXPOSE 3000 4300
+CMD ["pnpm", "dev:mock", "--hostname", "0.0.0.0", "--port", "3000"]
+
+FROM deps AS builder
+COPY web/ ./
+COPY api/openapi/v1.yaml /app/api/openapi/v1.yaml
+RUN pnpm build
+
+FROM node:26.7.0-alpine AS runner
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV PORT=3000
+ENV HOSTNAME=0.0.0.0
+WORKDIR /app
+RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nextjs
+COPY --from=builder --chown=nextjs:nodejs /app/web/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/web/.next/static ./.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/web/public ./public
+USER nextjs
+EXPOSE 3000
+CMD ["node", "server.js"]

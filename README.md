@@ -9,7 +9,7 @@ work itself.
 
 ## Status
 
-**Milestones 1–6 implemented.** The `custos` binary serves, works and
+**Milestones 1–7 implemented; M8-A is in progress.** The `custos` binary serves, works and
 migrates today:
 
 - **M1** — foundation binary on hardened PostgreSQL (SCRAM-only, TLS
@@ -39,7 +39,7 @@ under Podman; `test/e2e` exercises authentication, secret delivery,
 accounting, allocation enforcement, slurmdbd policy administration, report
 mode, and workflow cancellation.
 
-Next up: **M8** the Next.js UI.
+**M8-A** adds the Next.js browser UI and stateless BFF; Dashboard and Jobs are implemented in `web/`.
 
 ## Documentation
 
@@ -65,11 +65,12 @@ Next up: **M8** the Next.js UI.
   pipeline, health
 - [End-to-end stack](docs/e2e.md) — real Slurm 26.05 + Keycloak 26.7
   under Podman, `test/e2e` suite
-- [Frontend](docs/frontend.md) — Next.js BFF, sessions, editor
+- [Frontend](docs/frontend.md) — Next.js BFF, Auth.js v5 JWT sessions, M8-A pages
+- [Web deployment](docs/web.md) — frontend environment, runtime and security configuration
 - [API conventions](docs/api.md) — OpenAPI contract, routing, envelopes
 - [Threat model](docs/threat-model.md) — assets, actors, STRIDE threats
 - [Milestone 1 plan](docs/milestone-1.md) — foundation implementation plan
-- [Architecture Decision Records](docs/adr/README.md) — ADR-001 … ADR-019
+- [Architecture Decision Records](docs/adr/README.md) — ADR-001 … ADR-021
 
 ## Planned stack
 
@@ -78,9 +79,10 @@ Next up: **M8** the Next.js UI.
   secrets, coreos/go-oidc for OIDC, SlinkyProject slurm-client generated
   clients (baseline Slurm 26.05 / slurmrestd v0.0.45; Slurm 25.11 /
   v0.0.44 also supported), OpenTelemetry + Prometheus.
-- **Frontend**: Next.js (App Router, TypeScript strict) as a BFF;
-  shadcn/ui + Tailwind; React Flow + Monaco (workflow editor, script
-  editing with backend diagnostics).
+- **Frontend**: Next.js 16 (App Router, TypeScript strict) as a BFF;
+  shadcn/ui + Tailwind, TanStack Table, and stateless Auth.js v5 JWT sessions.
+  M8-A implements the tenant shell, Dashboard, and Jobs; workflow tooling is
+  deferred.
 - **Deploy**: container image, Helm chart; API and workers as separate
   Deployments of the same image.
 

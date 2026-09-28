@@ -72,3 +72,22 @@ resolver RESOLVER_PLACEHOLDER valid=10s ipv6=off;
 			proxy_read_timeout 120s;
 		}
 	}
+
+	server {
+		listen 3000 ssl;
+		server_name 127.0.0.1;
+
+		ssl_certificate     /etc/nginx/tls/web.crt;
+		ssl_certificate_key /etc/nginx/tls/web.key;
+		ssl_protocols       TLSv1.3;
+
+		location / {
+			set $web http://web:3000;
+			proxy_pass $web$request_uri;
+			proxy_set_header Host $http_host;
+			proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+			proxy_set_header X-Forwarded-Proto https;
+			proxy_set_header X-Forwarded-Host $http_host;
+			proxy_read_timeout 120s;
+		}
+	}

@@ -13,12 +13,13 @@ Everything runs locally or in the nightly CI job — never on PRs.
 | slurmctld | `slinkyproject/slurmctld:26.05-ubuntu26.04` | cluster `e2e`, `auth/slurm` + `auth/jwt` |
 | slurmd | `slinkyproject/slurmd:26.05-ubuntu26.04` | one node `c1` (`CPUs=2`), **unprivileged**: `proctrack/pgid`, `task/none`, cgroup plugin disabled |
 | slurmrestd | `slinkyproject/slurmrestd:26.05-ubuntu26.04` | `-a rest_auth/jwt`, data_parser `v0.0.45`, 26.05.4 |
-| nginx | `nginx:1.29-alpine` | TLS terminator for slurmrestd (`slurmrestd.e2e:6820`), Keycloak (`keycloak.e2e:8443`), and BYO OpenBao (`openbao-byo.e2e:8250`); upstreams resolve per request via embedded DNS |
-| keycloak | `keycloak/keycloak:26.7` | realm `custos`; user client `custos-e2e`; service-account client `custos-openbao` for workload JWT auth |
-| openbao | `openbao/openbao:2.6.2` | platform provider, TLS + file storage, initialized/unsealed by one-shot bootstrap; root token revoked |
+| nginx | `nginx:1.29-alpine` | TLS terminator for slurmrestd (`slurmrestd.e2e:6820`), Keycloak (`keycloak.e2e:8443`), BYO OpenBao (`openbao-byo.e2e:8250`), and the web UI (`https://127.0.0.1:3000`); upstreams resolve per request via embedded DNS |
+| keycloak | `keycloak/keycloak:26.7` | realm `custos`; bearer client `custos-e2e`, confidential browser client `custos-web` with PKCE S256, and service-account client `custos-openbao` |
+| openbao | `openbao/openbao:2.6.2` | platform provider, TLS + file storage, initialized and made ready by one-shot bootstrap; root token revoked |
 | openbao-byo | `openbao/openbao:2.6.2` | customer-manager stand-in; dev server is e2e-only and Custos reaches it through nginx TLS |
 | postgres | `postgres:18` | Custos metadata (same as the runtime stack) |
 | custos / worker | `custos:local` | the hardened runtime services |
+| web | `custos-web:local` | Next.js stateless BFF; host access is TLS-only through nginx at `https://127.0.0.1:3000` |
 | validator-api / validator-worker | `custos-validator:local` | ShellCheck 0.11.0 sidecars on `127.0.0.1:8481` inside each parent's network namespace |
 
 ## Running it
@@ -30,7 +31,9 @@ scripts/e2e.sh logs    # pass-through to compose logs
 ```
 
 `up` does, in order: generate `.secrets/` (CA, certs, `slurm.key`,
-`jwt_hs256.key`, slurmdbd password, Keycloak client secrets, and TLS material);
+`jwt_hs256.key`, slurmdbd password, Keycloak client secrets, the `custos-web`
+client secret, and BFF Auth.js secrets); render the Keycloak realm
+with the generated browser-client secret;
 bring the whole stack up healthy; initialize/unseal platform OpenBao and
 configure its Keycloak JWT role; create a renewable, orphaned 768-hour
 `e2e-slurm-credential` token scoped only to `kv/data/clusters/e2e`; wait for
@@ -68,6 +71,15 @@ export CUSTOS_E2E=1 CUSTOS_E2E_API=https://127.0.0.1:8080 \
 go test ./test/e2e/... -count=1 -v
 ```
 
+The web service is served through the same e2e CA at `https://127.0.0.1:3000`.
+After the Go suite, run the live browser check (it signs in as Alice and
+requires at least one visible Acme job):
+
+```sh
+cd web
+CUSTOS_E2E=1 pnpm e2e:live
+```
+
 `CONTAINER_ENGINE=docker scripts/e2e.sh up` works too (used in CI).
 
 ## Test-only identities
@@ -78,9 +90,16 @@ Realm `custos` (`deploy/e2e/keycloak/realm-custos.json`):
 - `bob` / `bob-e2e-password` — no group (not a tenant member)
 - `platform-admin` / `platform-admin-e2e-password` — group `hpc-admins`
 
-Client `custos-e2e` / `e2e-client-secret`. All passwords live in the
-realm file and are **test-only** — nothing here is a real secret. The
-e2e CA (`.secrets/e2e-ca.crt`) is generated per machine and gitignored.
+Client `custos-e2e` / `e2e-client-secret` is used by the Go suite and local web
+development. It allows the Auth.js callbacks
+`http://localhost:3000/api/auth/callback/custos` and
+`http://localhost:3001/api/auth/callback/custos`, with both localhost web origins.
+The confidential e2e browser client `custos-web` allows
+`https://127.0.0.1:3000/api/auth/callback/custos` and gets a generated secret
+in `.secrets/custos-web-client-secret`; the Auth.js secret array is generated
+in `.secrets/custos-web-auth-secrets`. User passwords in the realm are
+test-only. The e2e CA (`.secrets/e2e-ca.crt`) and generated credentials are
+gitignored.
 
 ## Issuer and CA wiring
 

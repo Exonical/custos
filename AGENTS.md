@@ -56,6 +56,30 @@ brings up real Slurm 26.05 + Keycloak 26.7 under Podman, then
   2.12.2 binary on PATH panics on go1.27 modules). A 2.13.2 binary built
   this way lives at `%TEMP%/glbin/golangci-lint.exe` on this machine.
 
+## Web frontend
+
+`web/` uses Node.js 26.7+ and pnpm 12.6.0. Work from that directory; the App
+Router is rooted at `web/app/` (there is no `src/` directory). Plain `pnpm dev`
+uses the real IdP/API and requires `web/.env.local`; `pnpm dev:mock` starts the
+backend-free UI with mock data.
+
+```sh
+cd web
+pnpm install --frozen-lockfile
+pnpm dev
+pnpm dev:mock
+pnpm gen:api
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm build
+pnpm e2e:smoke
+```
+
+The live browser test runs against the existing e2e stack with
+`CUSTOS_E2E=1 pnpm e2e:live`. Do not reset e2e volumes without explicit
+authorization.
+
 ## Commits
 
 - Use Conventional Commits: `feat:`, `fix:`, `chore:`, `docs:`, `refactor:`,

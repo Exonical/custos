@@ -23,11 +23,16 @@
       "publicClient": false,
       "secret": "e2e-client-secret",
       "serviceAccountsEnabled": false,
-      "standardFlowEnabled": false,
+      "standardFlowEnabled": true,
       "implicitFlowEnabled": false,
       "directAccessGrantsEnabled": true,
       "protocol": "openid-connect",
-      "attributes": {},
+      "redirectUris": ["http://localhost:3000/api/auth/callback/custos", "http://localhost:3001/api/auth/callback/custos"],
+      "webOrigins": ["http://localhost:3000", "http://localhost:3001"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:3000/signed-out##http://localhost:3001/signed-out"
+      },
       "protocolMappers": [
         {
           "name": "custos-audience",
@@ -47,6 +52,36 @@
           "config": {
             "claim.name": "groups",
             "full.path": "false",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "false"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "custos-web",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "__CUSTOS_WEB_CLIENT_SECRET__",
+      "serviceAccountsEnabled": false,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "protocol": "openid-connect",
+      "redirectUris": ["https://127.0.0.1:3000/api/auth/callback/custos"],
+      "webOrigins": ["https://127.0.0.1:3000"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "https://127.0.0.1:3000/signed-out"
+      },
+      "protocolMappers": [
+        {
+          "name": "custos-api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.client.audience": "custos",
             "id.token.claim": "false",
             "access.token.claim": "true",
             "userinfo.token.claim": "false"

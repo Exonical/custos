@@ -44,7 +44,7 @@ anything a job reports back.
 | TM-01 | Cross-tenant read/write via IDs (BOLA/IDOR) | T2, T6 | I, E | Tenant in path + membership check; `Scope`-typed repository API; RLS; isolation test matrix; 404 on foreign tenant |
 | TM-02 | Privilege escalation via role/tenant fields in request bodies (mass assignment) | T2 | E | Write DTOs with explicit fields, `DisallowUnknownFields`, roles only via member endpoints requiring `*.members.manage` |
 | TM-03 | JWT confusion (`alg=none`, HS/RS swap, wrong audience, wrong issuer) | T1 | S | Algorithm allow-list, key-alg binding, exact `iss`, `aud` intersection, `typ` check, go-oidc verifier |
-| TM-04 | Stolen access token replay | T6 | S | Short token lifetimes (IdP), no long-lived Custos-minted tokens, BFF session TTL, audit of unusual actions; future: DPoP/mTLS-bound tokens |
+| TM-04 | Stolen access token replay | T6 | S | Short IdP access-token lifetime; Auth.js encrypted HttpOnly JWT session cookie; 8-hour idle and 24-hour absolute session limits; refresh-token revocation on logout; audit unusual actions; future: DPoP/mTLS-bound tokens |
 | TM-05 | Command injection into sbatch script | T2, T3 | T, E | argv arrays only; strict POSIX quoting; `shell` tasks explicitly privileged and policy-gated; scheduler fields sent as structured `JobDescMsg` values, never as `#SBATCH` text; payload base64-embedded and digest-checked (TM-28/29) |
 | TM-06 | Injection through Slurm option values (e.g. `--constraint` expressions, `--output` path traversal) | T2 | T | Allow-listed options; grammar-validated constraint expressions; path policy (project scratch prefix) for output/chdir |
 | TM-07 | Path traversal in artifact/output paths | T2 | I | Canonicalize; must be under project-allowed prefixes; no symlink following on control-plane file operations; jobs' own FS access is Slurm's/POSIX's concern |
@@ -59,9 +59,9 @@ anything a job reports back.
 | TM-16 | Workflow "escape": referencing another tenant's secrets/clusters/versions | T2 | E | Validation step 7/8 resolves references inside the caller's tenant scope only |
 | TM-17 | Malicious workflow DoS (huge fan-out, arrays, walltime) | T2, T3 | D | Policy limits: max tasks per execution, max array size, max concurrent executions per project, Slurm QoS limits remain in force |
 | TM-18 | API DoS | T1 | D | Body size limits, timeouts, per-principal rate limits, pagination caps, no unbounded list endpoints |
-| TM-19 | CSRF against BFF | T1 | S, T | SameSite=Lax + CSRF token + Origin checks; API itself is bearer-only (no ambient credentials) |
-| TM-20 | XSS in UI (workflow names, job comments, stdout) | T2 | S | React escaping; CSP with nonces; stdout rendered as text in `<pre>`; no `dangerouslySetInnerHTML` |
-| TM-21 | Open redirect after login | T1 | S | `returnTo` validated as same-origin relative path |
+| TM-19 | CSRF against BFF | T1 | S, T | SameSite=Lax; double-submit header matches the CSRF cookie; HMAC is bound to the subject with an HKDF key from the first Auth.js secret; exact Origin and `Sec-Fetch-Site` checks; logout is protected; API stays bearer-only |
+| TM-20 | XSS in UI (job names, API data, stdout) | T2 | S | React escaping; nonce CSP set by Next `proxy.ts`; stdout and ExecutionSpec rendered as text; no `dangerouslySetInnerHTML`; access/refresh tokens remain in HttpOnly encrypted session chunks |
+| TM-21 | Open redirect after login | T1 | S | Auth.js validates OIDC state, nonce, and PKCE; the custom login route validates `returnTo` as a same-origin relative path before `signIn("custos")` |
 | TM-22 | Audit tampering | T3, T8 | R | Append-only table enforced by DB triggers (UPDATE/DELETE/TRUNCATE raise), least-privilege app role vs. migrate role split; hash chain (`prev_hash`) per tenant stream; forward to external SIEM |
 | TM-23 | Tenant enumeration | T2 | I | 404 for tenants the principal isn't a member of; slugs not sequential |
 | TM-24 | Malicious tenant admin harvesting members' identities | T3 | I | Members see only display name/email that the IdP exposes and the user consented to; no `sub` exposure beyond admins |
@@ -80,6 +80,7 @@ anything a job reports back.
 | TM-34 | Validation endpoint abused for DoS or as an oracle for policy | T2 | D, I | Separate rate limit, size limit, 20 s budget, result cache by digest; `effectivePolicy` in responses limited to author-relevant flags |
 | TM-35 | Structured software field abused to inject module commands | T2 | T | Software requirements resolve against a catalog to a `ModuleSpec`; user strings never reach `module load` |
 | TM-36 | Compromised Custos uses slurmdbd write authority to alter site policy | T8 | E, D | Platform-only enablement; report mode; full-reconcile boundary excludes other users; ownership table limits unbinding deletes; 200-op cap; per-operation audit; network-restricted slurmrestd; minimum Slurm AdminLevel |
+| TM-37 | Stolen or replayed stateless BFF session cookie | T1, T6 | S, I | Auth.js encrypted JWT cookie; HttpOnly/Secure/SameSite; 8-hour JWT lifetime; short access-token TTL; fail-closed `getToken` checks including `RefreshTokenError`; logout revokes refresh token best-effort; `CUSTOS_WEB_AUTH_SECRETS` rotation. No server-side session list exists, so an individual cookie cannot be revoked locally. |
 
 ## Residual risks to document for operators
 
@@ -97,3 +98,6 @@ anything a job reports back.
   `sbatch` with the user's own credentials) requires Slurm-native limits
   on the associations Custos uses and, ideally, a `job_submit` plugin that
   restricts direct submissions for Custos-managed accounts.
+- Stateless BFF cookies have no server-side revocation list. Ending the IdP
+  session or revoking its refresh token prevents renewal; a stolen access token
+  remains usable until its short expiry, bounded by the session's absolute TTL.

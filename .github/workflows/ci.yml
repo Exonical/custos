@@ -60,6 +60,39 @@ jobs:
       - run: go run ./tools/docsconfig
       - run: git diff --exit-code -- docs/configuration.md
 
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.6.0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 26.7.0
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+        working-directory: web
+      - run: pnpm lint
+        working-directory: web
+      - run: pnpm typecheck
+        working-directory: web
+      - run: pnpm test
+        working-directory: web
+      - run: |
+          pnpm gen:api
+          git diff --exit-code -- lib/api/schema.d.ts
+        working-directory: web
+      - run: pnpm build
+        working-directory: web
+      - run: pnpm exec playwright install --with-deps chromium
+        working-directory: web
+      - run: pnpm e2e:smoke
+        working-directory: web
+      - run: pnpm audit --prod || echo "pnpm audit reported advisories (non-blocking)"
+        working-directory: web
+
   smoke:
     runs-on: ubuntu-latest
     steps:

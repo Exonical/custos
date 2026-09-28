@@ -35,7 +35,7 @@ cmd_up() {
 	bash deploy/e2e/init-secrets.sh
 	# Rebuild application images so repeated local runs never reuse a stale
 	# binary after migrations/config fields change.
-	compose build migrate custos worker
+	compose build migrate custos worker web
 
 	# The validator sidecars share the custos/worker network namespaces
 	# (network_mode: service:*), so they must be recreated whenever their
@@ -295,7 +295,11 @@ Test environment:
   #   bob / bob-e2e-password               (no group)
   #   platform-admin / platform-admin-e2e-password (group hpc-admins)
 
-Then: go test ./test/e2e/... -count=1 -v
+Then:
+  go test ./test/e2e/... -count=1 -v
+  cd web && CUSTOS_E2E=1 pnpm e2e:live
+
+The browser service is available at https://127.0.0.1:3000 through the e2e CA.
 EOF
 }
 
