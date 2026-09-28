@@ -83,7 +83,7 @@ Validation aborts startup (`config.invalid`) when:
 | `metrics.tls.mode` | string | `required` | `CUSTOS_METRICS__TLS__MODE` | required (default) \| disabled (dev only) \| upstream |
 | `metrics.tls.require_client_cert` | bool | `false` | `CUSTOS_METRICS__TLS__REQUIRE_CLIENT_CERT` | Require and verify client certificates (mTLS) |
 | `secrets` | section | `` | `CUSTOS_SECRETS` | Secret-provider settings (docs/secrets.md) |
-| `secrets.file_roots` | slice | `C:\custos\secrets` | `CUSTOS_SECRETS__FILE_ROOTS` | Allow-listed absolute roots for the file secret provider |
+| `secrets.file_roots` | slice | `/run/secrets,/etc/custos/secrets` | `CUSTOS_SECRETS__FILE_ROOTS` | Allow-listed absolute roots for the file secret provider |
 | `secrets.openbao` | section | `` | `CUSTOS_SECRETS__OPENBAO` | OpenBao production secret provider (empty disables it) |
 | `secrets.openbao.address` | string | `` | `CUSTOS_SECRETS__OPENBAO__ADDRESS` | OpenBao API base URL |
 | `secrets.openbao.auth` | section | `` | `CUSTOS_SECRETS__OPENBAO__AUTH` | OpenBao workload authentication |
