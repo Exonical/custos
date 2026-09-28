@@ -8,6 +8,7 @@ import (
 	"github.com/Exonical/custos/internal/admission"
 	"github.com/Exonical/custos/internal/authn"
 	"github.com/Exonical/custos/internal/platform/apperr"
+	"github.com/Exonical/custos/internal/platform/db"
 	"github.com/Exonical/custos/internal/tenants"
 	"github.com/Exonical/custos/internal/validation"
 )
@@ -53,8 +54,8 @@ func (e *Enforcement) Allocate(ctx context.Context) func(admission.ResolvedResou
 
 // Guard returns a persist-transaction guard that rechecks estimate
 // against allocations and in-flight jobs, failing on a hard denial.
-func (e *Enforcement) Guard(estimate map[string]float64) func(context.Context, any) error {
-	return func(ctx context.Context, tx any) error {
+func (e *Enforcement) Guard(estimate map[string]float64) func(context.Context, db.Tx) error {
+	return func(ctx context.Context, tx db.Tx) error {
 		if e.svc == nil {
 			return nil
 		}
