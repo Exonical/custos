@@ -103,8 +103,10 @@ a subset of the assignment's `allowed_partitions` when set
 within their allowed lists, and `slurm_account` must start with the
 assignment's `default_account_prefix` when set (`ACCOUNT_PREFIX`). A
 disabled binding resolves to NotFound for admission. Bindings also expose
-read-only `drift`, `drift_checked_at`, and `drift_state` (`ok|drift|unknown`)
-from the `policy.sync` chain; Custos never writes Slurm accounting associations.
+`drift`, `drift_checked_at`, and `drift_state` (`ok|drift|unknown|error`)
+from the `policy.sync` chain. In enforce mode Custos reconciles the dedicated
+service-user associations and hard allocation limits for enabled bindings;
+associations belonging to other Slurm users are never touched.
 
 ## Allocations
 

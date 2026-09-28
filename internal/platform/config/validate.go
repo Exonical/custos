@@ -162,6 +162,7 @@ func (c Config) Validate() error {
 		}
 	}
 
+	v.oneOf("slurm.policy_management", c.Slurm.PolicyManagement, "enforce", "report")
 	for i, cidr := range c.Slurm.DialPolicy.DenyCIDRs {
 		if _, err := netip.ParsePrefix(cidr); err != nil {
 			v.fail(fmt.Sprintf("slurm.dial_policy.deny_cidrs[%d]", i),

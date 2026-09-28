@@ -47,27 +47,29 @@ const (
 // Cluster is a platform-owned Slurm endpoint. token_ref/client_cert_ref
 // are secrets.Reference values — never secret material.
 type Cluster struct {
-	ID              uuid.UUID
-	Name            string // slug
-	DisplayName     string
-	BaseURL         string
-	APIVersion      string
-	CABundlePEM     string
-	IdentityMode    IdentityMode
-	ServiceUser     string
-	TokenRef        secrets.Reference
-	ClientCertRef   *secrets.Reference
-	Visibility      Visibility
-	State           State
-	ConsecFailures  int
-	ConsecSuccesses int
-	LastSyncAt      *time.Time
-	LastError       string
-	Capabilities    *slurm.Capabilities
-	CapabilitiesAt  *time.Time
-	Version         int
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	ID                  uuid.UUID
+	Name                string // slug
+	DisplayName         string
+	BaseURL             string
+	APIVersion          string
+	CABundlePEM         string
+	IdentityMode        IdentityMode
+	ServiceUser         string
+	PolicyManagement    string
+	PolicyParentAccount string
+	TokenRef            secrets.Reference
+	ClientCertRef       *secrets.Reference
+	Visibility          Visibility
+	State               State
+	ConsecFailures      int
+	ConsecSuccesses     int
+	LastSyncAt          *time.Time
+	LastError           string
+	Capabilities        *slurm.Capabilities
+	CapabilitiesAt      *time.Time
+	Version             int
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
 }
 
 // SlurmConfig maps a registry row onto the adapter-facing config.

@@ -1,5 +1,5 @@
-// Package fake is an in-memory implementation of slurm.Cluster and
-// slurm.Accounting for tests: configurable topology, a job state machine,
+// Package fake is an in-memory implementation of slurm.Cluster, slurm.Accounting,
+// and slurm.AccountingAdmin for tests: configurable topology, a job state machine,
 // and error-injection hooks (docs/slurm.md "Fake for tests").
 package fake
 
@@ -25,14 +25,17 @@ type Cluster struct {
 	qos          []slurm.QoS
 	associations []slurm.Association
 	jobRecords   []slurm.JobRecord
+	adminCalls   []AdminCall
 
 	jobs   map[uint32]*jobState
 	nextID uint32
 	subs   []slurm.JobSubmission
 
-	failNext   int
-	failErr    error
-	loseSubmit bool
+	failNext      int
+	failErr       error
+	adminFailNext int
+	adminFailErr  error
+	loseSubmit    bool
 }
 
 type jobState struct {
@@ -40,9 +43,18 @@ type jobState struct {
 	state slurm.JobState
 }
 
+// AdminCall records a fake slurmdbd policy mutation.
+type AdminCall struct {
+	Operation   string
+	Account     *slurm.Account
+	Association *slurm.Association
+	Key         slurm.AssociationKey
+}
+
 var (
-	_ slurm.Cluster    = (*Cluster)(nil)
-	_ slurm.Accounting = (*Cluster)(nil)
+	_ slurm.Cluster         = (*Cluster)(nil)
+	_ slurm.Accounting      = (*Cluster)(nil)
+	_ slurm.AccountingAdmin = (*Cluster)(nil)
 )
 
 // New returns an empty fake.
@@ -96,6 +108,114 @@ func (c *Cluster) SetJobRecords(records []slurm.JobRecord) {
 	c.mu.Unlock()
 }
 
+// AdminCalls returns a snapshot of recorded slurmdbd policy mutations.
+func (c *Cluster) AdminCalls() []AdminCall {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]AdminCall(nil), c.adminCalls...)
+}
+
+// FailNextAdmin injects an error into the next n accounting-admin writes.
+func (c *Cluster) FailNextAdmin(n int, err error) {
+	c.mu.Lock()
+	c.adminFailNext, c.adminFailErr = n, err
+	c.mu.Unlock()
+}
+
+// UpsertAccounts implements slurm.AccountingAdmin.
+func (c *Cluster) UpsertAccounts(_ context.Context, accounts []slurm.Account) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, account := range accounts {
+		x := account
+		c.adminCalls = append(c.adminCalls, AdminCall{Operation: "create_account", Account: &x})
+	}
+	if err := c.injectAdmin(); err != nil {
+		return err
+	}
+	for _, account := range accounts {
+		found := false
+		for i := range c.accounts {
+			if c.accounts[i].Name == account.Name {
+				c.accounts[i] = account
+				found = true
+				break
+			}
+		}
+		if !found {
+			c.accounts = append(c.accounts, account)
+		}
+	}
+	return nil
+}
+
+// UpsertAssociations implements slurm.AccountingAdmin.
+func (c *Cluster) UpsertAssociations(_ context.Context, associations []slurm.Association) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, assoc := range associations {
+		x := assoc
+		c.adminCalls = append(c.adminCalls, AdminCall{Operation: "upsert_association", Association: &x})
+	}
+	if err := c.injectAdmin(); err != nil {
+		return err
+	}
+	for _, assoc := range associations {
+		found := false
+		for i := range c.associations {
+			if sameAssociationKey(c.associations[i], assoc) {
+				c.associations[i] = assoc
+				found = true
+				break
+			}
+		}
+		if !found {
+			c.associations = append(c.associations, assoc)
+		}
+	}
+	return nil
+}
+
+// DeleteAssociation implements slurm.AccountingAdmin.
+func (c *Cluster) DeleteAssociation(_ context.Context, key slurm.AssociationKey) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.adminCalls = append(c.adminCalls, AdminCall{Operation: "delete_association", Key: key})
+	if err := c.injectAdmin(); err != nil {
+		return err
+	}
+	out := c.associations[:0]
+	for _, a := range c.associations {
+		if !sameAssociationKey(a, slurm.Association{Account: key.Account, User: key.User, Cluster: key.Cluster, Partition: key.Partition}) {
+			out = append(out, a)
+		}
+	}
+	c.associations = out
+	return nil
+}
+
+// DeleteAccount implements slurm.AccountingAdmin.
+func (c *Cluster) DeleteAccount(_ context.Context, name string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.adminCalls = append(c.adminCalls, AdminCall{Operation: "delete_account", Account: &slurm.Account{Name: name}})
+	if err := c.injectAdmin(); err != nil {
+		return err
+	}
+	out := c.accounts[:0]
+	for _, a := range c.accounts {
+		if a.Name != name {
+			out = append(out, a)
+		}
+	}
+	c.accounts = out
+	return nil
+}
+
+func sameAssociationKey(a, b slurm.Association) bool {
+	return a.Account == b.Account && a.User == b.User && a.Cluster == b.Cluster && a.Partition == b.Partition
+}
+
 // FailNext makes the next n calls return err (transient injection).
 func (c *Cluster) FailNext(n int, err error) {
 	c.mu.Lock()
@@ -118,6 +238,13 @@ func (c *Cluster) inject() error {
 		return c.failErr
 	}
 	return nil
+}
+func (c *Cluster) injectAdmin() error {
+	if c.adminFailNext > 0 {
+		c.adminFailNext--
+		return c.adminFailErr
+	}
+	return c.inject()
 }
 
 // Advance sets a job's state (the fake's scheduler).

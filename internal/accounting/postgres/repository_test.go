@@ -71,12 +71,13 @@ func TestAttributionAggregateAndRLS(t *testing.T) {
 		}
 	}
 	sid := int64(101)
-	j := jobs.Job{ID: uuid.Must(uuid.NewV7()), TenantID: ta, ProjectID: pa, ClusterID: c.ID, CreatedBy: ua, Name: "j", State: jobs.StateCompleted, SlurmJobID: &sid, ResourceRequest: workflowspec.Resources{}, ExecutionSpec: admission.ExecutionSpec{ID: uuid.New(), TenantID: ta}, ExecutionSpecDigest: validation.DigestOf([]byte("s")), Version: 1, CreatedAt: time.Now(), UpdatedAt: time.Now()}
+	jobID := uuid.Must(uuid.NewV7())
+	j := jobs.Job{ID: jobID, TenantID: ta, ProjectID: pa, ClusterID: c.ID, CreatedBy: ua, Name: "custos-" + jobID.String(), State: jobs.StateCompleted, SlurmJobID: &sid, ResourceRequest: workflowspec.Resources{}, ExecutionSpec: admission.ExecutionSpec{ID: uuid.New(), TenantID: ta}, ExecutionSpecDigest: validation.DigestOf([]byte("s")), Version: 1, CreatedAt: time.Now(), UpdatedAt: time.Now()}
 	if e = jobpg.New(pool).Create(ctx, tenants.PlatformScope(), j, nil); e != nil {
 		t.Fatal(e)
 	}
 	end := time.Date(2026, 9, 2, 1, 0, 0, 0, time.UTC)
-	records := []accounting.Record{{ID: uuid.Must(uuid.NewV7()), SlurmJobID: 101, SlurmJobName: "custos", Account: "none", EndTime: end, ElapsedSeconds: 60, CPUSeconds: 120, NodeSeconds: 60, CollectedAt: time.Now(), State: "COMPLETED"}, {ID: uuid.Must(uuid.NewV7()), SlurmJobID: 102, SlurmJobName: "external", Account: "unique", EndTime: end, ElapsedSeconds: 30, CPUSeconds: 30, NodeSeconds: 30, CollectedAt: time.Now(), State: "FAILED", WaitSeconds: ptr(10)}, {ID: uuid.Must(uuid.NewV7()), SlurmJobID: 103, SlurmJobName: "amb", Account: "shared", EndTime: end, ElapsedSeconds: 10, CollectedAt: time.Now(), State: "COMPLETED"}}
+	records := []accounting.Record{{ID: uuid.Must(uuid.NewV7()), SlurmJobID: 101, SlurmJobName: "custos-" + jobID.String(), Account: "none", EndTime: end, ElapsedSeconds: 60, CPUSeconds: 120, NodeSeconds: 60, CollectedAt: time.Now(), State: "COMPLETED"}, {ID: uuid.Must(uuid.NewV7()), SlurmJobID: 102, SlurmJobName: "external", Account: "unique", EndTime: end, ElapsedSeconds: 30, CPUSeconds: 30, NodeSeconds: 30, CollectedAt: time.Now(), State: "FAILED", WaitSeconds: ptr(10)}, {ID: uuid.Must(uuid.NewV7()), SlurmJobID: 103, SlurmJobName: "amb", Account: "shared", EndTime: end, ElapsedSeconds: 10, CollectedAt: time.Now(), State: "COMPLETED"}}
 	repo := accountpg.New(pool)
 	res, e := repo.Store(ctx, c.ID, records, end)
 	if e != nil {
@@ -107,5 +108,57 @@ func TestAttributionAggregateAndRLS(t *testing.T) {
 		t.Fatalf("cross tenant rows %d %v", len(other), e)
 	}
 }
+func TestAttributionUsesNameWhenSlurmIDIsReused(t *testing.T) {
+	ctx := context.Background()
+	pool := dbtest.Pool(t)
+	tenantID, userID, projectID := seed(t, pool, "reused-slurm-id")
+	cluster := clusters.Cluster{ID: uuid.Must(uuid.NewV7()), Name: "reused-slurm-id", DisplayName: "reused Slurm ID", BaseURL: "https://example", APIVersion: "v0.0.45", IdentityMode: clusters.IdentityService, ServiceUser: "custos", TokenRef: secrets.Reference{Provider: "file", Path: "x"}, Visibility: clusters.VisibilityAssigned, State: clusters.StateActive, Version: 1}
+	if err := clusterpg.New(pool).Create(ctx, cluster); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC().Truncate(time.Second)
+	submits := []time.Time{now.Add(-6 * time.Minute), now.Add(-2 * time.Minute)}
+	ends := []time.Time{now.Add(-4 * time.Minute), now.Add(-time.Minute)}
+	jobIDs := []uuid.UUID{uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())}
+	sid := int64(808)
+	for i, id := range jobIDs {
+		j := jobs.Job{ID: id, TenantID: tenantID, ProjectID: projectID, ClusterID: cluster.ID, CreatedBy: userID, Name: "custos-" + id.String(), State: jobs.StateCompleted, SlurmJobID: &sid, ResourceRequest: workflowspec.Resources{}, ExecutionSpec: admission.ExecutionSpec{ID: uuid.New(), TenantID: tenantID}, ExecutionSpecDigest: validation.DigestOf([]byte(id.String())), SubmittedAt: &submits[i], EndedAt: &ends[i], Version: 1, CreatedAt: submits[i], UpdatedAt: ends[i]}
+		if err := jobpg.New(pool).Create(ctx, tenants.PlatformScope(), j, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	records := []accounting.Record{
+		{ID: uuid.Must(uuid.NewV7()), SlurmJobID: sid, SlurmJobName: "custos-" + jobIDs[0].String(), SubmitTime: submits[0], EndTime: ends[0], CollectedAt: now, State: "COMPLETED"},
+		{ID: uuid.Must(uuid.NewV7()), SlurmJobID: sid, SlurmJobName: "custos-" + jobIDs[1].String(), SubmitTime: submits[1], EndTime: ends[1], CollectedAt: now, State: "COMPLETED"},
+	}
+	if _, err := accountpg.New(pool).Store(ctx, cluster.ID, records, now); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := pool.Query(ctx, `SELECT slurm_job_name,job_id FROM usage_records WHERE cluster_id=$1 AND slurm_job_id=$2 ORDER BY end_time`, cluster.ID, sid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	for i := range jobIDs {
+		if !rows.Next() {
+			t.Fatalf("missing usage record %d", i)
+		}
+		var name string
+		var jobID *uuid.UUID
+		if err := rows.Scan(&name, &jobID); err != nil {
+			t.Fatal(err)
+		}
+		if jobID == nil || *jobID != jobIDs[i] || name != "custos-"+jobIDs[i].String() {
+			t.Fatalf("record %q attributed to %v, want %s", name, jobID, jobIDs[i])
+		}
+	}
+	if rows.Next() {
+		t.Fatal("unexpected extra usage record")
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func repoOn(p *pgxpool.Pool) *accountpg.Repository { return accountpg.New(p) }
 func ptr(v int64) *int64                           { return &v }

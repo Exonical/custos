@@ -126,6 +126,7 @@ Validation aborts startup (`config.invalid`) when:
 | `slurm.dial_policy.allow_loopback` | bool | `false` | `CUSTOS_SLURM__DIAL_POLICY__ALLOW_LOOPBACK` | Permit loopback endpoints (dev only) |
 | `slurm.dial_policy.allow_private` | bool | `false` | `CUSTOS_SLURM__DIAL_POLICY__ALLOW_PRIVATE` | Permit RFC1918/ULA slurmrestd endpoints |
 | `slurm.dial_policy.deny_cidrs` | slice | `` | `CUSTOS_SLURM__DIAL_POLICY__DENY_CIDRS` | Additional CIDRs always denied |
+| `slurm.policy_management` | string | `enforce` | `CUSTOS_SLURM__POLICY_MANAGEMENT` | enforce\|report policy reconciliation mode for clusters inheriting configuration |
 | `telemetry` | section | `` | `CUSTOS_TELEMETRY` | OpenTelemetry export |
 | `telemetry.endpoint` | string | `` | `CUSTOS_TELEMETRY__ENDPOINT` | OTLP collector endpoint (required when exporter=otlp) |
 | `telemetry.exporter` | string | `none` | `CUSTOS_TELEMETRY__EXPORTER` | none\|otlp |

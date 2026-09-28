@@ -53,7 +53,21 @@ func (r *Repository) Store(ctx context.Context, clusterID uuid.UUID, records []a
 			rec := &records[i]
 			rec.ClusterID = clusterID
 			var jobID, tenantID, projectID, userID uuid.UUID
-			err := tx.QueryRow(ctx, `SELECT id,tenant_id,project_id,created_by FROM jobs WHERE cluster_id=$1 AND slurm_job_id=$2`, clusterID, rec.SlurmJobID).Scan(&jobID, &tenantID, &projectID, &userID)
+			var err error
+			if namedID, ok := custosJobID(rec.SlurmJobName); ok {
+				err = tx.QueryRow(ctx, `SELECT id,tenant_id,project_id,created_by FROM jobs WHERE cluster_id=$1 AND id=$2 AND name=$3`, clusterID, namedID, rec.SlurmJobName).Scan(&jobID, &tenantID, &projectID, &userID)
+			} else {
+				err = pgx.ErrNoRows
+			}
+			if errors.Is(err, pgx.ErrNoRows) {
+				var overlapStart any
+				if !rec.SubmitTime.IsZero() {
+					overlapStart = rec.SubmitTime
+				} else if !rec.StartTime.IsZero() {
+					overlapStart = rec.StartTime
+				}
+				err = tx.QueryRow(ctx, `SELECT id,tenant_id,project_id,created_by FROM jobs WHERE cluster_id=$1 AND slurm_job_id=$2 AND submitted_at <= $3 AND ($4::timestamptz IS NULL OR ended_at IS NULL OR ended_at >= $4) ORDER BY submitted_at DESC, created_at DESC LIMIT 1`, clusterID, rec.SlurmJobID, rec.EndTime, overlapStart).Scan(&jobID, &tenantID, &projectID, &userID)
+			}
 			switch {
 			case err == nil:
 				rec.JobID = &jobID
@@ -106,6 +120,15 @@ func (r *Repository) Store(ctx context.Context, clusterID uuid.UUID, records []a
 	})
 	return result, err
 }
+func custosJobID(name string) (uuid.UUID, bool) {
+	const prefix = "custos-"
+	if len(name) <= len(prefix) || name[:len(prefix)] != prefix {
+		return uuid.Nil, false
+	}
+	id, err := uuid.Parse(name[len(prefix):])
+	return id, err == nil
+}
+
 func nilTime(t time.Time) any {
 	if t.IsZero() {
 		return nil

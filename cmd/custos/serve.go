@@ -181,12 +181,15 @@ func cmdServe(parent context.Context, configPath string, lookupEnv config.Lookup
 	projectRepo := projectpg.New(pool)
 	projectSvc := projectsvc.NewService(projectRepo, projectRepo, projectRepo,
 		tenantRepo, clusterRepo, authz.RBAC{}, recorder)
+	projectSvc.SetEnqueuer(pool)
 	policySvc := policiesvc.NewService(policypg.New(pool), authz.RBAC{}, recorder)
 	accountingSvc := accountsvc.NewService(accountpg.New(pool), projectRepo, authz.RBAC{})
 	allocationRepo := allocationpg.New(pool)
 	allocationSvc := allocations.NewService(allocationRepo, projectRepo, authz.RBAC{}, recorder, projectRepo)
 	allocationSvc.SetMeterProvider(prov.Meter)
-	policySummary := policysync.NewSummaryService(pool, projectRepo)
+	allocationSvc.SetEnqueuer(pool)
+	policyDeps := policysync.Deps{Clusters: clusterRepo, Bindings: projectRepo, Factory: sdeps.Factory, Audit: recorder, Pool: pool, Metrics: policysync.NewMetrics(prov.Meter), Allocations: allocationSvc, ConfigMode: cfg.Slurm.PolicyManagement}
+	policySummary := policysync.NewSummaryService(policyDeps)
 
 	// Validation pipeline: in-process validators always; ShellCheck via
 	// the loopback sidecar when enabled (docs/script-validation.md).

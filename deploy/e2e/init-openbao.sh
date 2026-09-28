@@ -36,8 +36,14 @@ bao policy write custos /tmp/custos-policy.hcl >/dev/null
 bao write auth/jwt/role/custos role_type=jwt user_claim=sub \
 	bound_audiences=custos-openbao token_policies=custos \
 	token_ttl=5m token_max_ttl=15m >/dev/null
+cat > /tmp/e2e-slurm-credential-policy.hcl <<'EOF'
+path "kv/data/clusters/e2e" { capabilities = ["create", "update", "read"] }
+EOF
+bao policy write e2e-slurm-credential /tmp/e2e-slurm-credential-policy.hcl >/dev/null
+bao token create -field=token -orphan -period=768h -renewable=true \
+	-policy=e2e-slurm-credential > "$out/openbao-slurm-credential-token"
+chmod 600 "$out/openbao-slurm-credential-token" 2>/dev/null || true
 cat > /tmp/bootstrap-policy.hcl <<'EOF'
-path "kv/data/clusters/*" { capabilities = ["create", "update", "read"] }
 path "tenants/+/kv/data/users/*" { capabilities = ["create", "update", "read"] }
 path "sys/internal/ui/mounts/*" { capabilities = ["read"] }
 path "tenants/+/sys/internal/ui/mounts/*" { capabilities = ["read"] }

@@ -74,12 +74,15 @@ slurmdbd ── GET /slurmdb/v0.0.4x/jobs?start=<watermark> ──► accounting
                                         └► allocations.consumed (derived on read or materialized nightly)
 ```
 
-Correlation: `usage_records.job_id` is filled by matching
-(`cluster_id`, `slurm_job_id`) to `jobs`; Slurm records for jobs not
-submitted through Custos are kept (with `job_id NULL`) and attributed to a
-project via `ProjectClusterBinding.slurm_account` when exactly one binding
-matches, so "utilization by cluster" and "CPU-hours by account" are complete
-even when users bypass Custos. Ambiguous/unmatched records remain platform-only.
+Correlation: `usage_records.job_id` first matches the deterministic
+`custos-<job-uuid>` Slurm name. If no such name is present, it matches
+`(cluster_id, slurm_job_id)` only when the Custos job's submission/end interval
+overlaps the record, newest submission first; Slurm IDs can be reused after a
+cluster reset or wrap. Slurm records for jobs not submitted through Custos are
+kept (with `job_id NULL`) and attributed to a project via
+`ProjectClusterBinding.slurm_account` when exactly one binding matches, so
+"utilization by cluster" and "CPU-hours by account" are complete even when
+users bypass Custos. Ambiguous/unmatched records remain platform-only.
 Slurm username → Custos user mapping is not implemented; external records keep
 the raw Slurm username and a NULL user (ADR-018).
 
@@ -115,7 +118,7 @@ and stable group-key cursors. Authorization is
 see NULL-user rows in their projects, and tenant readers see all attributed
 rows.
 
-## Allocation consumption and policy drift (M7-B)
+## Allocation consumption and policy management (M7-B/M7-C)
 
 `Allocation` budgets attach to a `ProjectClusterBinding` in cpu-hours,
 gpu-hours, or node-hours. The hourly `usage.aggregate` pass refreshes
@@ -126,12 +129,18 @@ estimates (`jobs.estimated_cost`) before enforcing hard/soft limits. The
 estimate lives in the immutable `ExecutionSpec`, never in a client-controlled
 scheduler field.
 
-`policy.sync` is deliberately **read-only**: it checks accounts, associations,
-QoS and partitions and annotates bindings with `ok`, `drift`, or `unknown`.
-Custos never mutates slurmdbd policy; operators reconcile detected drift with
-site administrators. Metrics are bounded by cluster and unit/reason:
+`policy.sync` compares binding desired state with slurmdbd accounts and
+associations, cluster QoS/partitions, and active hard allocations. The cluster
+or global config selects `enforce` (default) or `report`. Report mode is
+read-only and exposes planned operations; enforce applies at most 200
+operations per run, re-reads, and audits each operation. Custos never creates
+QoS or partitions and only manages the service-user association model; other
+users' associations are outside scope. Slurm `GrpTRESMins` is a backstop using
+Slurm's decay/reset window, while Custos admission remains authoritative for
+the allocation's `[period_start, period_end)` period (ADR-020). Metrics are
+bounded by cluster, operation, result, and unit/reason:
 `custos_allocation_denials_total`, `custos_allocation_soft_exceeded_total`,
-and `custos_policy_drift_bindings`.
+`custos_policy_drift_bindings`, and `custos_policy_ops_total`.
 
 ## Logging
 

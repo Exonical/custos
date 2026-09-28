@@ -30,21 +30,23 @@ func clusterDTO(c clusters.Cluster) map[string]any {
 		"version":   c.TokenRef.Version,
 	}
 	out := map[string]any{
-		"id":                   c.ID,
-		"name":                 c.Name,
-		"display_name":         c.DisplayName,
-		"base_url":             c.BaseURL,
-		"api_version":          c.APIVersion,
-		"identity_mode":        c.IdentityMode,
-		"service_user":         c.ServiceUser,
-		"token_ref":            tok,
-		"visibility":           c.Visibility,
-		"state":                c.State,
-		"consecutive_failures": c.ConsecFailures,
-		"last_error":           c.LastError,
-		"version":              c.Version,
-		"created_at":           c.CreatedAt.UTC().Format(time.RFC3339Nano),
-		"updated_at":           c.UpdatedAt.UTC().Format(time.RFC3339Nano),
+		"id":                    c.ID,
+		"name":                  c.Name,
+		"display_name":          c.DisplayName,
+		"base_url":              c.BaseURL,
+		"api_version":           c.APIVersion,
+		"identity_mode":         c.IdentityMode,
+		"service_user":          c.ServiceUser,
+		"policy_management":     c.PolicyManagement,
+		"policy_parent_account": c.PolicyParentAccount,
+		"token_ref":             tok,
+		"visibility":            c.Visibility,
+		"state":                 c.State,
+		"consecutive_failures":  c.ConsecFailures,
+		"last_error":            c.LastError,
+		"version":               c.Version,
+		"created_at":            c.CreatedAt.UTC().Format(time.RFC3339Nano),
+		"updated_at":            c.UpdatedAt.UTC().Format(time.RFC3339Nano),
 	}
 	if c.CABundlePEM != "" {
 		out["ca_bundle_pem"] = c.CABundlePEM
@@ -103,29 +105,33 @@ func (r secretRefDTO) ref() secrets.Reference {
 }
 
 type createClusterDTO struct {
-	Name          string        `json:"name"`
-	DisplayName   string        `json:"display_name"`
-	BaseURL       string        `json:"base_url"`
-	APIVersion    string        `json:"api_version"`
-	CABundlePEM   string        `json:"ca_bundle_pem,omitempty"`
-	IdentityMode  string        `json:"identity_mode"`
-	ServiceUser   string        `json:"service_user"`
-	TokenRef      secretRefDTO  `json:"token_ref"`
-	ClientCertRef *secretRefDTO `json:"client_cert_ref,omitempty"`
-	Visibility    string        `json:"visibility"`
+	Name                string        `json:"name"`
+	DisplayName         string        `json:"display_name"`
+	BaseURL             string        `json:"base_url"`
+	APIVersion          string        `json:"api_version"`
+	CABundlePEM         string        `json:"ca_bundle_pem,omitempty"`
+	IdentityMode        string        `json:"identity_mode"`
+	ServiceUser         string        `json:"service_user"`
+	PolicyManagement    string        `json:"policy_management,omitempty"`
+	PolicyParentAccount string        `json:"policy_parent_account,omitempty"`
+	TokenRef            secretRefDTO  `json:"token_ref"`
+	ClientCertRef       *secretRefDTO `json:"client_cert_ref,omitempty"`
+	Visibility          string        `json:"visibility"`
 }
 
 type updateClusterDTO struct {
-	DisplayName   *string        `json:"display_name,omitempty"`
-	BaseURL       *string        `json:"base_url,omitempty"`
-	APIVersion    *string        `json:"api_version,omitempty"`
-	CABundlePEM   *string        `json:"ca_bundle_pem,omitempty"`
-	IdentityMode  *string        `json:"identity_mode,omitempty"`
-	ServiceUser   *string        `json:"service_user,omitempty"`
-	TokenRef      *secretRefDTO  `json:"token_ref,omitempty"`
-	ClientCertRef **secretRefDTO `json:"client_cert_ref,omitempty"`
-	Visibility    *string        `json:"visibility,omitempty"`
-	Version       int            `json:"version"`
+	DisplayName         *string        `json:"display_name,omitempty"`
+	BaseURL             *string        `json:"base_url,omitempty"`
+	APIVersion          *string        `json:"api_version,omitempty"`
+	CABundlePEM         *string        `json:"ca_bundle_pem,omitempty"`
+	IdentityMode        *string        `json:"identity_mode,omitempty"`
+	ServiceUser         *string        `json:"service_user,omitempty"`
+	TokenRef            *secretRefDTO  `json:"token_ref,omitempty"`
+	ClientCertRef       **secretRefDTO `json:"client_cert_ref,omitempty"`
+	Visibility          *string        `json:"visibility,omitempty"`
+	PolicyManagement    *string        `json:"policy_management,omitempty"`
+	PolicyParentAccount *string        `json:"policy_parent_account,omitempty"`
+	Version             int            `json:"version"`
 }
 
 func (h *clusterHandlers) list(w http.ResponseWriter, r *http.Request) {
@@ -160,8 +166,9 @@ func (h *clusterHandlers) create(w http.ResponseWriter, r *http.Request) {
 			Name: in.Name, DisplayName: in.DisplayName,
 			BaseURL: in.BaseURL, APIVersion: in.APIVersion,
 			CABundlePEM: in.CABundlePEM, IdentityMode: in.IdentityMode,
-			ServiceUser: in.ServiceUser, TokenRef: in.TokenRef.ref(),
-			ClientCertRef: cert, Visibility: in.Visibility,
+			ServiceUser: in.ServiceUser, PolicyManagement: in.PolicyManagement,
+			PolicyParentAccount: in.PolicyParentAccount,
+			TokenRef:            in.TokenRef.ref(), ClientCertRef: cert, Visibility: in.Visibility,
 		})
 	if err != nil {
 		httpx.WriteError(ctx, w, err)
@@ -191,8 +198,9 @@ func (h *clusterHandlers) update(w http.ResponseWriter, r *http.Request) {
 		DisplayName: in.DisplayName, BaseURL: in.BaseURL,
 		APIVersion: in.APIVersion, CABundlePEM: in.CABundlePEM,
 		IdentityMode: in.IdentityMode, ServiceUser: in.ServiceUser,
-		Visibility: in.Visibility,
-		Version:    in.Version,
+		Visibility: in.Visibility, PolicyManagement: in.PolicyManagement,
+		PolicyParentAccount: in.PolicyParentAccount,
+		Version:             in.Version,
 	}
 	if in.TokenRef != nil {
 		tr := in.TokenRef.ref()

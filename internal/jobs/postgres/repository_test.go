@@ -206,6 +206,59 @@ func TestSpecImmutability(t *testing.T) {
 	}
 }
 
+func TestSlurmJobIDCanBeReusedAfterTerminal(t *testing.T) {
+	pool := dbtest.Pool(t)
+	repo := jobpg.New(pool)
+	ctx := context.Background()
+	tid, uid := mkTenant(t, pool, "job-id-reuse"), mkUser(t, pool, "job-id-reuse-user")
+	pid, cid := mkProject(t, pool, tid), mkCluster(t, pool, "job-id-reuse-cluster")
+	sid := int64(7)
+	terminal := mkJob(t, tid, pid, cid, uid)
+	terminal.State = jobs.StateCompleted
+	terminal.SlurmJobID = &sid
+	if err := repo.Create(ctx, tenants.TenantScope(tid), terminal, nil); err != nil {
+		t.Fatal(err)
+	}
+	active := mkJob(t, tid, pid, cid, uid)
+	active.State = jobs.StateQueued
+	active.SlurmJobID = &sid
+	if err := repo.Create(ctx, tenants.TenantScope(tid), active, nil); err != nil {
+		t.Fatalf("terminal and active jobs should share a Slurm ID: %v", err)
+	}
+	otherActive := mkJob(t, tid, pid, cid, uid)
+	otherActive.State = jobs.StateRunning
+	otherActive.SlurmJobID = &sid
+	if err := repo.Create(ctx, tenants.TenantScope(tid), otherActive, nil); !apperr.Is(err, apperr.Conflict) {
+		t.Fatalf("two active jobs sharing a Slurm ID: err=%v, want conflict", err)
+	}
+}
+
+func TestRecordAdoptVersionConflictResetsOnTransition(t *testing.T) {
+	pool := dbtest.Pool(t)
+	repo := jobpg.New(pool)
+	ctx := context.Background()
+	tid, uid := mkTenant(t, pool, "adopt-conflicts"), mkUser(t, pool, "adopt-conflicts-user")
+	pid, cid := mkProject(t, pool, tid), mkCluster(t, pool, "adopt-conflicts-cluster")
+	j := mkJob(t, tid, pid, cid, uid)
+	if err := repo.Create(ctx, tenants.TenantScope(tid), j, nil); err != nil {
+		t.Fatal(err)
+	}
+	for want := 1; want <= 2; want++ {
+		got, err := repo.RecordAdoptVersionConflict(ctx, j.ID)
+		if err != nil || got != want {
+			t.Fatalf("attempt=%d err=%v want=%d", got, err, want)
+		}
+	}
+	state := jobs.StateQueued
+	if _, err := repo.Transition(ctx, tenants.TenantScope(tid), j.ID, j.Version, jobs.Patch{State: &state}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := repo.RecordAdoptVersionConflict(ctx, j.ID)
+	if err != nil || got != 1 {
+		t.Fatalf("attempt after transition=%d err=%v want=1", got, err)
+	}
+}
+
 func TestListAndActive(t *testing.T) {
 	pool := dbtest.Pool(t)
 	repo := jobpg.New(pool)

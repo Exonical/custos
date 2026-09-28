@@ -136,6 +136,20 @@ func (h *accountingHandlers) policySummary(w http.ResponseWriter, r *http.Reques
 	}
 	httpx.WriteJSON(w, http.StatusOK, s)
 }
+func (h *accountingHandlers) policyPlan(w http.ResponseWriter, r *http.Request) {
+	p := authn.MustPrincipal(r.Context())
+	c, err := h.clusters.Get(r.Context(), p, r.PathValue("cluster"))
+	if err != nil {
+		httpx.WriteError(r.Context(), w, err)
+		return
+	}
+	plan, err := h.policy.Plan(r.Context(), c.ID)
+	if err != nil {
+		httpx.WriteError(r.Context(), w, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, plan)
+}
 func (h *accountingHandlers) policyTrigger(w http.ResponseWriter, r *http.Request) {
 	p := authn.MustPrincipal(r.Context())
 	c, err := h.clusters.Get(r.Context(), p, r.PathValue("cluster"))
@@ -164,6 +178,7 @@ func mountAccountingRoutes(mux *http.ServeMux, h *accountingHandlers, bearer fun
 	mux.Handle("POST "+cb+"/aggregate", bearer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { h.trigger(w, r, true) })))
 	if h.policy != nil {
 		mux.Handle("GET /api/v1/clusters/{cluster}/policy-sync", bearer(http.HandlerFunc(h.policySummary)))
+		mux.Handle("GET /api/v1/clusters/{cluster}/policy-sync/plan", bearer(http.HandlerFunc(h.policyPlan)))
 		mux.Handle("POST /api/v1/clusters/{cluster}/policy-sync", bearer(http.HandlerFunc(h.policyTrigger)))
 	}
 }

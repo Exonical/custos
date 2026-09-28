@@ -16,6 +16,8 @@ import (
 	"github.com/Exonical/custos/internal/authz"
 	"github.com/Exonical/custos/internal/clusters"
 	"github.com/Exonical/custos/internal/platform/apperr"
+	"github.com/Exonical/custos/internal/platform/workqueue"
+	"github.com/Exonical/custos/internal/policysync"
 	"github.com/Exonical/custos/internal/projects"
 	"github.com/Exonical/custos/internal/tenants"
 )
@@ -29,6 +31,7 @@ type Service struct {
 	clusters   clusters.Repository
 	az         authz.Authorizer
 	rec        audit.Recorder
+	enq        workqueue.Execer
 }
 
 // NewService wires the project service.
@@ -38,6 +41,17 @@ func NewService(repo projects.Repository, members projects.MembershipRepository,
 	az authz.Authorizer, rec audit.Recorder) *Service {
 	return &Service{repo: repo, members: members, bindings: bindings,
 		tenantRepo: tenantRepo, clusters: crepo, az: az, rec: rec}
+}
+
+// SetEnqueuer installs the shared workqueue executor for policy rechecks.
+func (s *Service) SetEnqueuer(ex workqueue.Execer) { s.enq = ex }
+
+func (s *Service) enqueuePolicySync(ctx context.Context, clusterID uuid.UUID) error {
+	if s.enq == nil {
+		return nil
+	}
+	_, err := workqueue.Enqueue(ctx, s.enq, workqueue.EnqueueRequest{Kind: policysync.Kind, Key: "cluster:" + clusterID.String()})
+	return err
 }
 
 // CreateProject is the POST /projects body.
@@ -437,12 +451,15 @@ func (s *Service) CreateBinding(ctx context.Context, p authn.Principal,
 		ProjectID: pc.Project.ID, ClusterID: in.ClusterID,
 		SlurmAccount: in.SlurmAccount, DefaultPartition: in.DefaultPartition,
 		AllowedPartitions: in.AllowedPartitions, DefaultQoS: in.DefaultQoS,
-		AllowedQoS: in.AllowedQoS, Enabled: true,
+		AllowedQoS: in.AllowedQoS, Enabled: true, Version: 1,
 	}
 	if in.Enabled != nil {
 		b.Enabled = *in.Enabled
 	}
 	if err := s.bindings.CreateBinding(ctx, scope, b); err != nil {
+		return projects.ClusterBinding{}, err
+	}
+	if err := s.enqueuePolicySync(ctx, b.ClusterID); err != nil {
 		return projects.ClusterBinding{}, err
 	}
 	s.audit(ctx, p, tc.Tenant.ID, "project.binding.created", "project_cluster_binding",
@@ -514,6 +531,10 @@ func (s *Service) UpdateBinding(ctx context.Context, p authn.Principal,
 	if err := s.bindings.UpdateBinding(ctx, scope, b); err != nil {
 		return projects.ClusterBinding{}, err
 	}
+	b.Version++
+	if err := s.enqueuePolicySync(ctx, b.ClusterID); err != nil {
+		return projects.ClusterBinding{}, err
+	}
 	s.audit(ctx, p, tc.Tenant.ID, "project.binding.updated", "project_cluster_binding",
 		b.ID.String(), nil)
 	return b, nil
@@ -525,7 +546,15 @@ func (s *Service) DeleteBinding(ctx context.Context, p authn.Principal,
 	if err := s.mutable(ctx, p, tc, pc); err != nil {
 		return err
 	}
-	if err := s.bindings.DeleteBinding(ctx, tenants.ScopeFor(&tc), pc.Project.ID, bindingID); err != nil {
+	scope := tenants.ScopeFor(&tc)
+	binding, err := s.bindings.GetBinding(ctx, scope, pc.Project.ID, bindingID)
+	if err != nil {
+		return err
+	}
+	if err := s.bindings.DeleteBinding(ctx, scope, pc.Project.ID, bindingID); err != nil {
+		return err
+	}
+	if err = s.enqueuePolicySync(ctx, binding.ClusterID); err != nil {
 		return err
 	}
 	s.audit(ctx, p, tc.Tenant.ID, "project.binding.deleted", "project_cluster_binding",

@@ -32,7 +32,8 @@ type Config struct {
 
 // Slurm configures Slurm connectivity policy.
 type Slurm struct {
-	DialPolicy DialPolicy `yaml:"dial_policy" doc:"SSRF policy enforced when dialing slurmrestd"`
+	DialPolicy       DialPolicy `yaml:"dial_policy" doc:"SSRF policy enforced when dialing slurmrestd"`
+	PolicyManagement string     `yaml:"policy_management" doc:"enforce|report policy reconciliation mode for clusters inheriting configuration"`
 }
 
 // DialPolicy controls which resolved addresses slurmrestd endpoints may
@@ -267,6 +268,7 @@ func Default() Config {
 	c.Worker.ShutdownTimeout = 20 * time.Second
 	c.Worker.DefaultConcurrency = 4
 	c.Worker.ClusterSyncInterval = 60 * time.Second
+	c.Slurm.PolicyManagement = "enforce"
 	c.Validation.Shellcheck.Enabled = true
 	c.Validation.Shellcheck.Endpoint = "http://127.0.0.1:8481"
 	c.Validation.Shellcheck.Timeout = 10 * time.Second

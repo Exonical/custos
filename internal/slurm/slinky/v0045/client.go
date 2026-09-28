@@ -165,8 +165,20 @@ func slurmRelease(meta *api.V0045OpenapiMeta) string {
 func apiError(errs *api.V0045OpenapiErrors, status int) error {
 	if errs != nil && len(*errs) > 0 {
 		parts := make([]string, 0, len(*errs))
+		forbidden := false
 		for _, e := range *errs {
 			code := i32(e.ErrorNumber)
+			message := ""
+			if e.Error != nil {
+				message += *e.Error
+			}
+			if e.Description != nil {
+				message += " " + *e.Description
+			}
+			lower := strings.ToLower(message)
+			if strings.Contains(lower, "permission") || strings.Contains(lower, "not authorized") || strings.Contains(lower, "access denied") {
+				forbidden = true
+			}
 			switch {
 			case e.Error != nil && e.ErrorNumber != nil:
 				parts = append(parts, fmt.Sprintf("%s (%d)", *e.Error, code))
@@ -178,20 +190,24 @@ func apiError(errs *api.V0045OpenapiErrors, status int) error {
 				parts = append(parts, fmt.Sprintf("error %d", code))
 			}
 		}
-		base := fmt.Errorf("%w: %s", slurm.ErrUnavailable,
-			strings.Join(parts, "; "))
-		if status == http.StatusUnauthorized || status == http.StatusForbidden {
-			base = fmt.Errorf("%w: %s", slurm.ErrUnauthorized,
-				strings.Join(parts, "; "))
+		message := strings.Join(parts, "; ")
+		switch {
+		case status == http.StatusUnauthorized:
+			return fmt.Errorf("%w: %s", slurm.ErrUnauthorized, message)
+		case status == http.StatusNotFound:
+			return fmt.Errorf("%w: %s", slurm.ErrNotFound, message)
+		case forbidden:
+			return fmt.Errorf("%w: %s", slurm.ErrForbidden, message)
+		case status >= 400 && status < 600:
+			return fmt.Errorf("%w: %s", slurm.ErrRejected, message)
+		default:
+			return fmt.Errorf("%w: %s", slurm.ErrUnavailable, message)
 		}
-		if status == http.StatusNotFound {
-			base = fmt.Errorf("%w: %s", slurm.ErrNotFound,
-				strings.Join(parts, "; "))
-		}
-		return base
 	}
 	switch {
-	case status == http.StatusUnauthorized || status == http.StatusForbidden:
+	case status == http.StatusForbidden:
+		return fmt.Errorf("%w: status %d", slurm.ErrForbidden, status)
+	case status == http.StatusUnauthorized:
 		return fmt.Errorf("%w: status %d", slurm.ErrUnauthorized, status)
 	case status == http.StatusNotFound:
 		return fmt.Errorf("%w: status %d", slurm.ErrNotFound, status)

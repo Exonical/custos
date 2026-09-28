@@ -48,6 +48,7 @@ cmd_up() {
 	# on a cold stack), then a single `up --wait` builds them fresh.
 	compose rm -sf validator-api validator-worker >/dev/null 2>&1 || true
 	compose rm -sf custos worker >/dev/null 2>&1 || true
+	compose rm -f migrate openbao-init >/dev/null 2>&1 || true
 
 	compose up -d --wait || {
 		echo "e2e: stack failed to become healthy; recent logs:" >&2
@@ -108,14 +109,29 @@ cmd_up() {
 	cexec slurmctld sacctmgr -n -P list assoc format=cluster,account,user \
 		| awk -F'|' '$1=="e2e"&&$2=="e2e-acct"&&$3=="custos"{f=1}END{exit !f}' \
 		|| cexec slurmctld sacctmgr -i add user name=custos account=e2e-acct
+	cexec slurmctld sacctmgr -i modify user name=custos set AdminLevel=Operator
 	cexec slurmctld sacctmgr -n -P list account format=account \
 		| grep -qx e2e-acct || die "e2e-acct missing after accounting bootstrap"
 
 	# `sacctmgr add cluster` creates a stub with no control port; job
 	# records are only written once slurmctld re-registers, which it
 	# does on (re)connect. Restart it, then wait for the port to appear.
-	echo "e2e: restarting slurmctld to register the cluster with slurmdbd..."
-	compose restart slurmctld >/dev/null
+	# On a re-run the port is already registered: skip the restart, which
+	# is asynchronous under podman and would otherwise bounce slurmctld
+	# after this script returns, in the middle of the test run.
+	port=$(cexec slurmctld sacctmgr -n -P show cluster \
+		format=controlport 2>/dev/null | head -1)
+	if [ "$port" != "6817" ]; then
+		echo "e2e: restarting slurmctld to register the cluster with slurmdbd..."
+		started=$("$ENGINE" inspect "$(compose ps -q slurmctld | head -1)" --format '{{.State.StartedAt}}')
+		compose restart slurmctld >/dev/null
+		for i in $(seq 1 60); do
+			now=$("$ENGINE" inspect "$(compose ps -q slurmctld | head -1)" --format '{{.State.StartedAt}}' 2>/dev/null)
+			[ -n "$now" ] && [ "$now" != "$started" ] && break
+			sleep 1
+			[ "$i" -lt 60 ] || die "slurmctld restart never happened"
+		done
+	fi
 	for i in $(seq 1 60); do
 		cexec slurmctld scontrol ping >/dev/null 2>&1 || {
 			sleep 2; [ "$i" -lt 60 ] || die "slurmctld never came back"; continue
@@ -126,6 +142,11 @@ cmd_up() {
 		sleep 2
 		[ "$i" -lt 60 ] || die "cluster e2e never registered with slurmdbd"
 	done
+	for i in $(seq 1 60); do
+		cexec slurmctld sinfo -h -o '%T' 2>/dev/null | grep -qE '^(idle|mixed|allocated)$' && break
+		sleep 2
+		[ "$i" -lt 60 ] || die "node c1 not ready after slurmctld restart"
+	done
 
 	echo "e2e: minting Slurm JWT for 'custos'..."
 	token=$(cexec slurmctld scontrol token username=custos lifespan=525600 \
@@ -134,15 +155,23 @@ cmd_up() {
 	printf '%s' "$token" > "$SECRETS/slurm/token"
 	chmod 600 "$SECRETS/slurm/token"
 
-	if [ ! -s "$SECRETS/openbao-bootstrap-token" ]; then
-		die "platform OpenBao bootstrap token missing; reset the e2e stack with scripts/e2e.sh down and scripts/e2e.sh up to regenerate it"
+	credential_token_file="$SECRETS/openbao-slurm-credential-token"
+	if [ ! -s "$credential_token_file" ]; then
+		die "platform OpenBao Slurm credential token missing; reset the e2e stack with scripts/e2e.sh down and scripts/e2e.sh up to regenerate it"
 	fi
-	echo "e2e: storing Slurm credential in platform OpenBao..."
+	echo "e2e: refreshing Slurm credential in platform OpenBao..."
+	credential_token=$(cat "$credential_token_file")
 	MSYS_NO_PATHCONV=1 cexec openbao env BAO_ADDR=https://openbao:8200 \
 		BAO_CACERT=/openbao/tls/openbao.crt \
 		BAO_NAMESPACE=custos \
-		BAO_TOKEN="$(cat "$SECRETS/openbao-bootstrap-token")" \
+		BAO_TOKEN="$credential_token" \
 		bao kv put kv/clusters/e2e token="$token" >/dev/null
+	MSYS_NO_PATHCONV=1 cexec openbao env BAO_ADDR=https://openbao:8200 \
+		BAO_CACERT=/openbao/tls/openbao.crt \
+		BAO_NAMESPACE=custos \
+		BAO_TOKEN="$credential_token" \
+		bao token renew >/dev/null
+	unset credential_token
 
 	echo "e2e: seeding the customer-managed OpenBao stand-in..."
 	cexec openbao-byo env BAO_ADDR=http://127.0.0.1:8200 BAO_TOKEN=e2e-byo-token \
@@ -211,26 +240,26 @@ cmd_up() {
 		"{\"user_id\":\"$admin_uid\",\"roles\":[\"tenant-admin\"]}" \
 		>/dev/null 2>&1 || true
 
-	echo "e2e: seeding Alice's tenant secret in OpenBao..."
-	tenant_json=$(kcurl GET /tenants/acme)
-	tenant_id=$(printf '%s' "$tenant_json" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
-	alice_resp=$(curl -sf --ssl-no-revoke --cacert "$CA" \
-		--resolve keycloak.e2e:8443:127.0.0.1 \
-		-d grant_type=password -d client_id=custos-e2e \
-		-d client_secret="$(cat "$SECRETS/keycloak-client-secret")" \
-		-d username=alice -d password=alice-e2e-password -d scope=openid \
-		"$KEYCLOAK/realms/custos/protocol/openid-connect/token")
-	alice_at=$(printf '%s' "$alice_resp" | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p')
-	alice_me=$(curl -sf --ssl-no-revoke --cacert "$CA" \
-		-H "Authorization: Bearer $alice_at" https://127.0.0.1:8080/api/v1/me)
-	alice_id=$(printf '%s' "$alice_me" | sed -n 's/.*"user_id":"\([^"]*\)".*/\1/p')
-	[ -n "$tenant_id" ] && [ -n "$alice_id" ] || die "tenant/alice id lookup failed"
-	# Idempotent safety net for reruns where Alice was provisioned before
-	# claim rules existed and the claims-sync freshness stamp is still live.
-	kcurl POST /tenants/acme/members \
-		"{\"user_id\":\"$alice_id\",\"roles\":[\"researcher\"]}" \
-		>/dev/null 2>&1 || true
 	if [ -s "$SECRETS/openbao-bootstrap-token" ]; then
+		echo "e2e: seeding Alice's tenant secret in OpenBao..."
+		tenant_json=$(kcurl GET /tenants/acme)
+		tenant_id=$(printf '%s' "$tenant_json" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
+		alice_resp=$(curl -sf --ssl-no-revoke --cacert "$CA" \
+			--resolve keycloak.e2e:8443:127.0.0.1 \
+			-d grant_type=password -d client_id=custos-e2e \
+			-d client_secret="$(cat "$SECRETS/keycloak-client-secret")" \
+			-d username=alice -d password=alice-e2e-password -d scope=openid \
+			"$KEYCLOAK/realms/custos/protocol/openid-connect/token")
+		alice_at=$(printf '%s' "$alice_resp" | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p')
+		alice_me=$(curl -sf --ssl-no-revoke --cacert "$CA" \
+			-H "Authorization: Bearer $alice_at" https://127.0.0.1:8080/api/v1/me)
+		alice_id=$(printf '%s' "$alice_me" | sed -n 's/.*"user_id":"\([^"]*\)".*/\1/p')
+		[ -n "$tenant_id" ] && [ -n "$alice_id" ] || die "tenant/alice id lookup failed"
+		# Idempotent safety net for reruns where Alice was provisioned before
+		# claim rules existed and the claims-sync freshness stamp is still live.
+		kcurl POST /tenants/acme/members \
+			"{\"user_id\":\"$alice_id\",\"roles\":[\"researcher\"]}" \
+			>/dev/null 2>&1 || true
 		MSYS_NO_PATHCONV=1 cexec openbao env BAO_ADDR=https://openbao:8200 \
 			BAO_CACERT=/openbao/tls/openbao.crt \
 			BAO_NAMESPACE="custos/tenants/$tenant_id" \
@@ -242,6 +271,8 @@ cmd_up() {
 			BAO_TOKEN="$(cat "$SECRETS/openbao-bootstrap-token")" \
 			bao token revoke -self >/dev/null
 		rm -f "$SECRETS/openbao-bootstrap-token"
+	else
+		echo "e2e: skipping hf-token seed; the one-shot bootstrap token was already consumed and the value persists in OpenBao"
 	fi
 
 	cat <<EOF

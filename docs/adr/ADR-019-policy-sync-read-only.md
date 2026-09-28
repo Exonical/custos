@@ -1,6 +1,6 @@
 # ADR-019: Policy sync is read-only drift detection
 
-Status: Accepted
+Status: Superseded by ADR-020
 Date: 2026-09-27
 
 ## Context

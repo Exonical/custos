@@ -1,8 +1,10 @@
 package e2e
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"testing"
@@ -505,9 +507,18 @@ func TestE2E(t *testing.T) {
 		if status != http.StatusNoContent {
 			t.Fatalf("delete allocation: HTTP %d: %v", status, body)
 		}
+		poll(t, "base account GrpTRESMins cleared after allocation deletion", 30*time.Second, func() bool {
+			assoc := slurmAssociation(t, "e2e-acct", "", "")
+			if assoc == nil {
+				return false
+			}
+			value, ok := tresMinuteValue(assoc, "cpu")
+			return !ok || value < 0
+		})
 	})
 
 	t.Run("05d_policy_sync", func(t *testing.T) {
+		setClusterPolicyMode(t, "enforce", tokAdmin)
 		status, p2 := api(t, http.MethodPost, "/tenants/acme/projects", map[string]any{"slug": "p2", "name": "Drift Project"}, tokAdmin, nil)
 		if status == http.StatusConflict {
 			_, list := api(t, http.MethodGet, "/tenants/acme/projects", nil, tokAdmin, nil)
@@ -520,7 +531,21 @@ func TestE2E(t *testing.T) {
 		} else {
 			want(t, status, p2, http.StatusCreated, "create drift project")
 		}
-		status, b := api(t, http.MethodPost, "/tenants/acme/projects/p2/cluster-bindings", map[string]any{"cluster_id": clusterID, "slurm_account": "nope", "default_partition": "debug", "allowed_partitions": []string{"debug"}, "default_qos": "normal", "allowed_qos": []string{"normal"}}, tokAdmin, nil)
+		status, stale := api(t, http.MethodGet, "/tenants/acme/projects/p2/cluster-bindings", nil, tokAdmin, nil)
+		want(t, status, stale, http.StatusOK, "list stale policy bindings")
+		for _, raw := range stale["items"].([]any) {
+			staleBinding := raw.(map[string]any)
+			id := staleBinding["id"].(string)
+			status, body := api(t, http.MethodDelete, "/tenants/acme/projects/p2/cluster-bindings/"+id, nil, tokAdmin, nil)
+			if status != http.StatusNoContent {
+				t.Fatalf("clean stale policy binding %s: HTTP %d %v", id, status, body)
+			}
+		}
+		triggerPolicySync(t, tokAdmin)
+		poll(t, "stale managed policy accounts cleaned", 30*time.Second, func() bool { return !slurmAccountExists(t, "custos-e2e-managed") })
+		reportAccount := "nope-" + runSfx
+		setClusterPolicyMode(t, "report", tokAdmin)
+		status, b := api(t, http.MethodPost, "/tenants/acme/projects/p2/cluster-bindings", map[string]any{"cluster_id": clusterID, "slurm_account": reportAccount, "default_partition": "debug", "allowed_partitions": []string{"debug"}, "default_qos": "normal", "allowed_qos": []string{"normal"}}, tokAdmin, nil)
 		if status != http.StatusCreated && status != http.StatusConflict {
 			t.Fatalf("create drift binding: HTTP %d: %v", status, b)
 		}
@@ -530,7 +555,21 @@ func TestE2E(t *testing.T) {
 		poll(t, "policy drift recorded", 30*time.Second, func() bool {
 			_, goodList := api(t, http.MethodGet, "/tenants/acme/projects/p1/cluster-bindings", nil, tokAdmin, nil)
 			goodItems, _ := goodList["items"].([]any)
-			if len(goodItems) == 0 || goodItems[0].(map[string]any)["drift_state"] != "ok" {
+			if len(goodItems) == 0 {
+				return false
+			}
+			goodBinding := goodItems[0].(map[string]any)
+			if goodBinding["drift_state"] != "drift" {
+				return false
+			}
+			goodDrift, _ := goodBinding["drift"].([]any)
+			retainedDefault := false
+			for _, raw := range goodDrift {
+				if raw.(map[string]any)["code"] == "DEFAULT_ASSOCIATION_RETAINED" {
+					retainedDefault = true
+				}
+			}
+			if !retainedDefault {
 				return false
 			}
 			_, list := api(t, http.MethodGet, "/tenants/acme/projects/p2/cluster-bindings", nil, tokAdmin, nil)
@@ -551,13 +590,131 @@ func TestE2E(t *testing.T) {
 			return state == "drift" && found
 		})
 		_, summary := api(t, http.MethodGet, "/clusters/e2e/policy-sync", nil, tokAdmin, nil)
-		if summary["drifted"].(float64) < 1 {
+		if summary["drifted"].(float64) < 1 || summary["mode"] != "report" {
 			t.Fatalf("policy summary: %v", summary)
+		}
+		_, plan := api(t, http.MethodGet, "/clusters/e2e/policy-sync/plan", nil, tokAdmin, nil)
+		ops, _ := plan["ops"].([]any)
+		if len(ops) == 0 {
+			t.Fatalf("expected dry-run create plan: %v", plan)
+		}
+		accounts := slurmDBGET(t, "accounts/", url.Values{})["accounts"].([]any)
+		for _, raw := range accounts {
+			if raw.(map[string]any)["name"] == reportAccount {
+				t.Fatalf("report mode created the %s account", reportAccount)
+			}
 		}
 		status, body = api(t, http.MethodDelete, "/tenants/acme/projects/p2/cluster-bindings/"+driftBindingID, nil, tokAdmin, nil)
 		if status != http.StatusNoContent {
 			t.Fatalf("delete drift binding: HTTP %d: %v", status, body)
 		}
+		setClusterPolicyMode(t, "inherit", tokAdmin)
+	})
+
+	t.Run("05e_slurmdb_policy_administration", func(t *testing.T) {
+		setClusterPolicyMode(t, "enforce", tokAdmin)
+		const account = "custos-e2e-managed"
+		status, bindings := api(t, http.MethodGet, "/tenants/acme/projects/p2/cluster-bindings", nil, tokAdmin, nil)
+		want(t, status, bindings, http.StatusOK, "list managed-policy bindings")
+		items, _ := bindings["items"].([]any)
+		var bindingID string
+		for _, raw := range items {
+			b := raw.(map[string]any)
+			if b["slurm_account"] == account {
+				bindingID = b["id"].(string)
+				break
+			}
+		}
+		if bindingID == "" {
+			status, b := api(t, http.MethodPost, "/tenants/acme/projects/p2/cluster-bindings", map[string]any{"cluster_id": clusterID, "slurm_account": account, "default_partition": "debug", "allowed_partitions": []string{"debug"}, "default_qos": "normal", "allowed_qos": []string{"normal"}}, tokAdmin, nil)
+			want(t, status, b, http.StatusCreated, "create managed binding")
+			bindingID = b["id"].(string)
+		}
+		poll(t, "managed account and service association created", 30*time.Second, func() bool {
+			info := slurmAccountInfo(t, account)
+			return info != nil && info["description"] == "custos:acme/p2" && info["organization"] == "custos" && slurmAssociationExists(t, account, "custos", "debug", "normal")
+		})
+		accountAssoc := slurmAssociation(t, account, "", "")
+		if accountAssoc == nil || (stringOrEmpty(accountAssoc["parent_account"]) != "" && accountAssoc["parent_account"] != "root") {
+			t.Fatalf("managed account parent association=%v", accountAssoc)
+		}
+		_, policySummary := api(t, http.MethodGet, "/clusters/e2e/policy-sync", nil, tokAdmin, nil)
+		if policySummary["mode"] != "enforce" {
+			t.Fatalf("enforce summary=%v", policySummary)
+		}
+		if _, ok := policySummary["ops_applied"].(float64); !ok {
+			t.Fatalf("summary missing ops counters: %v", policySummary)
+		}
+		jobReq := map[string]any{"cluster": "e2e", "partition": "debug", "resources": map[string]any{"tasks": 1, "walltime": "2m"}, "script": map[string]any{"language": "bash", "body": "echo managed-policy"}}
+		status, job := api(t, http.MethodPost, "/tenants/acme/projects/p2/jobs", jobReq, tokAdmin, map[string]string{"Idempotency-Key": "e2e-managed-policy-" + runSfx})
+		want(t, status, job, http.StatusAccepted, "submit through managed account")
+		jobID := job["id"].(string)
+		poll(t, "managed-account job completed", 90*time.Second, func() bool {
+			_, current := api(t, http.MethodGet, "/tenants/acme/projects/p2/jobs/"+jobID, nil, tokAdmin, nil)
+			return current["state"] == "COMPLETED"
+		})
+		now := time.Now().UTC()
+		start := now.Add(-time.Hour).Format(time.RFC3339)
+		end := now.Add(time.Hour).Format(time.RFC3339)
+		status, allocation := api(t, http.MethodPost, "/tenants/acme/projects/p2/allocations", map[string]any{"binding_id": bindingID, "name": "policy-limit" + runSfx, "unit": "cpu_hours", "limit_amount": 1.25, "period_start": start, "period_end": end, "enforcement": "hard"}, tokAdmin, nil)
+		want(t, status, allocation, http.StatusCreated, "create pushed hard allocation")
+		poll(t, "cpu GrpTRESMins set", 30*time.Second, func() bool {
+			assoc := slurmAssociation(t, account, "", "")
+			value, ok := tresMinuteValue(assoc, "cpu")
+			return ok && value == 75
+		})
+		status, body := api(t, http.MethodDelete, "/tenants/acme/projects/p2/allocations/"+allocation["id"].(string), nil, tokAdmin, nil)
+		if status != http.StatusNoContent {
+			t.Fatalf("delete pushed allocation: HTTP %d %v", status, body)
+		}
+		poll(t, "cpu GrpTRESMins cleared", 30*time.Second, func() bool {
+			assoc := slurmAssociation(t, account, "", "")
+			if assoc == nil {
+				return false
+			}
+			value, ok := tresMinuteValue(assoc, "cpu")
+			return !ok || value < 0
+		})
+		cleared := slurmAssociation(t, account, "", "")
+		fixture, _ := json.Marshal(cleared)
+		t.Logf("live Slurm 26.05.4 unset GrpTRESMins fixture: %s", fixture)
+		_ = cexec(t, "slurmctld", "sacctmgr", "-i", "modify", "user", "where", "names=custos", "accounts="+account, "clusters=e2e", "partitions=debug", "set", "qoslevel=normal,high")
+		if !slurmAssociationHasQoS(slurmAssociation(t, account, "custos", "debug"), "high") {
+			t.Fatal("test setup failed to add extra QoS")
+		}
+		triggerPolicySync(t, tokAdmin)
+		poll(t, "extra QoS removed", 30*time.Second, func() bool { return qosExactly(slurmAssociation(t, account, "custos", "debug"), "normal") })
+		setClusterPolicyMode(t, "report", tokAdmin)
+		_, bindingList := api(t, http.MethodGet, "/tenants/acme/projects/p2/cluster-bindings", nil, tokAdmin, nil)
+		binding := findBinding(t, bindingList, bindingID)
+		status, updated := api(t, http.MethodPatch, "/tenants/acme/projects/p2/cluster-bindings/"+bindingID, map[string]any{"allowed_qos": []string{"high"}, "default_qos": "high", "version": binding["version"]}, tokAdmin, nil)
+		want(t, status, updated, http.StatusOK, "change binding QoS in report mode")
+		poll(t, "report-mode QoS drift", 30*time.Second, func() bool {
+			_, list := api(t, http.MethodGet, "/tenants/acme/projects/p2/cluster-bindings", nil, tokAdmin, nil)
+			b := findBinding(t, list, bindingID)
+			return b["drift_state"] == "drift" && bindingHasDrift(b, "ASSOCIATION_QOS_MISMATCH")
+		})
+		if !qosExactly(slurmAssociation(t, account, "custos", "debug"), "normal") {
+			t.Fatal("report mode changed the Slurm association")
+		}
+		_, plan := api(t, http.MethodGet, "/clusters/e2e/policy-sync/plan", nil, tokAdmin, nil)
+		if plan["mode"] != "report" || len(plan["ops"].([]any)) == 0 {
+			t.Fatalf("report plan=%v", plan)
+		}
+		setClusterPolicyMode(t, "enforce", tokAdmin)
+		status, updated = api(t, http.MethodPatch, "/tenants/acme/projects/p2/cluster-bindings/"+bindingID, map[string]any{"allowed_qos": []string{"normal"}, "default_qos": "normal", "version": updated["version"]}, tokAdmin, nil)
+		want(t, status, updated, http.StatusOK, "restore binding QoS")
+		poll(t, "enforce mode converged", 30*time.Second, func() bool {
+			_, list := api(t, http.MethodGet, "/tenants/acme/projects/p2/cluster-bindings", nil, tokAdmin, nil)
+			return findBinding(t, list, bindingID)["drift_state"] == "ok"
+		})
+		status, body = api(t, http.MethodDelete, "/tenants/acme/projects/p2/cluster-bindings/"+bindingID, nil, tokAdmin, nil)
+		if status != http.StatusNoContent {
+			t.Fatalf("delete managed binding: HTTP %d %v", status, body)
+		}
+		poll(t, "managed Slurm objects removed", 30*time.Second, func() bool {
+			return !slurmAccountExists(t, account) && !slurmAssociationExists(t, account, "custos", "debug", "")
+		})
 	})
 
 	t.Run("06_script_directive_rejection", func(t *testing.T) {
@@ -928,6 +1085,137 @@ func TestE2E(t *testing.T) {
 			return x["state"] == "CANCELED"
 		})
 	})
+}
+
+func triggerPolicySync(t *testing.T, token string) {
+	t.Helper()
+	status, body := api(t, http.MethodPost, "/clusters/e2e/policy-sync", nil, token, nil)
+	want(t, status, body, http.StatusAccepted, "trigger policy sync")
+}
+
+func slurmAccountInfo(t *testing.T, name string) map[string]any {
+	t.Helper()
+	items, _ := slurmDBGET(t, "accounts/", url.Values{})["accounts"].([]any)
+	for _, raw := range items {
+		account, ok := raw.(map[string]any)
+		if ok && account["name"] == name {
+			return account
+		}
+	}
+	return nil
+}
+func slurmAccountExists(t *testing.T, name string) bool { return slurmAccountInfo(t, name) != nil }
+
+func slurmAssociation(t *testing.T, account, user, partition string) map[string]any {
+	t.Helper()
+	query := url.Values{"account": {account}, "cluster": {"e2e"}}
+	if user != "" {
+		query.Set("user", user)
+	}
+	if partition != "" {
+		query.Set("partition", partition)
+	}
+	items, _ := slurmDBGET(t, "associations/", query)["associations"].([]any)
+	for _, raw := range items {
+		assoc := raw.(map[string]any)
+		if assoc["account"] == account && stringOrEmpty(assoc["user"]) == user && stringOrEmpty(assoc["partition"]) == partition {
+			return assoc
+		}
+	}
+	return nil
+}
+func slurmAssociationExists(t *testing.T, account, user, partition, qos string) bool {
+	assoc := slurmAssociation(t, account, user, partition)
+	if assoc == nil {
+		return false
+	}
+	return qos == "" || slurmAssociationHasQoS(assoc, qos)
+}
+func slurmAssociationHasQoS(assoc map[string]any, name string) bool {
+	if assoc == nil {
+		return false
+	}
+	items, _ := assoc["qos"].([]any)
+	for _, q := range items {
+		if q == name {
+			return true
+		}
+	}
+	return false
+}
+func qosExactly(assoc map[string]any, names ...string) bool {
+	if assoc == nil {
+		return false
+	}
+	got, _ := assoc["qos"].([]any)
+	if len(got) != len(names) {
+		return false
+	}
+	for _, name := range names {
+		if !slurmAssociationHasQoS(assoc, name) {
+			return false
+		}
+	}
+	return true
+}
+func tresMinuteValue(assoc map[string]any, key string) (int64, bool) {
+	if assoc == nil {
+		return 0, false
+	}
+	maxRecord, _ := assoc["max"].(map[string]any)
+	tres, _ := maxRecord["tres"].(map[string]any)
+	group, _ := tres["group"].(map[string]any)
+	items, _ := group["minutes"].([]any)
+	for _, raw := range items {
+		item, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		name := strings.ToLower(stringOrEmpty(item["type"]))
+		if gres := stringOrEmpty(item["name"]); gres != "" {
+			name += "/" + strings.ToLower(gres)
+		}
+		if name == key {
+			if n, ok := item["count"].(float64); ok {
+				return int64(n), true
+			}
+		}
+	}
+	return 0, false
+}
+func stringOrEmpty(v any) string { s, _ := v.(string); return s }
+func findBinding(t *testing.T, response map[string]any, id string) map[string]any {
+	t.Helper()
+	items, _ := response["items"].([]any)
+	for _, raw := range items {
+		b := raw.(map[string]any)
+		if b["id"] == id {
+			return b
+		}
+	}
+	t.Fatalf("binding %s missing from %v", id, response)
+	return nil
+}
+func bindingHasDrift(binding map[string]any, code string) bool {
+	items, _ := binding["drift"].([]any)
+	for _, raw := range items {
+		if raw.(map[string]any)["code"] == code {
+			return true
+		}
+	}
+	return false
+}
+
+func setClusterPolicyMode(t *testing.T, mode, token string) {
+	t.Helper()
+	status, cluster := api(t, http.MethodGet, "/clusters/e2e", nil, token, nil)
+	want(t, status, cluster, http.StatusOK, "get cluster policy mode")
+	version := int(cluster["version"].(float64))
+	status, updated := api(t, http.MethodPatch, "/clusters/e2e", map[string]any{"policy_management": mode, "version": version}, token, nil)
+	want(t, status, updated, http.StatusOK, "set cluster policy mode")
+	if updated["policy_management"] != mode {
+		t.Fatalf("policy mode=%v want %s", updated["policy_management"], mode)
+	}
 }
 
 // readFile reads a repo-relative file from the test's working dir.

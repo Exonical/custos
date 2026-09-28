@@ -64,6 +64,13 @@ type Accounting interface {
     GetJobRecords(ctx context.Context, f JobRecordFilter) ([]JobRecord, error) // sacct-like, windowed
 }
 
+type AccountingAdmin interface { // optional; type-asserted by policy.sync
+    UpsertAccounts(ctx context.Context, accounts []Account) error
+    UpsertAssociations(ctx context.Context, associations []Association) error
+    DeleteAssociation(ctx context.Context, key AssociationKey) error
+    DeleteAccount(ctx context.Context, name string) error
+}
+
 type Factory interface {
     // Open builds clients for a registered cluster; credentials are resolved
     // through secrets.Resolver at call time, never stored on the struct.
@@ -76,9 +83,65 @@ sketch in the brief because the two talk to different daemons
 (slurmctld vs slurmdbd), fail independently, and accounting is optional on
 some sites.
 
-`policy.sync` uses this accounting port only for reads. It compares binding
-accounts, associations, and QoS plus the Slurm partition snapshot; it does not
-write any slurmdbd associations or account records. See ADR-019.
+`policy.sync` uses `Accounting` for reads and type-asserts the optional
+`AccountingAdmin` only in `enforce` mode. It reconciles binding accounts and
+the dedicated service-user associations; other users' associations on those
+accounts are never modified. `report` mode is the write-free rollout escape
+hatch. See ADR-020. `policy.sync` never creates QoS or partitions. It creates
+missing accounts, gives each binding's configured service user exactly the
+allowed partitions/QoS, removes extra associations for that user on the bound
+account, and applies hard limits to the account-level association. Slurm's
+`IsDefault` service-user association grants all partitions and cannot be
+removed; Custos retains it and reports `DEFAULT_ASSOCIATION_RETAINED`. Sites
+that need native partition restriction must assign the service user a different
+default account. Objects created by Custos are recorded for safe unbinding
+cleanup; a created account is deleted only after a fresh read confirms it has
+no associations.
+
+Service-user `Association`s carry the exact binding QoS list and default QoS.
+For account-level associations, QoS/default QoS are site-owned, preserved during
+planning, and omitted from writes; only `GrpTRESMins` is binding-derived. Parent
+and comment are likewise preserved/omitted for site-created associations.
+Unused supported TRES are cleared with count `-1`; the slurmdbd `v0.0.45`
+adapter maps this to `max.tres.group.minutes`. For an enabled
+binding, enforce mode clears a supported unit's `GrpTRESMins` even if a site
+administrator set it when no hard allocation is active. For a site-created
+association, parent/comment are preserved and omitted from the upsert payload.
+The worker pushes `ceil(hard_allocation_hours × 60)` for the minimum active hard
+budget per unit and omits TRES unsupported by the cluster. Slurm counts usage within
+its `UsageResetPeriod`/decay window rather than from the allocation's
+`period_start`, so this native backstop may deny earlier than Custos admission
+(ADR-020).
+
+### Policy-management modes
+
+Global mode is configured as `slurm.policy_management: enforce|report` and
+defaults to `enforce`:
+
+```yaml
+slurm:
+  policy_management: enforce
+```
+
+Each platform-owned cluster has a `policy_management` override (`inherit` by
+default) and a `policy_parent_account` (`root` by default), editable only with
+`cluster.manage`. Effective mode is the cluster override or the global setting
+when inherited. `GET /clusters/{cluster}/policy-sync/plan` returns deterministic
+dry-run operations in either mode; enforce applies at most 200 operations per
+run, then re-reads slurmdbd before clearing drift. The policy writer is
+implemented for the v0.0.45 adapter; v0.0.44 clusters should use report mode
+until the writer is ported there.
+
+### slurmdbd write privilege
+
+The configured `Cluster.ServiceUser` identity is the caller for the
+`AccountingAdmin` writes. On the live Slurm **26.05.4** e2e stack,
+`AdminLevel=Operator` is sufficient for account and association writes,
+including `GrpTRESMins`, and the corresponding cleanup. `scripts/e2e.sh`
+grants it with `sacctmgr -i modify user name=custos set AdminLevel=Operator`.
+Custos does not elevate user identity itself. Restrict the Slurm REST network
+path to Custos and use `policy_management: report` when writes must be
+suspended.
 
 ### Neutral types (excerpt)
 

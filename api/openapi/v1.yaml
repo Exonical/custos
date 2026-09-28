@@ -2689,12 +2689,19 @@ paths:
       operationId: getPolicySync
       security: [{bearerAuth: []}]
       parameters: [{name: cluster, in: path, required: true, schema: {type: string}}]
-      responses: {"200": {description: Read-only policy drift summary, content: {application/json: {schema: {$ref: "#/components/schemas/PolicySyncSummary"}}}}}
+      responses: {"200": {description: Policy reconciliation summary, content: {application/json: {schema: {$ref: "#/components/schemas/PolicySyncSummary"}}}}}
     post:
       operationId: triggerPolicySync
       security: [{bearerAuth: []}]
       parameters: [{name: cluster, in: path, required: true, schema: {type: string}}]
-      responses: {"202": {description: Drift check enqueued}}
+      responses: {"202": {description: Policy sync enqueued}}
+
+  /clusters/{cluster}/policy-sync/plan:
+    get:
+      operationId: getPolicySyncPlan
+      security: [{bearerAuth: []}]
+      parameters: [{name: cluster, in: path, required: true, schema: {type: string}}]
+      responses: {"200": {description: Current dry-run policy operations, content: {application/json: {schema: {$ref: "#/components/schemas/PolicySyncPlan"}}}}}
 
   /tenants/{tenant}/secret-connectors:
     parameters:
@@ -3152,7 +3159,7 @@ components:
               code: {type: string}
               detail: {type: string}
         drift_checked_at: {type: [string, "null"], format: date-time}
-        drift_state: {type: string, enum: [ok, drift, unknown]}
+        drift_state: {type: string, enum: [ok, drift, unknown, error]}
 
     ClusterBindingList:
       type: object
@@ -3588,14 +3595,37 @@ components:
 
     PolicySyncSummary:
       type: object
-      required: [cluster_id, bindings, drifted, unknown]
+      required: [cluster_id, mode, bindings, drifted, unknown, errors, ops_applied, ops_failed]
       properties:
         cluster_id: {type: string, format: uuid}
+        mode: {type: string, enum: [enforce, report]}
         checked_at: {type: [string, "null"], format: date-time}
+        last_applied_at: {type: [string, "null"], format: date-time}
         bindings: {type: integer}
         drifted: {type: integer}
         unknown: {type: integer}
+        errors: {type: integer}
+        ops_applied: {type: integer}
+        ops_failed: {type: integer}
         last_error: {type: string}
+    PolicySyncPlan:
+      type: object
+      required: [cluster_id, mode, ops]
+      properties:
+        cluster_id: {type: string, format: uuid}
+        mode: {type: string, enum: [enforce, report]}
+        ops:
+          type: array
+          items: {$ref: "#/components/schemas/PolicySyncOperation"}
+    PolicySyncOperation:
+      type: object
+      required: [kind, key]
+      properties:
+        kind: {type: string, enum: [create_account, upsert_association, delete_association, delete_account]}
+        key: {type: string}
+        binding_id: {type: [string, "null"], format: uuid}
+        before: {type: object, additionalProperties: true}
+        after: {type: object, additionalProperties: true}
     Allocation:
       type: object
       required: [id, tenant_id, project_id, binding_id, name, unit, limit_amount, period_start, period_end, enforcement, consumed_amount, version]
@@ -3750,8 +3780,8 @@ components:
     Cluster:
       type: object
       required: [id, name, display_name, base_url, api_version, identity_mode,
-                 service_user, token_ref, visibility, state, version,
-                 created_at, updated_at]
+                 service_user, policy_management, policy_parent_account, token_ref,
+                 visibility, state, version, created_at, updated_at]
       properties:
         id:
           type: string
@@ -3771,6 +3801,11 @@ components:
           type: string
           enum: [service, impersonate]
         service_user:
+          type: string
+        policy_management:
+          type: string
+          enum: [inherit, enforce, report]
+        policy_parent_account:
           type: string
         token_ref:
           $ref: "#/components/schemas/SecretRef"
@@ -3824,6 +3859,11 @@ components:
           enum: [service, impersonate]
         service_user:
           type: string
+        policy_management:
+          type: string
+          enum: [inherit, enforce, report]
+        policy_parent_account:
+          type: string
         token_ref:
           $ref: "#/components/schemas/SecretRef"
         client_cert_ref:
@@ -3849,6 +3889,11 @@ components:
           type: string
           enum: [service, impersonate]
         service_user:
+          type: string
+        policy_management:
+          type: string
+          enum: [inherit, enforce, report]
+        policy_parent_account:
           type: string
         token_ref:
           $ref: "#/components/schemas/SecretRef"

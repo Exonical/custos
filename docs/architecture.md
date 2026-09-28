@@ -95,7 +95,7 @@ flowchart LR
 | B1: Internet / clients → Custos | API, BFF | browsers, CLI, automation | TLS; OIDC bearer (CLI/automation) or BFF session cookie (browser); request size limits; rate limiting; request IDs |
 | B2: Custos → PostgreSQL | DB | app | TLS; app role with least privilege; every query tenant-scoped; RLS as defense-in-depth |
 | B3: Custos → OpenBao | OpenBao | app | Workload identity (Kubernetes/JWT auth) → short-lived token; per-tenant namespaces; references stored, values never |
-| B4: Custos → slurmrestd | control plane | execution plane | HTTPS/mTLS; per-cluster Slurm JWT fetched from OpenBao at use time; Custos only ever sends *validated, allow-listed* job descriptions |
+| B4: Custos → slurmrestd/slurmdbd | control plane | execution plane | HTTPS/mTLS; per-cluster Slurm JWT fetched from OpenBao at use time; job submissions are validated/allow-listed; policy writes require explicit cluster/config mode and Slurm AdminLevel, with report mode available |
 | B5: Slurm → compute nodes / jobs | execution plane | untrusted user code | Jobs receive only job-scoped material (never Custos DB creds, never OpenBao platform tokens); any secret handed to a job is scoped, short-lived and audited |
 | B6: Custos → IdP | IdP | app | Discovery + JWKS over TLS; keys cached; Custos never receives user passwords |
 
@@ -248,7 +248,7 @@ Entities and the relationships that matter:
 | `Group` | Tenant-owned; used to grant project membership/roles in bulk. Optionally sourced from IdP group claims (mapping rules stored per tenant). |
 | `Project` | Tenant-owned unit of work and accounting. Has members, cluster bindings, policies, workflows. |
 | `ProjectMembership` | (`project_id`, `user_id`) → project roles. Project members must already be tenant members (enforced in service + DB trigger). |
-| `Cluster` | Platform-owned registry entry: endpoint, API version, TLS config, credential `SecretReference`, capabilities snapshot, sync status. Clusters are never tenant-owned. |
+| `Cluster` | Platform-owned registry entry: endpoint, API version, TLS config, credential `SecretReference`, capabilities snapshot, sync status, and policy-management mode/parent account. Clusters are never tenant-owned. |
 | `ClusterTenantAssignment` | Grants a tenant visibility of a cluster plus optional tenant-level defaults (default account prefix, allowed partitions). A "global" cluster is modeled as an assignment row per tenant created by policy, not as a NULL tenant — keeps every access query a simple join. |
 | `ProjectClusterBinding` | The explicit mapping Project → Cluster → Slurm account (+ allowed QoS/partitions, default partition). This is where "which Slurm account do I use" is answered. Many-to-many; not 1:1. |
 | `Allocation` | Hard or soft CPU-hour, GPU-hour, or node-hour budget attached to a `ProjectClusterBinding`, with a period and limit. Materialized consumption is refreshed from daily accounting aggregates. |
@@ -257,7 +257,7 @@ Entities and the relationships that matter:
 | `WorkflowVersion` | Immutable. Stores canonical spec JSON, spec hash, schema version, UI layout JSON (separately), state (draft/published/deprecated). |
 | `WorkflowExecution` | One run of one exact `WorkflowVersion`, with resolved parameters, placement, requested-by, idempotency key, state. |
 | `TaskExecution` | One task node of an execution; state, attempt, resolved resource request, and pointer to `Job` when submitted. Fan-out creates N `TaskExecution`s from one task definition (`task_name`, `index`). |
-| `Job` | Custos job (globally unique ID). References `cluster_id` and `slurm_job_id` (+ array task id), state, exit code, timestamps, `resource_request` and `resource_usage` JSON. Can exist without a workflow (ad-hoc batch job, Milestone 4). |
+| `Job` | Custos job (globally unique ID). References `cluster_id` and recyclable `slurm_job_id` (+ array task id), state, exit code, timestamps, `resource_request` and `resource_usage` JSON. Only active jobs are unique by `(cluster_id, slurm_job_id)`; terminal jobs may share IDs after a Slurm reset or wrap. Can exist without a workflow (ad-hoc batch job, Milestone 4). |
 | `SecretReference` | Tenant-owned metadata pointing to OpenBao (`provider`, `namespace`, `mount`, `path`, `key`, `version`), with intended use and ACL. Never a value. |
 | `UsageRecord` | Collected from slurmdbd per job (or per accounting window), keyed by (`cluster_id`, `slurm_job_id`, `step`), joined to `Job`/`Project`/`User` when resolvable. Append-only. |
 | `AuditEvent` | Append-only, tenant-scoped or platform-scoped. |
@@ -307,7 +307,8 @@ Refinements versus the prompt's list:
   Partitioning is the main scaling lever for "millions of jobs".
 - **Large tables** (`jobs`, `task_executions`, `usage_records`): indexed by
   (`tenant_id`, `created_at DESC`), (`tenant_id`, `project_id`,
-  `created_at DESC`), (`cluster_id`, `slurm_job_id`) unique-where-not-null.
+  `created_at DESC`), and an active-only unique index on
+  (`cluster_id`, `slurm_job_id`) for `SUBMITTING`, `QUEUED`, and `RUNNING` jobs.
   Keyset pagination everywhere; never `OFFSET`.
 - **JSONB** used only for genuinely document-shaped data (workflow spec,
   layout, resource request/usage, capability snapshots). Everything queried

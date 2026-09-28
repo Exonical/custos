@@ -24,7 +24,8 @@ decisions get a new ADR that references the old one.
 | [ADR-016](ADR-016-workqueue-self-reschedule.md) | Periodic handlers reschedule via `RescheduleAt`, never self-enqueue | [workers.md](../workers.md) |
 | [ADR-017](ADR-017-tenant-secret-connectors.md) | Tenant secret connectors with platform defaults, BYO OpenBao, externalized credentials, and SSRF-safe transport | [secrets.md](../secrets.md) |
 | [ADR-018](ADR-018-accounting-attribution.md) | Ordered Slurm accounting attribution with immutable facts and recomputable daily aggregates | [observability.md](../observability.md) |
-| [ADR-019](ADR-019-policy-sync-read-only.md) | Slurm account/QoS/partition policy synchronization is read-only drift detection | [workers.md](../workers.md), [slurm.md](../slurm.md) |
+| [ADR-019](ADR-019-policy-sync-read-only.md) | Superseded: read-only Slurm policy drift detection | [workers.md](../workers.md), [slurm.md](../slurm.md) |
+| [ADR-020](ADR-020-slurmdbd-policy-administration.md) | Reconcile binding accounts, service-user associations, and hard allocation limits into slurmdbd; report mode is the escape hatch | [workers.md](../workers.md), [slurm.md](../slurm.md) |
 
 ## Process
 

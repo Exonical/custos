@@ -280,6 +280,39 @@ func readRepoFile(rel string) ([]byte, error) {
 	return os.ReadFile(filepath.Join("..", "..", rel))
 }
 
+func slurmDBGET(t *testing.T, resource string, query url.Values) map[string]any {
+	t.Helper()
+	token, err := readRepoFile("deploy/e2e/.secrets/slurm/token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	u := url.URL{Scheme: "https", Host: "slurmrestd.e2e:6820", Path: "/slurmdb/v0.0.45/" + strings.TrimLeft(resource, "/")}
+	u.RawQuery = query.Encode()
+	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("X-SLURM-USER-NAME", "custos")
+	req.Header.Set("X-SLURM-USER-TOKEN", strings.TrimSpace(string(token)))
+	resp, err := e.hc.Do(req)
+	if err != nil {
+		t.Fatalf("slurmdb GET %s: %v", resource, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		t.Fatalf("slurmdb GET %s: HTTP %d: %s", resource, resp.StatusCode, body)
+	}
+	var out map[string]any
+	if err = json.Unmarshal(body, &out); err != nil {
+		t.Fatalf("slurmdb response: %v", err)
+	}
+	return out
+}
+
 // poll calls fn until it returns true or the deadline expires.
 func poll(t *testing.T, what string, timeout time.Duration,
 	fn func() bool) {

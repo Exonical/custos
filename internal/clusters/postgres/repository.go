@@ -25,7 +25,7 @@ const clusterCols = `id, name, display_name, base_url, api_version,
  ca_bundle_pem, identity_mode, service_user, token_ref, client_cert_ref,
  visibility, state, consecutive_failures, consecutive_successes,
  last_sync_at, last_error, capabilities, capabilities_at,
- version, created_at, updated_at`
+ policy_management, policy_parent_account, version, created_at, updated_at`
 
 // clusterColsQualified is clusterCols with the c. table alias, for joins.
 var clusterColsQualified = "c." + strings.ReplaceAll(
@@ -55,6 +55,7 @@ func scanCluster(row pgx.Row) (clusters.Cluster, error) {
 		&tokenRef, &certRef, &c.Visibility, &c.State,
 		&c.ConsecFailures, &c.ConsecSuccesses,
 		&c.LastSyncAt, &lastErr, &capJSON, &c.CapabilitiesAt,
+		&c.PolicyManagement, &c.PolicyParentAccount,
 		&c.Version, &c.CreatedAt, &c.UpdatedAt)
 	if err != nil {
 		return c, db.MapError(err)
@@ -102,6 +103,12 @@ func (r *Repository) get(ctx context.Context, q string, args ...any) (clusters.C
 
 // Create implements clusters.Repository.
 func (r *Repository) Create(ctx context.Context, c clusters.Cluster) error {
+	if c.PolicyManagement == "" {
+		c.PolicyManagement = "inherit"
+	}
+	if c.PolicyParentAccount == "" {
+		c.PolicyParentAccount = "root"
+	}
 	tok, _ := json.Marshal(c.TokenRef)
 	var cert []byte
 	if c.ClientCertRef != nil {
@@ -113,13 +120,13 @@ func (r *Repository) Create(ctx context.Context, c clusters.Cluster) error {
 		}
 		_, err := tx.Exec(ctx, `
 			INSERT INTO clusters (`+clusterColsNoTS+`)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
 			c.ID, c.Name, c.DisplayName, c.BaseURL, c.APIVersion,
 			nullStr(c.CABundlePEM), c.IdentityMode, c.ServiceUser,
 			tok, cert, c.Visibility, c.State,
 			c.ConsecFailures, c.ConsecSuccesses,
 			c.LastSyncAt, nullStr(c.LastError), nil, nil,
-			c.Version)
+			c.PolicyManagement, c.PolicyParentAccount, c.Version)
 		return db.MapError(err)
 	})
 }
@@ -127,7 +134,8 @@ func (r *Repository) Create(ctx context.Context, c clusters.Cluster) error {
 const clusterColsNoTS = `id, name, display_name, base_url, api_version,
  ca_bundle_pem, identity_mode, service_user, token_ref, client_cert_ref,
  visibility, state, consecutive_failures, consecutive_successes,
- last_sync_at, last_error, capabilities, capabilities_at, version`
+ last_sync_at, last_error, capabilities, capabilities_at,
+ policy_management, policy_parent_account, version`
 
 // GetByNameOrID implements clusters.Repository.
 func (r *Repository) GetByNameOrID(ctx context.Context, ref string) (clusters.Cluster, error) {
@@ -199,12 +207,12 @@ func (r *Repository) Update(ctx context.Context, c clusters.Cluster) error {
 			UPDATE clusters SET
 			 display_name=$3, base_url=$4, api_version=$5, ca_bundle_pem=$6,
 			 identity_mode=$7, service_user=$8, token_ref=$9,
-			 client_cert_ref=$10, visibility=$11,
-			 version=version+1, updated_at=now()
+			 client_cert_ref=$10, visibility=$11, policy_management=$12,
+			 policy_parent_account=$13, version=version+1, updated_at=now()
 			WHERE id=$1 AND version=$2`,
 			c.ID, c.Version, c.DisplayName, c.BaseURL, c.APIVersion,
 			nullStr(c.CABundlePEM), c.IdentityMode, c.ServiceUser,
-			tok, cert, c.Visibility)
+			tok, cert, c.Visibility, c.PolicyManagement, c.PolicyParentAccount)
 		if err != nil {
 			return db.MapError(err)
 		}
@@ -455,6 +463,7 @@ func (r *Repository) ListVisibleForTenant(ctx context.Context, scope tenants.Sco
 				&tokenRef, &certRef, &c.Visibility, &c.State,
 				&c.ConsecFailures, &c.ConsecSuccesses,
 				&c.LastSyncAt, &lastErr, &capJSON, &c.CapabilitiesAt,
+				&c.PolicyManagement, &c.PolicyParentAccount,
 				&c.Version, &c.CreatedAt, &c.UpdatedAt,
 				&src, &def); err != nil {
 				return err

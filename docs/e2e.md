@@ -31,25 +31,32 @@ scripts/e2e.sh logs    # pass-through to compose logs
 
 `up` does, in order: generate `.secrets/` (CA, certs, `slurm.key`,
 `jwt_hs256.key`, slurmdbd password, Keycloak client secrets, and TLS material);
-bring the whole stack up healthy; initialize/unseal platform OpenBao, configure
-its Keycloak JWT role, and revoke its bootstrap root token; wait for the ShellCheck sidecars on
-`127.0.0.1:8481` **inside each parent netns** (see below); wait for
-slurmctld and node `c1`; create the `custos` Slurm user (uid 2000) in
-slurmctld/slurmd/slurmrestd/**slurmdbd**; wait for `sacctmgr` and add
-cluster `e2e`, account `e2e-acct`, QoS `normal`+`high`, and the `custos`
-association idempotently (existence-checked, no swallowed errors);
-**restart slurmctld** so it registers the cluster's control port with
-slurmdbd (job accounting records require it — verified via
-`sacctmgr show cluster`); mint a long-lived JWT and write it both to the
-file-provider fixture and platform OpenBao; seed the TLS-fronted BYO OpenBao;
-wait for Custos readiness; grant `platform-admin`; seed tenant `acme` and its
-claim rules; then write Alice's fixture value in her new tenant namespace.
+bring the whole stack up healthy; initialize/unseal platform OpenBao and
+configure its Keycloak JWT role; create a renewable, orphaned 768-hour
+`e2e-slurm-credential` token scoped only to `kv/data/clusters/e2e`; wait for
+the ShellCheck sidecars on `127.0.0.1:8481` **inside each parent netns** (see
+below); wait for slurmctld and node `c1`; create the `custos` Slurm user
+(uid 2000) in slurmctld/slurmd/slurmrestd/**slurmdbd**; wait for `sacctmgr` and
+add cluster `e2e`, account `e2e-acct`, QoS `normal`+`high`, and the `custos`
+association idempotently (existence-checked, no swallowed errors); it also
+sets the `custos` Slurm user's verified `AdminLevel=Operator` with
+`sacctmgr -i` (tested against live Slurm 26.05.4); **restart slurmctld** so it
+registers the cluster's control port with slurmdbd. Its `StateSaveLocation` is
+backed by the named `slurmctld_state` volume, preserving job IDs across restarts;
+mint a long-lived JWT and
+write it to the file-provider fixture, then refresh and renew the platform
+OpenBao Slurm credential with the scoped token. The one-shot bootstrap token is
+used only to seed Alice's tenant fixture value; after it is revoked and removed,
+subsequent `up` runs skip that seed because the value persists in the OpenBao
+volume. A missing scoped token fails with the reset hint. Finally, seed the
+TLS-fronted BYO OpenBao; wait for Custos readiness; grant `platform-admin`;
+and seed tenant `acme` and its claim rules.
 `TestE2E` exercises both cluster providers, the automatic default connector,
 a BYO connector, owner isolation, path/namespace validation, SSRF denial,
 workflow env delivery, platform-OpenBao wrapped-token delivery, value-free
 execution metadata/audit, execute-time denial for another user, real slurmdbd
 accounting collection, per-job resource usage, daily usage aggregation,
-hard-allocation denial and recovery, and read-only policy drift reporting.
+hard-allocation denial and recovery, slurmdbd policy creation, allocation `GrpTRESMins` set/clear, full reconciliation, report mode, and safe unbinding cleanup.
 
 Then, with the env it prints:
 

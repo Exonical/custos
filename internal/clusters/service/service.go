@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/url"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -18,6 +19,7 @@ import (
 	"github.com/Exonical/custos/internal/clusters"
 	"github.com/Exonical/custos/internal/platform/apperr"
 	"github.com/Exonical/custos/internal/platform/workqueue"
+	"github.com/Exonical/custos/internal/policysync"
 	"github.com/Exonical/custos/internal/secrets"
 	"github.com/Exonical/custos/internal/slurm"
 	"github.com/Exonical/custos/internal/slurm/httpclient"
@@ -28,6 +30,10 @@ import (
 const KindClusterSync = "cluster.sync"
 
 var supportedAPIVersions = map[string]bool{"v0.0.45": true, "v0.0.44": true}
+
+func validPolicyManagement(mode string) bool {
+	return mode == "inherit" || mode == "enforce" || mode == "report"
+}
 
 // Deps wires the service.
 type Deps struct {
@@ -98,16 +104,18 @@ func (s *Service) check(ctx context.Context, p authn.Principal,
 
 // CreateInput is the platform cluster registration payload.
 type CreateInput struct {
-	Name          string
-	DisplayName   string
-	BaseURL       string
-	APIVersion    string
-	CABundlePEM   string
-	IdentityMode  string
-	ServiceUser   string
-	TokenRef      secrets.Reference
-	ClientCertRef *secrets.Reference
-	Visibility    string
+	Name                string
+	DisplayName         string
+	BaseURL             string
+	APIVersion          string
+	CABundlePEM         string
+	IdentityMode        string
+	ServiceUser         string
+	PolicyManagement    string
+	PolicyParentAccount string
+	TokenRef            secrets.Reference
+	ClientCertRef       *secrets.Reference
+	Visibility          string
 }
 
 // Create registers a cluster (platform cluster.manage).
@@ -128,24 +136,35 @@ func (s *Service) Create(ctx context.Context, p authn.Principal,
 		return clusters.Cluster{}, err
 	}
 	c := clusters.Cluster{
-		ID:            uuid.Must(uuid.NewV7()),
-		Name:          in.Name,
-		DisplayName:   in.DisplayName,
-		BaseURL:       in.BaseURL,
-		APIVersion:    in.APIVersion,
-		CABundlePEM:   in.CABundlePEM,
-		IdentityMode:  clusters.IdentityMode(in.IdentityMode),
-		ServiceUser:   in.ServiceUser,
-		TokenRef:      in.TokenRef,
-		ClientCertRef: in.ClientCertRef,
-		Visibility:    clusters.Visibility(in.Visibility),
-		State:         clusters.StateUnreachable,
+		ID:                  uuid.Must(uuid.NewV7()),
+		Name:                in.Name,
+		DisplayName:         in.DisplayName,
+		BaseURL:             in.BaseURL,
+		APIVersion:          in.APIVersion,
+		CABundlePEM:         in.CABundlePEM,
+		IdentityMode:        clusters.IdentityMode(in.IdentityMode),
+		ServiceUser:         in.ServiceUser,
+		PolicyManagement:    in.PolicyManagement,
+		PolicyParentAccount: in.PolicyParentAccount,
+		TokenRef:            in.TokenRef,
+		ClientCertRef:       in.ClientCertRef,
+		Visibility:          clusters.Visibility(in.Visibility),
+		State:               clusters.StateUnreachable,
 	}
 	if c.IdentityMode == "" {
 		c.IdentityMode = clusters.IdentityService
 	}
 	if c.Visibility == "" {
 		c.Visibility = clusters.VisibilityAssigned
+	}
+	if c.PolicyManagement == "" {
+		c.PolicyManagement = "inherit"
+	}
+	if !validPolicyManagement(c.PolicyManagement) {
+		return clusters.Cluster{}, apperr.New(apperr.Validation, "POLICY_MANAGEMENT_INVALID", "policy_management must be inherit, enforce, or report")
+	}
+	if strings.TrimSpace(c.PolicyParentAccount) == "" {
+		c.PolicyParentAccount = "root"
 	}
 	if err := s.repo.Create(ctx, c); err != nil {
 		return clusters.Cluster{}, err
@@ -158,16 +177,18 @@ func (s *Service) Create(ctx context.Context, p authn.Principal,
 
 // UpdateInput is the PATCH body (nil = unchanged).
 type UpdateInput struct {
-	DisplayName   *string
-	BaseURL       *string
-	APIVersion    *string
-	CABundlePEM   *string
-	IdentityMode  *string
-	ServiceUser   *string
-	TokenRef      *secrets.Reference
-	ClientCertRef **secrets.Reference
-	Visibility    *string
-	Version       int
+	DisplayName         *string
+	BaseURL             *string
+	APIVersion          *string
+	CABundlePEM         *string
+	IdentityMode        *string
+	ServiceUser         *string
+	TokenRef            *secrets.Reference
+	ClientCertRef       **secrets.Reference
+	Visibility          *string
+	PolicyManagement    *string
+	PolicyParentAccount *string
+	Version             int
 }
 
 // Update patches a cluster with optimistic version checking.
@@ -178,6 +199,7 @@ func (s *Service) Update(ctx context.Context, p authn.Principal, ref string,
 		return clusters.Cluster{}, err
 	}
 	resync := false
+	policySync := false
 	if in.BaseURL != nil && *in.BaseURL != c.BaseURL {
 		if err := s.validateEndpoint(ctx, *in.BaseURL); err != nil {
 			return clusters.Cluster{}, err
@@ -215,12 +237,37 @@ func (s *Service) Update(ctx context.Context, p authn.Principal, ref string,
 	if in.Visibility != nil {
 		c.Visibility = clusters.Visibility(*in.Visibility)
 	}
+	if in.PolicyManagement != nil {
+		if !validPolicyManagement(*in.PolicyManagement) {
+			return clusters.Cluster{}, apperr.New(apperr.Validation, "POLICY_MANAGEMENT_INVALID", "policy_management must be inherit, enforce, or report")
+		}
+		if c.PolicyManagement != *in.PolicyManagement {
+			c.PolicyManagement = *in.PolicyManagement
+			policySync = true
+		}
+	}
+	if in.PolicyParentAccount != nil {
+		parent := strings.TrimSpace(*in.PolicyParentAccount)
+		if parent == "" {
+			parent = "root"
+		}
+		if c.PolicyParentAccount != parent {
+			c.PolicyParentAccount = parent
+			policySync = true
+		}
+	}
 	c.Version = in.Version
 	if err := s.repo.Update(ctx, c); err != nil {
 		return clusters.Cluster{}, err
 	}
+	c.Version++
 	if resync {
 		s.enqueueSync(ctx, c.ID, time.Now())
+	}
+	if policySync {
+		if err := s.enqueuePolicySync(ctx, c.ID); err != nil {
+			return clusters.Cluster{}, err
+		}
 	}
 	s.audit(ctx, p, "cluster.updated", c.ID.String(), audit.ResultAllow, nil)
 	return c, nil
@@ -491,6 +538,14 @@ func (s *Service) enqueueSync(ctx context.Context, id uuid.UUID, at time.Time) {
 		return
 	}
 	_ = s.EnqueueSync(ctx, s.enq, id, at)
+}
+
+func (s *Service) enqueuePolicySync(ctx context.Context, id uuid.UUID) error {
+	if s.enq == nil {
+		return nil
+	}
+	_, err := workqueue.Enqueue(ctx, s.enq, workqueue.EnqueueRequest{Kind: policysync.Kind, Key: "cluster:" + id.String()})
+	return err
 }
 
 func (s *Service) getPlatform(ctx context.Context, p authn.Principal,

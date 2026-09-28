@@ -55,7 +55,7 @@ anything a job reports back.
 | TM-12 | Compromised Custos instance | T8 | all | Workload-identity token with minimum policies and short TTL; DB role without DELETE on audit/usage; no root token; k8s NetworkPolicy; read-only FS; non-root; alerting on anomalous OpenBao usage |
 | TM-13 | Secret leakage through logs/audit/metrics/errors | T7, T2 | I | `secrets.Value` redaction types; lint forbids logging headers/bodies; error envelope never echoes upstream bodies; audit payload schema has no free-text value fields |
 | TM-14 | OpenBao outage → fail-open | env | D | Fail closed for submissions; degraded readiness; cached tokens bounded |
-| TM-15 | Duplicate job submission via retries | T2 (accidentally), network | T, D | Idempotency keys; reconcile-by-name before submit; unique `(cluster_id, slurm_job_id)` |
+| TM-15 | Duplicate job submission or foreign-job adoption after Slurm ID reuse | T2 (accidentally), network, cluster state loss/wrap | T, D | Idempotency keys; reconcile/adopt by deterministic `custos-<uuid>` name; validate names on ID reads; partial unique `(cluster_id, slurm_job_id)` for active jobs only; time-bounded accounting fallback |
 | TM-16 | Workflow "escape": referencing another tenant's secrets/clusters/versions | T2 | E | Validation step 7/8 resolves references inside the caller's tenant scope only |
 | TM-17 | Malicious workflow DoS (huge fan-out, arrays, walltime) | T2, T3 | D | Policy limits: max tasks per execution, max array size, max concurrent executions per project, Slurm QoS limits remain in force |
 | TM-18 | API DoS | T1 | D | Body size limits, timeouts, per-principal rate limits, pagination caps, no unbounded list endpoints |
@@ -79,6 +79,7 @@ anything a job reports back.
 | TM-33 | Validator tooling (ShellCheck, parsers) exploited by malicious script | T2 | E, D | External tools in a credential-less, network-less, read-only sidecar with CPU/mem/pid/time limits; Go parsers fuzzed; size and line limits before parsing |
 | TM-34 | Validation endpoint abused for DoS or as an oracle for policy | T2 | D, I | Separate rate limit, size limit, 20 s budget, result cache by digest; `effectivePolicy` in responses limited to author-relevant flags |
 | TM-35 | Structured software field abused to inject module commands | T2 | T | Software requirements resolve against a catalog to a `ModuleSpec`; user strings never reach `module load` |
+| TM-36 | Compromised Custos uses slurmdbd write authority to alter site policy | T8 | E, D | Platform-only enablement; report mode; full-reconcile boundary excludes other users; ownership table limits unbinding deletes; 200-op cap; per-operation audit; network-restricted slurmrestd; minimum Slurm AdminLevel |
 
 ## Residual risks to document for operators
 

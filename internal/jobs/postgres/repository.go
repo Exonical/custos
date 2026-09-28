@@ -387,7 +387,7 @@ func (r *Repository) Transition(ctx context.Context, scope tenants.Scope,
 		if err := applyScope(ctx, tx, scope); err != nil {
 			return err
 		}
-		sets := []string{"version = version + 1", "updated_at = now()"}
+		sets := []string{"version = version + 1", "updated_at = now()", "adopt_version_conflicts = 0"}
 		args := []any{}
 		add := func(col string, v any) {
 			args = append(args, v)
@@ -450,6 +450,22 @@ func (r *Repository) Transition(ctx context.Context, scope tenants.Scope,
 		return jerr
 	})
 	return out, err
+}
+
+// RecordAdoptVersionConflict increments the submit-adoption optimistic retry ceiling.
+func (r *Repository) RecordAdoptVersionConflict(ctx context.Context, id uuid.UUID) (int, error) {
+	var count int
+	err := db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
+		if err := db.SetPlatformScope(ctx, tx); err != nil {
+			return err
+		}
+		err := tx.QueryRow(ctx, `UPDATE jobs SET adopt_version_conflicts=adopt_version_conflicts+1, updated_at=now() WHERE id=$1 RETURNING adopt_version_conflicts`, id).Scan(&count)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return errNotFound
+		}
+		return db.MapError(err)
+	})
+	return count, err
 }
 
 // CountActiveByState implements jobs.Repository.

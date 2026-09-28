@@ -218,14 +218,15 @@ GET    /api/v1/tenants/{tenant}/audit-events
 GET    /api/v1/clusters                             platform registry list
 POST   /api/v1/clusters                             register cluster (SSRF-vetted base_url, token_ref)
 GET    /api/v1/clusters/{cluster}                   platform detail
-PATCH  /api/v1/clusters/{cluster}                   update (optimistic version)
+PATCH  /api/v1/clusters/{cluster}                   update (optimistic version; includes policy_management=inherit|enforce|report and policy_parent_account)
 POST   /api/v1/clusters/{cluster}/disable           disable (stops the sync chain)
 POST   /api/v1/clusters/{cluster}/test-connection   open + ping + capabilities (no state change)
 GET    /api/v1/clusters/{cluster}/accounting        watermark/error/unattributed collector status
 POST   /api/v1/clusters/{cluster}/accounting/collect     cluster.manage; enqueue collection
 POST   /api/v1/clusters/{cluster}/accounting/aggregate   cluster.manage; enqueue dirty-day aggregation
-GET    /api/v1/clusters/{cluster}/policy-sync           cluster.read; binding drift summary
-POST   /api/v1/clusters/{cluster}/policy-sync           cluster.manage; enqueue read-only drift check
+GET    /api/v1/clusters/{cluster}/policy-sync           cluster.read; mode, drift and operation summary
+GET    /api/v1/clusters/{cluster}/policy-sync/plan      cluster.read; dry-run operation plan
+POST   /api/v1/clusters/{cluster}/policy-sync           cluster.manage; enqueue reconcile
 GET    /api/v1/clusters/{cluster}/tenants           list assignments
 PUT    /api/v1/clusters/{cluster}/tenants/{tenant}  assign (defaults)
 DELETE /api/v1/clusters/{cluster}/tenants/{tenant}  unassign
@@ -235,3 +236,9 @@ GET    /api/v1/audit-events                         platform auditor
 GET    /api/v1/openapi.json
 GET    /health/live  /health/ready  /metrics       (metrics on a separate listener/port by default)
 ```
+
+Cluster responses include `policy_management` (`inherit`, `enforce`, or `report`)
+and `policy_parent_account`. The global `slurm.policy_management` default is
+`enforce`; a cluster set to `inherit` uses that config value. `report` returns
+planned drift without writing slurmdbd. The policy summary includes the
+resolved mode, operation counts, last application time, and last error.

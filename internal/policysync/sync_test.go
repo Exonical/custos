@@ -3,6 +3,7 @@ package policysync
 import (
 	"testing"
 
+	"github.com/Exonical/custos/internal/clusters"
 	"github.com/Exonical/custos/internal/projects"
 	"github.com/google/uuid"
 )
@@ -39,5 +40,14 @@ func TestCompareDriftCodes(t *testing.T) {
 	ok := Compare(projects.ClusterBinding{SlurmAccount: "acct"}, map[string]bool{"acct": true}, 1, map[string]bool{}, map[string]bool{})
 	if len(ok) != 0 {
 		t.Fatalf("unexpected drift: %+v", ok)
+	}
+}
+
+func TestEffectiveMode(t *testing.T) {
+	cases := []struct{ cluster, config, want string }{{"inherit", "enforce", "enforce"}, {"inherit", "report", "report"}, {"report", "enforce", "report"}, {"enforce", "report", "enforce"}}
+	for _, tc := range cases {
+		if got := effectiveMode(clusters.Cluster{PolicyManagement: tc.cluster}, tc.config); got != tc.want {
+			t.Fatalf("effectiveMode(%s,%s)=%s want %s", tc.cluster, tc.config, got, tc.want)
+		}
 	}
 }

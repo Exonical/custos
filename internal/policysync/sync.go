@@ -1,4 +1,4 @@
-// Package policysync detects read-only drift between Custos bindings and Slurm.
+// Package policysync reconciles Slurm accounting policy from Custos bindings.
 package policysync
 
 import (
@@ -13,6 +13,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 
+	"github.com/Exonical/custos/internal/allocations"
 	"github.com/Exonical/custos/internal/audit"
 	"github.com/Exonical/custos/internal/clusters"
 	"github.com/Exonical/custos/internal/platform/db"
@@ -28,25 +29,37 @@ const interval = 15 * time.Minute
 // ErrNoAccounting identifies clusters that do not enable slurmdbd.
 var ErrNoAccounting = errors.New("cluster accounting is disabled")
 
-// Summary reports the latest read-only drift check for a cluster.
+// Summary reports the latest policy reconciliation state for a cluster.
 type Summary struct {
-	ClusterID uuid.UUID  `json:"cluster_id"`
-	CheckedAt *time.Time `json:"checked_at"`
-	Bindings  int        `json:"bindings"`
-	Drifted   int        `json:"drifted"`
-	Unknown   int        `json:"unknown"`
-	LastError string     `json:"last_error,omitempty"`
+	ClusterID     uuid.UUID  `json:"cluster_id"`
+	Mode          string     `json:"mode"`
+	CheckedAt     *time.Time `json:"checked_at"`
+	LastAppliedAt *time.Time `json:"last_applied_at,omitempty"`
+	Bindings      int        `json:"bindings"`
+	Drifted       int        `json:"drifted"`
+	Unknown       int        `json:"unknown"`
+	Errors        int        `json:"errors"`
+	OpsApplied    int        `json:"ops_applied"`
+	OpsFailed     int        `json:"ops_failed"`
+	LastError     string     `json:"last_error,omitempty"`
 }
 
-// Deps wires policy sync persistence, Slurm reads, and audit/metrics.
+// AllocationReader provides active binding allocations to policy reconciliation.
+type AllocationReader interface {
+	ActiveForBinding(context.Context, uuid.UUID, time.Time) ([]allocations.Allocation, error)
+}
+
+// Deps wires policy persistence, Slurm clients, audit, metrics and configuration.
 type Deps struct {
-	Clusters clusters.Repository
-	Bindings projects.BindingRepository
-	Factory  slurm.Factory
-	Audit    audit.Recorder
-	Pool     *pgxpool.Pool
-	Metrics  *Metrics
-	Now      func() time.Time
+	Clusters    clusters.Repository
+	Bindings    projects.BindingRepository
+	Factory     slurm.Factory
+	Audit       audit.Recorder
+	Pool        *pgxpool.Pool
+	Metrics     *Metrics
+	Allocations AllocationReader
+	ConfigMode  string
+	Now         func() time.Time
 }
 
 func (d Deps) now() time.Time {
@@ -59,16 +72,19 @@ func (d Deps) now() time.Time {
 // Metrics records the number of bindings currently reporting drift.
 type Metrics struct {
 	gauge  metric.Int64ObservableGauge
+	ops    metric.Int64Counter
 	mu     sync.Mutex
 	counts map[string]int64
 }
 
-// NewMetrics registers the policy drift gauge.
+// NewMetrics registers policy drift and policy operation instruments.
 func NewMetrics(mp metric.MeterProvider) *Metrics {
 	m := &Metrics{counts: map[string]int64{}}
 	if mp != nil {
-		g, _ := mp.Meter("custos/policy").Int64ObservableGauge("custos_policy_drift_bindings")
+		meter := mp.Meter("custos/policy")
+		g, _ := meter.Int64ObservableGauge("custos_policy_drift_bindings")
 		m.gauge = g
+		m.ops, _ = meter.Int64Counter("custos_policy_ops_total")
 		_, _ = mp.Meter("custos/policy").RegisterCallback(func(_ context.Context, o metric.Observer) error {
 			m.mu.Lock()
 			defer m.mu.Unlock()
@@ -88,8 +104,14 @@ func (m *Metrics) set(name string, n int64) {
 	m.counts[name] = n
 	m.mu.Unlock()
 }
+func (m *Metrics) recordOp(ctx context.Context, cluster, op, result string) {
+	if m == nil || m.ops == nil {
+		return
+	}
+	m.ops.Add(ctx, 1, metric.WithAttributes(attribute.String("cluster", cluster), attribute.String("op", op), attribute.String("result", result)))
+}
 
-// Handler returns the per-cluster read-only drift chain.
+// Handler returns the per-cluster policy reconciliation chain.
 func Handler(d Deps) workqueue.Handler {
 	return func(ctx context.Context, it workqueue.Item) error {
 		id, err := uuid.Parse(trimCluster(it.Key))
@@ -118,7 +140,7 @@ func trimCluster(key string) string {
 	return key
 }
 
-// Bootstrap enqueues one policy drift check per non-disabled cluster.
+// Bootstrap enqueues one policy reconciliation per non-disabled cluster.
 func Bootstrap(ctx context.Context, ex workqueue.Execer, repo clusters.Repository) error {
 	cs, err := repo.ListAll(ctx)
 	if err != nil {
@@ -135,68 +157,8 @@ func Bootstrap(ctx context.Context, ex workqueue.Execer, repo clusters.Repositor
 	return nil
 }
 
-// Check refreshes every binding on a cluster without changing Slurm state.
-func (d Deps) Check(ctx context.Context, id uuid.UUID) error {
-	c, err := d.Clusters.GetByNameOrID(ctx, id.String())
-	if err != nil {
-		return err
-	}
-	if c.State == clusters.StateDisabled {
-		return nil
-	}
-	bindings, err := d.Bindings.ListBindingsByCluster(ctx, id)
-	if err != nil {
-		return err
-	}
-	_, acct, err := d.Factory.Open(ctx, c.SlurmConfig())
-	if err != nil {
-		return d.markUnknown(ctx, id, bindings, err)
-	}
-	if acct == nil {
-		return ErrNoAccounting
-	}
-	accounts, err := acct.GetAccounts(ctx)
-	if err != nil {
-		return d.markUnknown(ctx, id, bindings, err)
-	}
-	qos, err := acct.GetQoS(ctx)
-	if err != nil {
-		return d.markUnknown(ctx, id, bindings, err)
-	}
-	if c.Capabilities == nil {
-		return d.markUnknown(ctx, id, bindings, errors.New("cluster capability snapshot unavailable"))
-	}
-	accountSet := map[string]bool{}
-	for _, a := range accounts {
-		accountSet[a.Name] = true
-	}
-	qosSet := map[string]bool{}
-	for _, q := range qos {
-		qosSet[q.Name] = true
-	}
-	partitions := map[string]bool{}
-	for _, p := range c.Capabilities.Partitions {
-		partitions[p.Name] = true
-	}
-	var drifted int64
-	for _, b := range bindings {
-		assocs, e := acct.GetAssociations(ctx, slurm.AssociationFilter{Accounts: []string{b.SlurmAccount}, Clusters: []string{c.Name}})
-		if e != nil {
-			return d.markUnknown(ctx, id, bindings, e)
-		}
-		drift := Compare(b, accountSet, len(assocs), qosSet, partitions)
-		state := "ok"
-		if len(drift) > 0 {
-			state = "drift"
-			drifted++
-		}
-		if err = d.setBinding(ctx, b, state, drift, d.now()); err != nil {
-			return err
-		}
-	}
-	d.Metrics.set(c.Name, drifted)
-	return d.status(ctx, id, d.now(), "")
-}
+// Check reconciles one cluster according to its effective policy-management mode.
+func (d Deps) Check(ctx context.Context, id uuid.UUID) error { return d.Reconcile(ctx, id) }
 
 // Compare returns every known mismatch for one binding.
 func Compare(b projects.ClusterBinding, accounts map[string]bool, associationCount int, qos, partitions map[string]bool) []projects.DriftItem {
@@ -244,7 +206,7 @@ func (d Deps) markUnknown(ctx context.Context, id uuid.UUID, bindings []projects
 	if c, e := d.Clusters.GetByNameOrID(ctx, id.String()); e == nil {
 		d.Metrics.set(c.Name, drifted)
 	}
-	return d.status(ctx, id, now, upstream.Error())
+	return d.statusRun(ctx, id, now, upstream.Error(), nil, 0, 0)
 }
 
 // PreserveDrift carries a previous finding across an unavailable check.
@@ -284,15 +246,6 @@ func driftCodes(d []projects.DriftItem) []string {
 	}
 	return out
 }
-func (d Deps) status(ctx context.Context, id uuid.UUID, checked time.Time, lastError string) error {
-	return db.WithTx(ctx, d.Pool, func(tx pgx.Tx) error {
-		if err := db.SetPlatformScope(ctx, tx); err != nil {
-			return err
-		}
-		_, err := tx.Exec(ctx, `INSERT INTO policy_sync_status(cluster_id,checked_at,last_error) VALUES($1,$2,$3) ON CONFLICT(cluster_id) DO UPDATE SET checked_at=excluded.checked_at,last_error=excluded.last_error`, id, checked, nilError(lastError))
-		return db.MapError(err)
-	})
-}
 func nilError(s string) any {
 	if s == "" {
 		return nil
@@ -300,20 +253,29 @@ func nilError(s string) any {
 	return s
 }
 
-// SummaryService provides read-only per-cluster drift summaries.
-type SummaryService struct {
-	pool     *pgxpool.Pool
-	bindings projects.BindingRepository
-}
+// SummaryService provides policy-sync summaries and dry-run plans.
+type SummaryService struct{ deps Deps }
 
-// NewSummaryService wires the summary's database dependencies.
-func NewSummaryService(pool *pgxpool.Pool, b projects.BindingRepository) *SummaryService {
-	return &SummaryService{pool: pool, bindings: b}
-}
+// NewSummaryService wires read and planning dependencies.
+func NewSummaryService(d Deps) *SummaryService { return &SummaryService{deps: d} }
 
-// Summary returns current binding drift counts and the last check status.
+// Summary returns the current binding drift counts and last policy run.
 func (s *SummaryService) Summary(ctx context.Context, id uuid.UUID) (Summary, error) {
-	return SummaryFor(ctx, s.pool, s.bindings, id)
+	out, err := SummaryFor(ctx, s.deps.Pool, s.deps.Bindings, id)
+	if err != nil {
+		return out, err
+	}
+	c, err := s.deps.Clusters.GetByNameOrID(ctx, id.String())
+	if err != nil {
+		return out, err
+	}
+	out.Mode = effectiveMode(c, s.deps.ConfigMode)
+	return out, nil
+}
+
+// Plan returns current policy operations without applying writes.
+func (s *SummaryService) Plan(ctx context.Context, id uuid.UUID) (PlanResponse, error) {
+	return s.deps.Preview(ctx, id)
 }
 
 // SummaryFor loads a cluster drift summary from binding and status rows.
@@ -331,6 +293,9 @@ func SummaryFor(ctx context.Context, pool *pgxpool.Pool, bindings projects.Bindi
 		if b.DriftState == "unknown" {
 			out.Unknown++
 		}
+		if b.DriftState == "error" {
+			out.Errors++
+		}
 		if b.DriftCheckedAt != nil && (out.CheckedAt == nil || b.DriftCheckedAt.After(*out.CheckedAt)) {
 			v := *b.DriftCheckedAt
 			out.CheckedAt = &v
@@ -341,7 +306,7 @@ func SummaryFor(ctx context.Context, pool *pgxpool.Pool, bindings projects.Bindi
 			return e
 		}
 		var checked *time.Time
-		e := tx.QueryRow(ctx, `SELECT checked_at,coalesce(last_error,'') FROM policy_sync_status WHERE cluster_id=$1`, id).Scan(&checked, &out.LastError)
+		e := tx.QueryRow(ctx, `SELECT checked_at,coalesce(last_error,''),last_applied_at,ops_applied,ops_failed FROM policy_sync_status WHERE cluster_id=$1`, id).Scan(&checked, &out.LastError, &out.LastAppliedAt, &out.OpsApplied, &out.OpsFailed)
 		if errors.Is(e, pgx.ErrNoRows) {
 			return nil
 		}

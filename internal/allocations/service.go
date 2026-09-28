@@ -13,9 +13,12 @@ import (
 	"github.com/Exonical/custos/internal/authn"
 	"github.com/Exonical/custos/internal/authz"
 	"github.com/Exonical/custos/internal/platform/apperr"
+	"github.com/Exonical/custos/internal/platform/workqueue"
 	"github.com/Exonical/custos/internal/projects"
 	"github.com/Exonical/custos/internal/tenants"
 )
+
+const policySyncKind = "policy.sync"
 
 // Service implements allocation management and admission checks.
 type Service struct {
@@ -26,6 +29,7 @@ type Service struct {
 	audit    audit.Recorder
 	denials  metric.Int64Counter
 	soft     metric.Int64Counter
+	enq      workqueue.Execer
 }
 
 // NewService wires the allocation repository, authorization, and audit dependencies.
@@ -35,6 +39,16 @@ func NewService(r Repository, b projects.BindingRepository, az authz.Authorizer,
 		s.members = members[0]
 	}
 	return s
+}
+
+// SetEnqueuer installs the shared policy.sync workqueue executor.
+func (s *Service) SetEnqueuer(ex workqueue.Execer) { s.enq = ex }
+func (s *Service) enqueuePolicySync(ctx context.Context, clusterID uuid.UUID) error {
+	if s.enq == nil {
+		return nil
+	}
+	_, err := workqueue.Enqueue(ctx, s.enq, workqueue.EnqueueRequest{Kind: policySyncKind, Key: "cluster:" + clusterID.String()})
+	return err
 }
 
 // SetMeterProvider installs allocation enforcement counters.
@@ -117,6 +131,9 @@ func (s *Service) Create(ctx context.Context, p authn.Principal, tc tenants.Tena
 	if err != nil {
 		return Allocation{}, err
 	}
+	if err := s.enqueuePolicySync(ctx, b.ClusterID); err != nil {
+		return Allocation{}, err
+	}
 	s.record(ctx, p, created, "allocation.created")
 	return created, nil
 }
@@ -164,11 +181,18 @@ func (s *Service) Update(ctx context.Context, p authn.Principal, tc tenants.Tena
 	if in.Enforcement != nil {
 		a.Enforcement = *in.Enforcement
 	}
+	binding, err := s.bindings.GetBinding(ctx, tenants.ScopeFor(&tc), pc.Project.ID, a.BindingID)
+	if err != nil {
+		return a, err
+	}
 	a.Version = in.Version
 	if !valid(a) {
 		return a, apperr.New(apperr.Validation, "ALLOCATION_INVALID", "allocation fields are invalid")
 	}
 	if err := s.repo.Update(ctx, tenants.ScopeFor(&tc), a); err != nil {
+		return a, err
+	}
+	if err := s.enqueuePolicySync(ctx, binding.ClusterID); err != nil {
 		return a, err
 	}
 	s.record(ctx, p, a, "allocation.updated")
@@ -184,7 +208,14 @@ func (s *Service) Delete(ctx context.Context, p authn.Principal, tc tenants.Tena
 	if err != nil {
 		return err
 	}
+	binding, err := s.bindings.GetBinding(ctx, tenants.ScopeFor(&tc), pc.Project.ID, a.BindingID)
+	if err != nil {
+		return err
+	}
 	if err := s.repo.Delete(ctx, tenants.ScopeFor(&tc), pc.Project.ID, id); err != nil {
+		return err
+	}
+	if err := s.enqueuePolicySync(ctx, binding.ClusterID); err != nil {
 		return err
 	}
 	s.record(ctx, p, a, "allocation.deleted")
@@ -263,6 +294,11 @@ func (s *Service) Check(ctx context.Context, scope tenants.Scope, bindingID uuid
 // CheckInTx rechecks allocations and in-flight jobs inside the job-persist transaction.
 func (s *Service) CheckInTx(ctx context.Context, tx any, bindingID uuid.UUID, estimate map[string]float64) (CheckResult, error) {
 	return s.repo.CheckInTx(ctx, tx, bindingID, estimate)
+}
+
+// ActiveForBinding returns active allocations for policy reconciliation.
+func (s *Service) ActiveForBinding(ctx context.Context, bindingID uuid.UUID, now time.Time) ([]Allocation, error) {
+	return s.repo.Active(ctx, tenants.PlatformScope(), bindingID, now)
 }
 
 // Refresh materializes usage consumption for allocations, optionally by cluster.

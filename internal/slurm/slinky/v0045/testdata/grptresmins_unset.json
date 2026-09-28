@@ -1,0 +1,15 @@
+{
+  "associations": [
+    {
+      "account": "custos-e2e-admin-probe",
+      "cluster": "e2e",
+      "comment": "",
+      "default": {"qos": ""},
+      "max": {"tres": {"group": {"minutes": []}}},
+      "parent_account": "",
+      "partition": "",
+      "qos": [],
+      "user": ""
+    }
+  ]
+}

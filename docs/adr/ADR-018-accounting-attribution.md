@@ -15,8 +15,10 @@ Custos users.
 Each ended Slurm job becomes one immutable `usage_records` fact. Attribution is
 applied in this order:
 
-1. Match `jobs(cluster_id, slurm_job_id)`. Copy that job's tenant, project,
-   creator, and Custos job UUID, and persist its derived `resource_usage`.
+1. If the Slurm record carries `custos-<job-uuid>`, match that deterministic job
+   name first and copy its tenant, project, creator, Custos job UUID, and derived
+   `resource_usage`. Otherwise match `(cluster_id, slurm_job_id)` only among jobs
+   whose submission/end interval overlaps the record, newest submission first.
 2. Otherwise, if exactly one enabled `ProjectClusterBinding` on the cluster has
    the record's Slurm account, copy that tenant and project; leave user NULL.
 3. Otherwise leave tenant, project, user, and job NULL. Ambiguous accounts use

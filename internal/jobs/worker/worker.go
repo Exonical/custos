@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync"
 	"time"
@@ -35,12 +36,13 @@ import (
 
 // Work kinds.
 const (
-	KindReconcile   = "job.reconcile"
-	KindSweep       = "jobs.sweep"
-	KindIdemExpire  = "idempotency.expire"
-	lostAfter       = 10 * time.Minute
-	sweepInterval   = 60 * time.Second
-	idemExpireEvery = time.Hour
+	KindReconcile              = "job.reconcile"
+	KindSweep                  = "jobs.sweep"
+	KindIdemExpire             = "idempotency.expire"
+	lostAfter                  = 10 * time.Minute
+	sweepInterval              = 60 * time.Second
+	idemExpireEvery            = time.Hour
+	maxAdoptVersionReschedules = 10
 )
 
 // SecretDelivery resolves or wraps one reference at submit time.
@@ -290,10 +292,28 @@ func adopt(ctx context.Context, d Deps, j jobs.Job, sj slurm.Job,
 	nj, err := transition(ctx, d, j, p)
 	if err != nil {
 		if apperr.Is(err, apperr.Conflict) {
-			// A sweep may have advanced the optimistic version without changing
-			// SUBMITTING. Re-run this same item so it reloads the row; if another
-			// handler truly progressed it, Submit exits idempotently.
-			return workqueue.RescheduleAt(time.Now().Add(time.Second))
+			var domainErr *apperr.Error
+			code := "CONFLICT"
+			if errors.As(err, &domainErr) {
+				code = domainErr.Code
+			}
+			if code == "VERSION_CONFLICT" {
+				counter, ok := d.Jobs.(jobs.AdoptConflictCounter)
+				if !ok {
+					slog.WarnContext(ctx, "job adoption version-conflict counter unavailable", "job_id", j.ID.String())
+					return err
+				}
+				attempts, countErr := counter.RecordAdoptVersionConflict(ctx, j.ID)
+				if countErr != nil {
+					return countErr
+				}
+				if attempts <= maxAdoptVersionReschedules {
+					return workqueue.RescheduleAt(time.Now().Add(time.Second))
+				}
+				slog.WarnContext(ctx, "job adoption optimistic retries exhausted", "job_id", j.ID.String(), "attempts", attempts)
+				return err
+			}
+			slog.WarnContext(ctx, "job adoption conflict", "job_id", j.ID.String(), "code", code)
 		}
 		return err
 	}
@@ -356,6 +376,9 @@ func Reconcile(d Deps) workqueue.Handler {
 		}
 		if err != nil {
 			return err
+		}
+		if sj.Name != "custos-"+j.ID.String() {
+			return lostOrRetry(ctx, d, j, acct)
 		}
 		// Self-reschedule: the leased item itself becomes the next run.
 		return applyObserved(ctx, d, j, sj, func(d time.Duration) error {
@@ -528,6 +551,16 @@ func Cancel(d Deps) workqueue.Handler {
 		if err != nil {
 			return err
 		}
+		sj, err := cl.GetJob(ctx, sid)
+		if errors.Is(err, slurm.ErrNotFound) {
+			return enqueueReconcile(ctx, d, j.ID, time.Now(), 2*time.Second)
+		}
+		if err != nil {
+			return err
+		}
+		if sj.Name != "custos-"+j.ID.String() {
+			return enqueueReconcile(ctx, d, j.ID, time.Now(), 2*time.Second)
+		}
 		if err := cl.CancelJob(ctx, sid, slurm.CancelOptions{}); err != nil &&
 			!errors.Is(err, slurm.ErrNotFound) {
 			return err
@@ -574,7 +607,11 @@ func Sweep(d Deps) workqueue.Handler {
 			return err
 		}
 		for _, j := range active {
-			sj, ok := byName["custos-"+j.ID.String()]
+			expectedName := "custos-" + j.ID.String()
+			sj, ok := byName[expectedName]
+			if ok && sj.Name != expectedName {
+				ok = false
+			}
 			if !ok {
 				base := j.SubmittedAt
 				if base == nil {

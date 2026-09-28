@@ -95,3 +95,26 @@ func TestErrorInjectionAndLostSubmit(t *testing.T) {
 		t.Fatalf("lost job not recorded: %v %v", jobs, err)
 	}
 }
+
+func TestAccountingAdminCallsAreRecorded(t *testing.T) {
+	c := fake.New()
+	ctx := t.Context()
+	account := slurm.Account{Name: "acct", Description: "custos:t/p", Organization: "custos", ParentAccount: "root"}
+	assoc := slurm.Association{Account: "acct", Cluster: "c1", User: "custos", Partition: "gpu", QoS: []string{"normal"}, GrpTRESMins: map[string]int64{"cpu": -1}}
+	if err := c.UpsertAccounts(ctx, []slurm.Account{account}); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.UpsertAssociations(ctx, []slurm.Association{assoc}); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.DeleteAssociation(ctx, slurm.AssociationKey{Account: "acct", User: "custos", Cluster: "c1", Partition: "gpu"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.DeleteAccount(ctx, "acct"); err != nil {
+		t.Fatal(err)
+	}
+	calls := c.AdminCalls()
+	if len(calls) != 4 || calls[0].Operation != "create_account" || calls[1].Operation != "upsert_association" || calls[2].Operation != "delete_association" || calls[3].Operation != "delete_account" {
+		t.Fatalf("admin calls=%+v", calls)
+	}
+}

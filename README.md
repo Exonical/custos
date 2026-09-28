@@ -29,12 +29,15 @@ migrates today:
 - **M7-A** — slurmdbd accounting collection, immutable usage records, daily
   aggregates, bounded usage/top queries, and per-job resource usage.
 - **M7-B** — binding allocations with hard/soft admission enforcement and
-  read-only policy drift detection against Slurm.
+  policy drift detection against Slurm.
+- **M7-C** — optional report mode and managed reconciliation of binding policy
+  and hard allocation limits into slurmdbd.
 
 An end-to-end stack (`scripts/e2e.sh`, `deploy/e2e/`) runs the whole
 thing against a real Slurm 26.05 cluster, Keycloak 26.7 and OpenBao
 under Podman; `test/e2e` exercises authentication, secret delivery,
-accounting, allocation enforcement, policy drift, and workflow cancellation.
+accounting, allocation enforcement, slurmdbd policy administration, report
+mode, and workflow cancellation.
 
 Next up: **M8** the Next.js UI.
 

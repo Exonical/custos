@@ -99,6 +99,7 @@ func cmdWorker(parent context.Context, configPath string, lookupEnv config.Looku
 	projectRepo := projectpg.New(pool)
 	allocationSvc := allocations.NewService(allocationpg.New(pool), projectRepo, authz.RBAC{}, recorder, projectRepo)
 	allocationSvc.SetMeterProvider(prov.Meter)
+	allocationSvc.SetEnqueuer(pool)
 	secretRuntime := secretrefs.NewRuntime(secretRepo, &secretrefs.ConnectorFactory{
 		Platform: sdeps.OpenBao,
 		Policy: safehttp.DialPolicy{AllowPrivate: sdeps.Policy.AllowPrivate,
@@ -122,7 +123,8 @@ func cmdWorker(parent context.Context, configPath string, lookupEnv config.Looku
 		return 1
 	}
 	policyDeps := policysync.Deps{Clusters: clusterRepo, Bindings: projectRepo,
-		Factory: sdeps.Factory, Audit: recorder, Pool: pool, Metrics: policysync.NewMetrics(prov.Meter)}
+		Factory: sdeps.Factory, Audit: recorder, Pool: pool, Metrics: policysync.NewMetrics(prov.Meter),
+		Allocations: allocationSvc, ConfigMode: cfg.Slurm.PolicyManagement}
 	q.Register(policysync.Kind, policysync.Handler(policyDeps))
 	if err := policysync.Bootstrap(ctx, pool, clusterRepo); err != nil {
 		logger.ErrorContext(ctx, "policy.sync bootstrap", "error", err)
@@ -162,6 +164,8 @@ func cmdWorker(parent context.Context, configPath string, lookupEnv config.Looku
 		logger.ErrorContext(ctx, "validation setup", "error", err)
 		return 1
 	}
+	projectService := projectsvc.NewService(projectRepo, projectRepo, projectRepo, tenantRepo, clusterRepo, authz.RBAC{}, recorder)
+	projectService.SetEnqueuer(pool)
 	execDeps := engine.Deps{
 		Execs:           execpg.New(pool),
 		Workflows:       wfpg.New(pool),
@@ -175,7 +179,7 @@ func cmdWorker(parent context.Context, configPath string, lookupEnv config.Looku
 		Policies:    policiesvc.NewService(policypg.New(pool), authz.RBAC{}, recorder),
 		VPolicy:     vdeps.VPolicy,
 		Clusters:    clusterRepo,
-		Projects:    projectsvc.NewService(projectRepo, projectRepo, projectRepo, tenantRepo, clusterRepo, authz.RBAC{}, recorder),
+		Projects:    projectService,
 		Pipeline:    vdeps.Pipeline,
 		Validations: vdeps.Store,
 		Scripts:     scriptpg.New(pool),

@@ -40,6 +40,17 @@ type Accounting interface {
 	GetJobRecords(ctx context.Context, f JobRecordFilter) ([]JobRecord, error)
 }
 
+// AccountingAdmin is the optional slurmdbd policy-write capability.
+type AccountingAdmin interface {
+	UpsertAccounts(context.Context, []Account) error
+	UpsertAssociations(context.Context, []Association) error
+	DeleteAssociation(context.Context, AssociationKey) error
+	DeleteAccount(context.Context, string) error
+}
+
+// AssociationKey identifies one account/user/cluster/partition association.
+type AssociationKey struct{ Account, User, Cluster, Partition string }
+
 // Factory builds clients for a registered cluster. Credentials are
 // resolved through secrets.Resolver at call time, never stored.
 type Factory interface {
@@ -286,20 +297,27 @@ type AssociationFilter struct {
 
 // Association is a user-account(-partition) association.
 type Association struct {
-	ID         int32
-	User       string
-	Account    string
-	Cluster    string
-	Partition  string
-	IsDefault  bool
-	DefaultQoS string
+	ID            int32
+	User          string
+	Account       string
+	Cluster       string
+	Partition     string
+	IsDefault     bool
+	DefaultQoS    string
+	QoS           []string
+	Comment       string
+	ParentAccount string
+	GrpTRESMins   map[string]int64
 }
 
-// Account is a Slurm account.
+// Account is a Slurm account. Cluster names the cluster whose account-level
+// association is created together with the account (AccountingAdmin writes).
 type Account struct {
-	Name         string
-	Description  string
-	Organization string
+	Name          string
+	Description   string
+	Organization  string
+	ParentAccount string
+	Cluster       string
 }
 
 // QoS is a quality-of-service entry.
@@ -347,8 +365,12 @@ var (
 	ErrNotFound = errors.New("slurm: not found")
 	// ErrUnavailable marks transient failures (daemon down, timeout).
 	ErrUnavailable = errors.New("slurm: unavailable")
-	// ErrUnauthorized marks auth failures at slurmrestd.
+	// ErrUnauthorized marks authentication failures at slurmrestd.
 	ErrUnauthorized = errors.New("slurm: unauthorized")
+	// ErrForbidden marks Slurm authorization failures (e.g. slurmdbd AdminLevel).
+	ErrForbidden = errors.New("slurm: forbidden")
+	// ErrRejected marks a non-permission policy operation rejected by Slurm.
+	ErrRejected = errors.New("slurm: rejected")
 )
 
 // Classify maps a port error onto an apperr kind.
@@ -356,10 +378,14 @@ func Classify(err error) apperr.Kind {
 	switch {
 	case errors.Is(err, ErrNotFound):
 		return apperr.NotFound
+	case errors.Is(err, ErrForbidden):
+		return apperr.Forbidden
 	case errors.Is(err, ErrUnauthorized):
 		return apperr.Unauthenticated
 	case errors.Is(err, ErrUnavailable):
 		return apperr.Unavailable
+	case errors.Is(err, ErrRejected):
+		return apperr.Validation
 	default:
 		return apperr.Internal
 	}

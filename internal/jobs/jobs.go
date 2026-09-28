@@ -217,6 +217,11 @@ type Repository interface {
 	ExpireIdempotency(ctx context.Context, now time.Time) (int64, error)
 }
 
+// AdoptConflictCounter persists repeated optimistic races while adopting a lost submit.
+type AdoptConflictCounter interface {
+	RecordAdoptVersionConflict(context.Context, uuid.UUID) (int, error)
+}
+
 // CheckedRepository adds transactional admission checks to job creation.
 type CheckedRepository interface {
 	CreateWithIdempotencyChecked(ctx context.Context, scope tenants.Scope, j Job, idem IdemRecord, guard TxGuard, enqueue EnqueueFunc) (CreateResult, error)

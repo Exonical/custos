@@ -501,6 +501,9 @@ func TestAPIClusters(t *testing.T) {
 	if code != 201 {
 		t.Fatalf("register: %d %v", code, created)
 	}
+	if created["policy_management"] != "inherit" || created["policy_parent_account"] != "root" {
+		t.Fatalf("cluster policy defaults: %v", created)
+	}
 	// platform DTO exposes token_ref (a reference), never a value
 	tr, _ := created["token_ref"].(map[string]any)
 	if tr["provider"] != "file" || tr["path"] != tokenPath {
@@ -510,6 +513,15 @@ func TestAPIClusters(t *testing.T) {
 		if strings.Contains(strings.ToLower(k), "token") && k != "token_ref" {
 			t.Fatalf("secret-looking key in DTO: %s", k)
 		}
+	}
+	version := int(created["version"].(float64))
+	code, updated := call(adminTok, "PATCH", "/api/v1/clusters/main", map[string]any{"policy_management": "report", "policy_parent_account": "e2e-acct", "version": version})
+	if code != http.StatusOK || updated["policy_management"] != "report" || updated["policy_parent_account"] != "e2e-acct" {
+		t.Fatalf("cluster policy patch: HTTP %d %v", code, updated)
+	}
+	var policyItems int
+	if err := pool.QueryRow(context.Background(), `SELECT count(*) FROM work_items WHERE kind='policy.sync' AND key=$1 AND state IN ('pending','leased')`, "cluster:"+created["id"].(string)).Scan(&policyItems); err != nil || policyItems != 1 {
+		t.Fatalf("cluster PATCH policy.sync enqueue count=%d err=%v", policyItems, err)
 	}
 
 	// Test connection: opens the adapter against the stub.

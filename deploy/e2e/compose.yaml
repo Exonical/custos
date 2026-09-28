@@ -104,13 +104,13 @@ services:
         install -m 600 -o slurm /etc/slurm-secrets/slurm.key /etc/slurm/slurm.key &&
         install -m 600 -o slurm /etc/slurm-secrets/jwt_hs256.key /etc/slurm/jwt_hs256.key &&
         install -d -m 755 -o slurm -g slurm /var/spool/slurmctld &&
-        exec /usr/sbin/slurmctld -D -vvv
+        if [ -f /var/spool/slurmctld/assoc_usage ]; then exec /usr/sbin/slurmctld -D -vvv; else exec /usr/sbin/slurmctld -D -vvv -i; fi
     volumes:
       - ./slurm/slurm.conf:/etc/slurm/slurm.conf:ro
       - ./.secrets/slurm:/etc/slurm-secrets:ro
+      - slurmctld_state:/var/spool/slurmctld
     tmpfs:
       - /run
-      - /var/spool/slurmctld
       - /var/log/slurm
     depends_on:
       slurmdbd:
@@ -217,9 +217,9 @@ services:
           - slurmrestd.e2e
           - openbao-byo.e2e
     ports:
-      # Host-side Go tests reach the same issuer the containers use.
+      # Host-side Go tests reach the same issuer and Slurm REST endpoint.
       - "127.0.0.1:8443:8443"
-      # 6820 stays compose-network-only: nothing on the host needs it.
+      - "127.0.0.1:6820:6820"
     depends_on:
       keycloak:
         condition: service_healthy
@@ -257,3 +257,6 @@ services:
 secrets:
   slurmdb-password:
     file: ./.secrets/slurmdb-password
+
+volumes:
+  slurmctld_state:

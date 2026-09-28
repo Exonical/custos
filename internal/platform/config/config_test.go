@@ -44,6 +44,26 @@ func TestLoadDevDefaults(t *testing.T) {
 	if cfg.Server.Listen != ":8443" || cfg.Server.ReadHeaderTimeout != 5*time.Second {
 		t.Fatalf("defaults not applied: %+v", cfg.Server)
 	}
+	if cfg.Slurm.PolicyManagement != "enforce" {
+		t.Fatalf("policy_management default=%q", cfg.Slurm.PolicyManagement)
+	}
+	badMode := minimalValid()
+	badMode["CUSTOS_SLURM__POLICY_MANAGEMENT"] = "mutate"
+	_, err = Load("", envMap(badMode))
+	var invalid *apperr.Error
+	if !errors.As(err, &invalid) || invalid.Kind != apperr.Invalid {
+		t.Fatalf("invalid policy_management result=%v", err)
+	}
+	found := false
+	for _, detail := range invalid.Details {
+		if detail.Field == "slurm.policy_management" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("policy_management error details=%+v", invalid.Details)
+	}
 }
 
 func writeTemp(t *testing.T, contents string) string {
