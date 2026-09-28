@@ -1,8 +1,10 @@
 package httpclient_test
 
 import (
+	"context"
 	"crypto/x509"
 	"encoding/pem"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -151,5 +153,29 @@ func TestNoInsecureSkipVerify(t *testing.T) {
 	}
 	if _, err := hc.Get(srv.URL); err == nil {
 		t.Fatal("expected TLS verification failure against untrusted cert")
+	}
+}
+
+func TestVetHostMapsSafehttpErrors(t *testing.T) {
+	ctx := context.Background()
+	if err := httpclient.VetHost(ctx, "127.0.0.1",
+		httpclient.DialPolicy{AllowLoopback: true}, false); err != nil {
+		t.Fatalf("loopback with AllowLoopback: %v", err)
+	}
+	err := httpclient.VetHost(ctx, "169.254.169.254",
+		httpclient.DialPolicy{AllowPrivate: true}, false)
+	var ae *apperr.Error
+	if !errors.As(err, &ae) || ae.Kind != apperr.Forbidden ||
+		ae.Code != "slurm.dial_denied" {
+		t.Fatalf("metadata IP: want Forbidden slurm.dial_denied, got %v", err)
+	}
+	if err := httpclient.VetHost(ctx, "10.0.0.1",
+		httpclient.DialPolicy{AllowPrivate: true, AllowLoopback: true},
+		true); !apperr.Is(err, apperr.Forbidden) {
+		t.Fatalf("http to private IP: want Forbidden, got %v", err)
+	}
+	if err := httpclient.VetHost(ctx, "does-not-exist.invalid",
+		httpclient.DialPolicy{}, false); !errors.Is(err, slurm.ErrUnavailable) {
+		t.Fatalf("unresolvable host: want slurm.ErrUnavailable, got %v", err)
 	}
 }
