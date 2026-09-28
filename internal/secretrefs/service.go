@@ -194,7 +194,10 @@ func (s *Service) CreateConnector(ctx context.Context, p authn.Principal, tc ten
 		_ = s.platform.Delete(ctx, ref.Namespace, ref.Mount, ref.Path)
 		return Connector{}, err
 	}
-	c, _ = s.repo.GetConnector(ctx, tenants.ScopeFor(&tc), tc.Tenant.ID, c.ID.String())
+	c, err := s.repo.GetConnector(ctx, tenants.ScopeFor(&tc), tc.Tenant.ID, c.ID.String())
+	if err != nil {
+		return Connector{}, err
+	}
 	conn, checkErr := s.runtime.connector(ctx, c)
 	if checkErr == nil {
 		checkErr = conn.Check(ctx)
@@ -280,7 +283,10 @@ func (s *Service) UpdateConnector(ctx context.Context, p authn.Principal, tc ten
 		return c, err
 	}
 	s.runtime.Invalidate(c.ID)
-	c, _ = s.repo.GetConnector(ctx, tenants.ScopeFor(&tc), tc.Tenant.ID, c.ID.String())
+	c, err = s.repo.GetConnector(ctx, tenants.ScopeFor(&tc), tc.Tenant.ID, c.ID.String())
+	if err != nil {
+		return Connector{}, err
+	}
 	s.record(ctx, p, tc.Tenant.ID, "secret.connector.updated", "secret-connector", c.ID.String(), map[string]any{"kind": c.Kind})
 	return c, nil
 }
@@ -399,7 +405,10 @@ func (s *Service) CreateReference(ctx context.Context, p authn.Principal, tc ten
 	if err := s.repo.CreateReference(ctx, tenants.ScopeFor(&tc), x); err != nil {
 		return x, err
 	}
-	x, _ = s.repo.GetReference(ctx, tenants.ScopeFor(&tc), tc.Tenant.ID, x.ID.String())
+	x, err = s.repo.GetReference(ctx, tenants.ScopeFor(&tc), tc.Tenant.ID, x.ID.String())
+	if err != nil {
+		return Reference{}, err
+	}
 	s.record(ctx, p, tc.Tenant.ID, "secret.reference.created", "secret-reference", x.ID.String(), nil)
 	return x, nil
 }
@@ -488,7 +497,10 @@ func (s *Service) UpdateReference(ctx context.Context, p authn.Principal, tc ten
 	if err := s.repo.UpdateReference(ctx, tenants.ScopeFor(&tc), x); err != nil {
 		return x, err
 	}
-	x, _ = s.repo.GetReference(ctx, tenants.ScopeFor(&tc), tc.Tenant.ID, x.ID.String())
+	x, err = s.repo.GetReference(ctx, tenants.ScopeFor(&tc), tc.Tenant.ID, x.ID.String())
+	if err != nil {
+		return Reference{}, err
+	}
 	s.record(ctx, p, tc.Tenant.ID, "secret.reference.updated", "secret-reference", x.ID.String(), nil)
 	return x, nil
 }
