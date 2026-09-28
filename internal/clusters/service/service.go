@@ -604,7 +604,7 @@ func (s *Service) validateTokenRef(ctx context.Context,
 			code = ae.Code
 		}
 		return apperr.New(apperr.Validation, code,
-			fmt.Sprintf("token_ref not resolvable: %v", ae))
+			fmt.Sprintf("token_ref not resolvable: %v", err))
 	}
 	v.Wipe()
 	return nil

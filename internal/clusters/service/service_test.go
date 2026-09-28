@@ -2,6 +2,7 @@ package service_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"testing"
@@ -203,6 +204,28 @@ func TestCreateValidation(t *testing.T) {
 		_, err := ff.svc.Create(ff.ctx, p, in)
 		if !apperr.Is(err, apperr.Validation) {
 			t.Fatalf("want 422, got %v", err)
+		}
+	})
+
+	t.Run("unresolvable token_ref plain error", func(t *testing.T) {
+		ff := newFixture(t, nil)
+		ff.svc = clustersvc.New(clustersvc.Deps{
+			Repository: ff.repo, Tenants: ff.tenants, Factory: ff.factory,
+			Authorizer: authz.RBAC{}, Recorder: ff.rec,
+			DialPolicy: httpclient.DialPolicy{},
+			Resolver:   fakeResolver{err: errors.New("vault sealed")},
+			Enqueuer:   nil,
+		})
+		in := base
+		in.Name = "c-badref-plain"
+		_, err := ff.svc.Create(ff.ctx, p, in)
+		var ae *apperr.Error
+		if !errorAs(err, &ae) || ae.Kind != apperr.Validation ||
+			ae.Code != "secrets.unresolvable" {
+			t.Fatalf("want 422 secrets.unresolvable, got %v", err)
+		}
+		if ae.Message != "token_ref not resolvable: vault sealed" {
+			t.Fatalf("message: %q", ae.Message)
 		}
 	})
 
