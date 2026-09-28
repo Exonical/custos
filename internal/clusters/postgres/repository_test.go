@@ -399,3 +399,53 @@ func TestAutoAssignTenants(t *testing.T) {
 	}
 	_ = ta
 }
+
+func TestListVisibleForTenantHydration(t *testing.T) {
+	pool := dbtest.Pool(t)
+	repo := clusterpg.New(pool)
+	ctx := context.Background()
+
+	c := mkCluster("hydrate")
+	c.CABundlePEM = "-----BEGIN CERTIFICATE-----"
+	c.ClientCertRef = &secrets.Reference{Provider: "file", Path: "slurm/cert"}
+	if err := repo.Create(ctx, c); err != nil {
+		t.Fatal(err)
+	}
+	tid := mkTenant(t, pool, "hydrate-a", tenants.StateActive)
+	ps := tenants.PlatformScope()
+	if err := repo.UpsertAssignment(ctx, ps, clusters.Assignment{
+		ClusterID: c.ID, TenantID: tid, Source: clusters.SourceManual,
+		Defaults: clusters.AssignmentDefaults{DefaultAccountPrefix: "acct-"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	cs, m, err := repo.ListVisibleForTenant(ctx, ps, tid)
+	if err != nil || len(cs) != 1 {
+		t.Fatalf("visible: %v %+v", err, cs)
+	}
+	got := cs[0]
+	if got.TokenRef.Path != "slurm/token" || got.ClientCertRef == nil ||
+		got.ClientCertRef.Path != "slurm/cert" ||
+		got.CABundlePEM != c.CABundlePEM {
+		t.Fatalf("hydration: %+v", got)
+	}
+	if a := m[c.ID]; a.Source != clusters.SourceManual || a.TenantID != tid ||
+		a.Defaults.DefaultAccountPrefix != "acct-" {
+		t.Fatalf("assignment: %+v", a)
+	}
+
+	// A token_ref that does not decode into secrets.Reference fails every
+	// read path alike rather than yielding a blank reference.
+	if _, err := pool.Exec(ctx,
+		`UPDATE clusters SET token_ref='"not-an-object"' WHERE id=$1`,
+		c.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.GetByNameOrID(ctx, c.ID.String()); err == nil {
+		t.Fatal("GetByNameOrID: want decode error")
+	}
+	if _, _, err := repo.ListVisibleForTenant(ctx, ps, tid); err == nil {
+		t.Fatal("ListVisibleForTenant: want decode error")
+	}
+}

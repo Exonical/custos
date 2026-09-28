@@ -45,18 +45,22 @@ func applyScope(ctx context.Context, tx pgx.Tx, s tenants.Scope) error {
 	return db.SetTenant(ctx, tx, id)
 }
 
-func scanCluster(row pgx.Row) (clusters.Cluster, error) {
+// scanCluster scans a row whose leading columns are clusterCols (or
+// clusterColsQualified) into a Cluster; extra receives any trailing
+// columns selected after them.
+func scanCluster(row pgx.Row, extra ...any) (clusters.Cluster, error) {
 	var c clusters.Cluster
 	var caBundle, lastErr *string
 	var tokenRef, certRef []byte
 	var capJSON []byte
-	err := row.Scan(&c.ID, &c.Name, &c.DisplayName, &c.BaseURL,
+	dest := append([]any{&c.ID, &c.Name, &c.DisplayName, &c.BaseURL,
 		&c.APIVersion, &caBundle, &c.IdentityMode, &c.ServiceUser,
 		&tokenRef, &certRef, &c.Visibility, &c.State,
 		&c.ConsecFailures, &c.ConsecSuccesses,
 		&c.LastSyncAt, &lastErr, &capJSON, &c.CapabilitiesAt,
 		&c.PolicyManagement, &c.PolicyParentAccount,
-		&c.Version, &c.CreatedAt, &c.UpdatedAt)
+		&c.Version, &c.CreatedAt, &c.UpdatedAt}, extra...)
+	err := row.Scan(dest...)
 	if err != nil {
 		return c, db.MapError(err)
 	}
@@ -453,40 +457,13 @@ func (r *Repository) ListVisibleForTenant(ctx context.Context, scope tenants.Sco
 		}
 		defer rows.Close()
 		for rows.Next() {
-			var c clusters.Cluster
-			var caBundle, lastErr *string
-			var tokenRef, certRef, capJSON, def []byte
 			var src string
-			var a clusters.Assignment
-			if err := rows.Scan(&c.ID, &c.Name, &c.DisplayName, &c.BaseURL,
-				&c.APIVersion, &caBundle, &c.IdentityMode, &c.ServiceUser,
-				&tokenRef, &certRef, &c.Visibility, &c.State,
-				&c.ConsecFailures, &c.ConsecSuccesses,
-				&c.LastSyncAt, &lastErr, &capJSON, &c.CapabilitiesAt,
-				&c.PolicyManagement, &c.PolicyParentAccount,
-				&c.Version, &c.CreatedAt, &c.UpdatedAt,
-				&src, &def); err != nil {
+			var def []byte
+			c, err := scanCluster(rows, &src, &def)
+			if err != nil {
 				return err
 			}
-			if caBundle != nil {
-				c.CABundlePEM = *caBundle
-			}
-			if lastErr != nil {
-				c.LastError = *lastErr
-			}
-			_ = json.Unmarshal(tokenRef, &c.TokenRef)
-			if certRef != nil {
-				var rr secrets.Reference
-				if err := json.Unmarshal(certRef, &rr); err == nil {
-					c.ClientCertRef = &rr
-				}
-			}
-			if capJSON != nil {
-				var cc slurm.Capabilities
-				if err := json.Unmarshal(capJSON, &cc); err == nil {
-					c.Capabilities = &cc
-				}
-			}
+			var a clusters.Assignment
 			a.ClusterID, a.TenantID, a.Source = c.ID, tenantID, src
 			_ = json.Unmarshal(def, &a.Defaults)
 			m[c.ID] = a
