@@ -37,15 +37,6 @@ const jobCols = `id, tenant_id, project_id, cluster_id, created_by, name,
 	submitted_at, started_at, ended_at, last_reconciled_at, version,
 	created_at, updated_at, resource_usage, binding_id, estimated_cost`
 
-// nilDigest returns nil for the zero digest so script_digest stores
-// NULL on command (payload-less) jobs.
-func jsonMaybe(v any) []byte {
-	if v == nil {
-		return nil
-	}
-	b, _ := json.Marshal(v)
-	return b
-}
 func nullableUUID(v *uuid.UUID) any {
 	if v == nil {
 		return nil
@@ -53,6 +44,8 @@ func nullableUUID(v *uuid.UUID) any {
 	return *v
 }
 
+// nilDigest returns nil for the zero digest so script_digest stores
+// NULL on command (payload-less) jobs.
 func nilDigest(d validation.Digest) []byte {
 	if d == (validation.Digest{}) {
 		return nil
@@ -133,7 +126,7 @@ func (r *Repository) Create(ctx context.Context, scope tenants.Scope,
 			nilDigest(j.ScriptDigest), string(j.ScriptLanguage),
 			j.ScriptValidationID, j.TaskExecutionID, j.SubmittedAt,
 			j.StartedAt, j.EndedAt, j.LastReconciledAt, j.Version,
-			j.CreatedAt, j.UpdatedAt, jsonMaybe(j.ResourceUsage), nullableUUID(j.BindingID), jsonMaybe(j.EstimatedCost)); err != nil {
+			j.CreatedAt, j.UpdatedAt, db.JSONOrNil(j.ResourceUsage), nullableUUID(j.BindingID), db.JSONOrNil(j.EstimatedCost)); err != nil {
 			return db.MapError(err)
 		}
 		if enqueue != nil {
@@ -223,7 +216,7 @@ func (r *Repository) CreateWithIdempotencyChecked(ctx context.Context,
 			string(j.ScriptLanguage), j.ScriptValidationID,
 			j.TaskExecutionID, j.SubmittedAt,
 			j.StartedAt, j.EndedAt, j.LastReconciledAt, j.Version,
-			j.CreatedAt, j.UpdatedAt, jsonMaybe(j.ResourceUsage), nullableUUID(j.BindingID), jsonMaybe(j.EstimatedCost)); err != nil {
+			j.CreatedAt, j.UpdatedAt, db.JSONOrNil(j.ResourceUsage), nullableUUID(j.BindingID), db.JSONOrNil(j.EstimatedCost)); err != nil {
 			return db.MapError(err)
 		}
 		if enqueue != nil {

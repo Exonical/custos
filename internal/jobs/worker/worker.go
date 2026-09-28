@@ -18,7 +18,6 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 
-	"github.com/Exonical/custos/internal/allocations"
 	"github.com/Exonical/custos/internal/audit"
 	"github.com/Exonical/custos/internal/clusters"
 	"github.com/Exonical/custos/internal/executions"
@@ -52,16 +51,15 @@ type SecretDelivery interface {
 
 // Deps wires the handlers.
 type Deps struct {
-	Jobs        jobs.Repository
-	Scripts     scripts.Store
-	Clusters    clusters.Repository
-	Factory     slurm.Factory
-	Exec        workqueue.Execer // pool: out-of-transaction enqueues
-	Execs       executions.Repository
-	Audit       audit.Recorder
-	Metrics     *Metrics // optional
-	Secrets     SecretDelivery
-	Allocations *allocations.Service
+	Jobs     jobs.Repository
+	Scripts  scripts.Store
+	Clusters clusters.Repository
+	Factory  slurm.Factory
+	Exec     workqueue.Execer // pool: out-of-transaction enqueues
+	Execs    executions.Repository
+	Audit    audit.Recorder
+	Metrics  *Metrics // optional
+	Secrets  SecretDelivery
 }
 
 func jobID(it workqueue.Item) (uuid.UUID, error) {
