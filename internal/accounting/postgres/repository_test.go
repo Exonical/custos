@@ -18,6 +18,7 @@ import (
 	jobpg "github.com/Exonical/custos/internal/jobs/postgres"
 	"github.com/Exonical/custos/internal/platform/db/dbtest"
 	"github.com/Exonical/custos/internal/secrets"
+	"github.com/Exonical/custos/internal/slurm"
 	"github.com/Exonical/custos/internal/tenants"
 	"github.com/Exonical/custos/internal/validation"
 	"github.com/Exonical/custos/internal/workflowspec"
@@ -162,3 +163,38 @@ func TestAttributionUsesNameWhenSlurmIDIsReused(t *testing.T) {
 
 func repoOn(p *pgxpool.Pool) *accountpg.Repository { return accountpg.New(p) }
 func ptr(v int64) *int64                           { return &v }
+func TestAggregateFailedMatchesRecordFailed(t *testing.T) {
+	ctx := context.Background()
+	pool := dbtest.Pool(t)
+	cluster := clusters.Cluster{ID: uuid.Must(uuid.NewV7()), Name: "failed-rule", DisplayName: "failed rule", BaseURL: "https://example", APIVersion: "v0.0.45", IdentityMode: clusters.IdentityService, ServiceUser: "custos", TokenRef: secrets.Reference{Provider: "file", Path: "x"}, Visibility: clusters.VisibilityAssigned, State: clusters.StateActive, Version: 1}
+	if err := clusterpg.New(pool).Create(ctx, cluster); err != nil {
+		t.Fatal(err)
+	}
+	states := []slurm.JobState{slurm.JobPending, slurm.JobRunning, slurm.JobSuspended, slurm.JobCompleting, slurm.JobCompleted, slurm.JobFailed, slurm.JobCancelled, slurm.JobTimeout, slurm.JobNodeFail, slurm.JobPreempted, slurm.JobBootFail, slurm.JobDeadline, slurm.JobOutOfMemory, slurm.JobUnknown}
+	zero, one := 0, 1
+	end := time.Date(2026, 9, 3, 1, 0, 0, 0, time.UTC)
+	var records []accounting.Record
+	var wantFailed int64
+	for _, state := range states {
+		for _, exit := range []*int{nil, &zero, &one} {
+			if accounting.Failed(state, exit) {
+				wantFailed++
+			}
+			records = append(records, accounting.Record{ID: uuid.Must(uuid.NewV7()), SlurmJobID: int64(len(records) + 1), SlurmJobName: "external", Account: "none", State: string(state), ExitCode: exit, EndTime: end, CollectedAt: time.Now()})
+		}
+	}
+	repo := accountpg.New(pool)
+	if _, err := repo.Store(ctx, cluster.ID, records, end); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.AggregateDirty(ctx, 10); err != nil {
+		t.Fatal(err)
+	}
+	var jobsN, failed int64
+	if err := pool.QueryRow(ctx, `SELECT sum(jobs),sum(failed) FROM usage_daily WHERE cluster_id=$1`, cluster.ID).Scan(&jobsN, &failed); err != nil {
+		t.Fatal(err)
+	}
+	if jobsN != int64(len(records)) || failed != wantFailed {
+		t.Fatalf("jobs=%d failed=%d, want jobs=%d failed=%d", jobsN, failed, len(records), wantFailed)
+	}
+}
