@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -9,7 +8,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 	"time"
 
@@ -155,42 +153,8 @@ func TestAPIExecutions(t *testing.T) {
 		c["sub"] = sub
 		return idp.Token(t, c)
 	}
-	call := func(tok, method, path string, body any,
-		idemKey string) (int, map[string]any) {
-		var rdr io.Reader
-		if body != nil {
-			switch b := body.(type) {
-			case string:
-				rdr = strings.NewReader(b)
-			default:
-				j, _ := json.Marshal(body)
-				rdr = bytes.NewReader(j)
-			}
-		}
-		req, err := http.NewRequest(method, srv.URL+path, rdr)
-		if err != nil {
-			t.Fatal(err)
-		}
-		req.Header.Set("Authorization", "Bearer "+tok)
-		if idemKey != "" {
-			req.Header.Set("Idempotency-Key", idemKey)
-		}
-		if body != nil {
-			ct := "application/json"
-			if _, ok := body.(string); ok {
-				ct = "application/yaml"
-			}
-			req.Header.Set("Content-Type", ct)
-		}
-		resp, err := http.DefaultClient.Do(req)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer func() { _ = resp.Body.Close() }()
-		var out map[string]any
-		b, _ := io.ReadAll(resp.Body)
-		_ = json.Unmarshal(b, &out)
-		return resp.StatusCode, out
+	call := func(tok, method, path string, body any, idemKey string) (int, map[string]any) {
+		return apiCall(t, srv.URL, tok, method, path, body, idemKey)
 	}
 
 	adminTok := token("admin-sub")

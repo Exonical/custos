@@ -17,8 +17,22 @@ import (
 
 // DialPolicy controls which resolved addresses may be dialed.
 type DialPolicy struct {
-	AllowPrivate, AllowLoopback, AllowHTTP bool
-	DenyCIDRs                              []netip.Prefix
+	// AllowPrivate permits RFC1918/ULA addresses (deployments whose
+	// endpoints live on private networks set this).
+	AllowPrivate bool
+	// AllowLoopback permits loopback (dev/test only).
+	AllowLoopback bool
+	// AllowHTTP permits http:// endpoints, but only to loopback targets
+	// and only alongside AllowLoopback (dev).
+	AllowHTTP bool
+	// DenyCIDRs are always refused, checked first.
+	DenyCIDRs []netip.Prefix
+}
+
+// lookupIP is the resolver used by VetHost; unexported and injectable so
+// tests can return crafted address lists.
+var lookupIP = func(ctx context.Context, host string) ([]net.IP, error) {
+	return net.DefaultResolver.LookupIP(ctx, "ip", host)
 }
 
 var alwaysDenied = []netip.Prefix{netip.MustParsePrefix("169.254.169.254/32"), netip.MustParsePrefix("fd00:ec2::254/128")}
@@ -77,7 +91,7 @@ func NewWithCertificate(rawURL string, caPEM []byte, cert *tls.Certificate, poli
 
 // VetHost resolves and vets every answer; one denied answer fails closed.
 func VetHost(ctx context.Context, host string, policy DialPolicy, httpOnlyLoopback bool) (netip.Addr, error) {
-	ips, err := net.DefaultResolver.LookupIP(ctx, "ip", host)
+	ips, err := lookupIP(ctx, host)
 	if err != nil {
 		return netip.Addr{}, apperr.Wrap(err, apperr.Unavailable, "ENDPOINT_UNAVAILABLE", "endpoint DNS unavailable")
 	}

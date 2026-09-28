@@ -3,6 +3,7 @@ package accounting
 
 import (
 	"context"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -70,17 +71,30 @@ func Derive(clusterID uuid.UUID, in slurm.JobRecord, now time.Time) Record {
 	return r
 }
 
+// failedStates are the terminal Slurm states that always count as failed.
+var failedStates = []slurm.JobState{slurm.JobFailed, slurm.JobTimeout, slurm.JobNodeFail,
+	slurm.JobOutOfMemory, slurm.JobBootFail, slurm.JobDeadline}
+
+// FailedOnNonZeroExit is the Slurm state that counts as failed only when the
+// job's exit code is non-zero.
+const FailedOnNonZeroExit = slurm.JobCompleted
+
+// FailedStates returns the terminal Slurm states that always count as failed,
+// for persistence adapters that evaluate the Failed rule in a query.
+func FailedStates() []string {
+	out := make([]string, len(failedStates))
+	for i, s := range failedStates {
+		out[i] = string(s)
+	}
+	return out
+}
+
 // Failed applies the accounting failure definition.
 func Failed(state slurm.JobState, exitCode *int) bool {
-	switch state {
-	case slurm.JobFailed, slurm.JobTimeout, slurm.JobNodeFail,
-		slurm.JobOutOfMemory, slurm.JobBootFail, slurm.JobDeadline:
+	if slices.Contains(failedStates, state) {
 		return true
-	case slurm.JobCompleted:
-		return exitCode != nil && *exitCode != 0
-	default:
-		return false
 	}
+	return state == FailedOnNonZeroExit && exitCode != nil && *exitCode != 0
 }
 
 // Watermark is the collector cursor and status for a cluster.

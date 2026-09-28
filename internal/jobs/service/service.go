@@ -371,26 +371,14 @@ func (s *Service) Submit(ctx context.Context, p authn.Principal,
 			WrappedTokenRefs:  wrappedHandles,
 		},
 	}
-	var allocationResult allocations.CheckResult
+	alloc := allocations.NewEnforcement(s.d.Allocations, tenants.ScopeFor(&tc), bindingMeta.ID)
 	built, denial := admission.Build(admission.BuildInput{
 		Spec: spec, Request: in.Resources, Policy: pol,
 		Binding: binding, Cluster: *snap,
-		Allocate: func(res admission.ResolvedResources) (*admission.Denial, []admission.Warning) {
-			if s.d.Allocations == nil {
-				return nil, nil
-			}
-			result, err := s.d.Allocations.Check(ctx, tenants.ScopeFor(&tc), bindingMeta.ID, res)
-			if err != nil {
-				return &admission.Denial{Code: "ALLOCATION_CHECK_FAILED", Field: "allocation", Message: "allocation check unavailable", Severity: validation.SeverityError}, nil
-			}
-			allocationResult = result
-			return result.Denial, result.Warnings
-		},
+		Allocate: alloc.Allocate(ctx),
 	})
 	if denial != nil {
-		if allocationResult.Denial != nil && s.d.Allocations != nil {
-			s.d.Allocations.Observe(ctx, allocationResult)
-		}
+		alloc.ObserveDenial(ctx)
 		s.audit(ctx, p, tenantID, "job.submit_denied", "project",
 			projectID.String(), denial.Code, audit.ResultDeny,
 			map[string]any{
@@ -434,43 +422,28 @@ func (s *Service) Submit(ctx context.Context, p authn.Principal,
 		return err
 	}
 	var res jobs.CreateResult
-	if s.d.Allocations != nil {
+	if alloc.Enabled() {
 		repo, ok := s.d.Jobs.(jobs.CheckedRepository)
 		if !ok {
 			return Result{}, nil, apperr.New(apperr.Internal, "ALLOCATION_CHECK_UNAVAILABLE", "transactional allocation checks are unavailable")
 		}
-		guard := jobs.TxGuard(func(guardCtx context.Context, tx any) error {
-			checked, checkErr := s.d.Allocations.CheckInTx(guardCtx, tx, bindingMeta.ID, built.Admission.EstimatedCost)
-			if checkErr != nil {
-				return checkErr
-			}
-			allocationResult = checked
-			if checked.Denial != nil {
-				return apperr.New(apperr.Validation, checked.Denial.Code, checked.Denial.Message)
-			}
-			return nil
-		})
+		guard := jobs.TxGuard(alloc.Guard(built.Admission.EstimatedCost))
 		res, err = repo.CreateWithIdempotencyChecked(ctx, scope, j, idem, guard, enqueue)
 	} else {
 		res, err = s.d.Jobs.CreateWithIdempotency(ctx, scope, j, idem, enqueue)
 	}
 	if err != nil {
-		if allocationResult.Denial != nil && s.d.Allocations != nil {
-			s.d.Allocations.Observe(ctx, allocationResult)
-			s.audit(ctx, p, tenantID, "job.submit_denied", "project", projectID.String(), allocationResult.Denial.Code, audit.ResultDeny, map[string]any{"field": allocationResult.Denial.Field, "script_digest": digest.String()})
-			return Result{}, []validation.Diagnostic{{Source: "admission", Code: allocationResult.Denial.Code, Severity: allocationResult.Denial.Severity, Field: allocationResult.Denial.Field, Message: allocationResult.Denial.Message}}, apperr.New(apperr.Validation, allocationResult.Denial.Code, fmt.Sprintf("%s: %s", allocationResult.Denial.Field, allocationResult.Denial.Message))
+		if denied := alloc.Denial(); denied != nil {
+			alloc.ObserveDenial(ctx)
+			s.audit(ctx, p, tenantID, "job.submit_denied", "project", projectID.String(), denied.Code, audit.ResultDeny, map[string]any{"field": denied.Field, "script_digest": digest.String()})
+			return Result{}, []validation.Diagnostic{{Source: "admission", Code: denied.Code, Severity: denied.Severity, Field: denied.Field, Message: denied.Message}}, apperr.New(apperr.Validation, denied.Code, fmt.Sprintf("%s: %s", denied.Field, denied.Message))
 		}
 		return Result{}, nil, err
 	}
 	if res.Replayed {
 		return Result{Job: res.Job, Replayed: true}, nil, nil
 	}
-	if s.d.Allocations != nil {
-		s.d.Allocations.Observe(ctx, allocationResult)
-	}
-	if len(allocationResult.Soft) > 0 && s.d.Allocations != nil {
-		s.d.Allocations.AuditSoft(ctx, p, tenantID, allocationResult)
-	}
+	alloc.Admitted(ctx, p, tenantID)
 	s.audit(ctx, p, tenantID, "job.submitted", "job", jobID.String(), "",
 		audit.ResultAllow, map[string]any{
 			"spec_digest":   built.Digest.String(),

@@ -494,21 +494,29 @@ func lostOrRetry(ctx context.Context, d Deps, j jobs.Job,
 		base = &b
 	}
 	if time.Since(*base) > lostAfter {
-		now := time.Now().UTC()
-		if _, err := transition(ctx, d, j, jobs.Patch{
-			State:            ptr(jobs.StateFailed),
-			Reason:           ptr("LOST"),
-			LastReconciledAt: &now,
-			EndedAt:          &now,
-		}); err != nil && !apperr.Is(err, apperr.Conflict) {
-			return err
-		}
-		d.Metrics.terminal(ctx, jobs.StateFailed)
-		auditJob(ctx, d, j, "job.lost", audit.ResultError,
-			"job vanished from scheduler for over 10 minutes")
-		return nil
+		return markLost(ctx, d, j)
 	}
 	return workqueue.RescheduleAt(time.Now().Add(30 * time.Second))
+}
+
+// markLost transitions a job that has been unknown to the scheduler for
+// longer than lostAfter to FAILED/LOST, records the terminal metric, and
+// emits the job.lost audit event. A Conflict (concurrent transition) is
+// not an error.
+func markLost(ctx context.Context, d Deps, j jobs.Job) error {
+	now := time.Now().UTC()
+	if _, err := transition(ctx, d, j, jobs.Patch{
+		State:            ptr(jobs.StateFailed),
+		Reason:           ptr("LOST"),
+		LastReconciledAt: &now,
+		EndedAt:          &now,
+	}); err != nil && !apperr.Is(err, apperr.Conflict) {
+		return err
+	}
+	d.Metrics.terminal(ctx, jobs.StateFailed)
+	auditJob(ctx, d, j, "job.lost", audit.ResultError,
+		"job vanished from scheduler for over 10 minutes")
+	return nil
 }
 
 // --- job.cancel ---------------------------------------------------------
@@ -619,12 +627,8 @@ func Sweep(d Deps) workqueue.Handler {
 					base = &b
 				}
 				if j.SlurmJobID != nil && time.Since(*base) > lostAfter {
-					now := time.Now().UTC()
-					if _, err := transition(ctx, d, j, jobs.Patch{
-						State: ptr(jobs.StateFailed), Reason: ptr("LOST"),
-						LastReconciledAt: &now, EndedAt: &now,
-					}); err == nil {
-						d.Metrics.terminal(ctx, jobs.StateFailed)
+					if err := markLost(ctx, d, j); err != nil {
+						return err
 					}
 				}
 				continue

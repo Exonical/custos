@@ -221,6 +221,23 @@ func apiError(errs *api.V0045OpenapiErrors, status int) error {
 	}
 }
 
+// pickBody returns the JSON200 body, falling back to JSONDefault; nil when
+// slurmrestd sent neither.
+func pickBody[T any](ok, def *T) *T {
+	if ok != nil {
+		return ok
+	}
+	return def
+}
+
+// checkEnvelope maps a response body's errors and meta to an adapter error.
+func checkEnvelope(errs *api.V0045OpenapiErrors, meta *api.V0045OpenapiMeta, status int) error {
+	if err := apiError(errs, status); err != nil {
+		return err
+	}
+	return checkMeta(meta)
+}
+
 // unavailable wraps a transport-level failure.
 func unavailable(err error) error {
 	return fmt.Errorf("%w: %v", slurm.ErrUnavailable, err)
