@@ -191,9 +191,7 @@ func (h *workflowHandlers) archive(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(ctx, w, err)
 		return
 	}
-	var in patchWorkflowRequest
-	_ = decodeDTO(w, r, &in)
-	if err := h.svc.Archive(ctx, p, tc, id, in.Version); err != nil {
+	if err := h.svc.Archive(ctx, p, tc, id, expectVersion(r)); err != nil {
 		httpx.WriteError(ctx, w, err)
 		return
 	}
