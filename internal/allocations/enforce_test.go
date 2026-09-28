@@ -12,6 +12,7 @@ import (
 	"github.com/Exonical/custos/internal/allocations"
 	"github.com/Exonical/custos/internal/authn"
 	"github.com/Exonical/custos/internal/platform/apperr"
+	"github.com/Exonical/custos/internal/platform/db"
 	"github.com/Exonical/custos/internal/tenants"
 	"github.com/Exonical/custos/internal/validation"
 )
@@ -32,7 +33,7 @@ func (r *enforceRepo) InFlight(context.Context, tenants.Scope, uuid.UUID) (map[s
 	return nil, nil
 }
 
-func (r *enforceRepo) CheckInTx(context.Context, any, uuid.UUID, map[string]float64) (allocations.CheckResult, error) {
+func (r *enforceRepo) CheckInTx(context.Context, db.Tx, uuid.UUID, map[string]float64) (allocations.CheckResult, error) {
 	return r.inTx, r.inTxErr
 }
 

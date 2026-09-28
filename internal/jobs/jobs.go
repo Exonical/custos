@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/Exonical/custos/internal/admission"
+	"github.com/Exonical/custos/internal/platform/db"
 	"github.com/Exonical/custos/internal/platform/workqueue"
 	"github.com/Exonical/custos/internal/slurm"
 	"github.com/Exonical/custos/internal/tenants"
@@ -169,7 +170,7 @@ type Execer = workqueue.Execer
 type EnqueueFunc func(ex Execer) error
 
 // TxGuard checks admission policy with access to the persistence transaction.
-type TxGuard func(context.Context, any) error
+type TxGuard func(context.Context, db.Tx) error
 
 // IdemRecord is the idempotency_keys row written with the job insert.
 type IdemRecord struct {

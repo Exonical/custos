@@ -20,6 +20,7 @@ import (
 	"github.com/Exonical/custos/internal/jobs"
 	jobpg "github.com/Exonical/custos/internal/jobs/postgres"
 	"github.com/Exonical/custos/internal/platform/apperr"
+	"github.com/Exonical/custos/internal/platform/db"
 	"github.com/Exonical/custos/internal/platform/db/dbtest"
 	"github.com/Exonical/custos/internal/secrets"
 	"github.com/Exonical/custos/internal/tenants"
@@ -159,7 +160,7 @@ func TestConcurrentAdmissionReservesExactlyOneJob(t *testing.T) {
 			binding := bid
 			j := jobs.Job{ID: id, TenantID: tid, ProjectID: pid, ClusterID: cid, BindingID: &binding, CreatedBy: uid, Name: "race-" + id.String(), State: jobs.StateSubmitting, ResourceRequest: workflowspec.Resources{}, ExecutionSpec: admission.ExecutionSpec{ID: id, TenantID: tid, ProjectID: pid}, ExecutionSpecDigest: validation.DigestOf([]byte(id.String())), EstimatedCost: map[string]float64{"cpu_hours": 1}, ScriptLanguage: workflowspec.LanguageBash, Version: 1, CreatedAt: now, UpdatedAt: now}
 			idem := jobs.IdemRecord{Key: "race-" + id.String(), RequestHash: sha256.Sum256([]byte(id.String())), Status: 202, Body: []byte(`{}`), ResourceID: id, ExpiresAt: now.Add(time.Hour)}
-			_, e := jobRepo.CreateWithIdempotencyChecked(ctx, tenants.PlatformScope(), j, idem, func(guardCtx context.Context, tx any) error {
+			_, e := jobRepo.CreateWithIdempotencyChecked(ctx, tenants.PlatformScope(), j, idem, func(guardCtx context.Context, tx db.Tx) error {
 				checked, checkErr := allocationRepo.CheckInTx(guardCtx, tx, bid, j.EstimatedCost)
 				if checkErr != nil {
 					return checkErr

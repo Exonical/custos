@@ -182,11 +182,7 @@ func (r *Repository) InFlight(ctx context.Context, s tenants.Scope, bid uuid.UUI
 
 // CheckInTx serializes hard-budget checks for a binding and recomputes the
 // active allocations and reservations using the caller's persistence transaction.
-func (r *Repository) CheckInTx(ctx context.Context, transaction any, bindingID uuid.UUID, estimate map[string]float64) (allocations.CheckResult, error) {
-	tx, ok := transaction.(pgx.Tx)
-	if !ok {
-		return allocations.CheckResult{}, apperr.New(apperr.Internal, "ALLOCATION_TRANSACTION_INVALID", "allocation check requires a PostgreSQL transaction")
-	}
+func (r *Repository) CheckInTx(ctx context.Context, tx db.Tx, bindingID uuid.UUID, estimate map[string]float64) (allocations.CheckResult, error) {
 	var hasHard bool
 	now := time.Now().UTC()
 	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM allocations WHERE binding_id=$1 AND enforcement='hard' AND period_start <= $2 AND period_end > $2)`, bindingID, now).Scan(&hasHard); err != nil {

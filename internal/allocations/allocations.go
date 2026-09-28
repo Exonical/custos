@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/Exonical/custos/internal/admission"
+	"github.com/Exonical/custos/internal/platform/db"
 	"github.com/Exonical/custos/internal/tenants"
 )
 
@@ -35,7 +36,7 @@ type Repository interface {
 	Active(context.Context, tenants.Scope, uuid.UUID, time.Time) ([]Allocation, error)
 	InFlight(context.Context, tenants.Scope, uuid.UUID) (map[string]float64, error)
 	Refresh(context.Context, *uuid.UUID) (int, error)
-	CheckInTx(context.Context, any, uuid.UUID, map[string]float64) (CheckResult, error)
+	CheckInTx(context.Context, db.Tx, uuid.UUID, map[string]float64) (CheckResult, error)
 }
 
 // CheckResult reports allocation decisions for one admission attempt.
