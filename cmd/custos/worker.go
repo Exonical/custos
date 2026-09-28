@@ -114,6 +114,7 @@ func cmdWorker(parent context.Context, configPath string, lookupEnv config.Looku
 	secretSvc := secretrefs.NewService(secretRepo, secretRuntime, authz.RBAC{},
 		recorder, sdeps.OpenBao, platformNS, tenantRepo)
 	secretSvc.SetMeterProvider(prov.Meter)
+	secretSvc.SetLogger(logger)
 	clusterRepo := clusterpg.New(pool)
 	q.Register(clustersync.Kind, clustersync.Handler(clusterRepo,
 		sdeps.Factory, cfg.Worker.ClusterSyncInterval,
