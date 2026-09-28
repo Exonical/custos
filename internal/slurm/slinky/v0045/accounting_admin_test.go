@@ -194,3 +194,53 @@ func TestGrpTRESMinsUnsetFixture(t *testing.T) {
 		t.Fatalf("cleared cpu TRES remained set: %+v", assoc.GrpTRESMins)
 	}
 }
+
+func TestAccountingBodylessResponses(t *testing.T) {
+	status := http.StatusNoContent
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(status)
+	}))
+	defer server.Close()
+	client, err := New(slurm.Endpoint{BaseURL: server.URL}, slurm.Credential{UserName: "custos", Token: secrets.NewValue([]byte("test-token"))}, server.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := t.Context()
+	writes := map[string]func() error{
+		"UpsertAccounts": func() error {
+			return client.UpsertAccounts(ctx, []slurm.Account{{Name: "a", Cluster: "e2e"}})
+		},
+		"UpsertAssociations": func() error {
+			return client.UpsertAssociations(ctx, []slurm.Association{{Account: "a", Cluster: "e2e"}})
+		},
+		"DeleteAccount": func() error { return client.DeleteAccount(ctx, "a") },
+	}
+	reads := map[string]func() error{
+		"GetAccounts": func() error { _, err := client.GetAccounts(ctx); return err },
+		"GetQoS":      func() error { _, err := client.GetQoS(ctx); return err },
+		"GetAssociations": func() error {
+			_, err := client.GetAssociations(ctx, slurm.AssociationFilter{})
+			return err
+		},
+		"GetJobRecords": func() error {
+			_, err := client.GetJobRecords(ctx, slurm.JobRecordFilter{})
+			return err
+		},
+	}
+	for name, call := range writes {
+		status = http.StatusNoContent
+		if err := call(); err != nil {
+			t.Errorf("%s with 204 and no body: %v", name, err)
+		}
+		status = http.StatusServiceUnavailable
+		if err := call(); !errors.Is(err, slurm.ErrUnavailable) {
+			t.Errorf("%s with 503 and no body: %v, want ErrUnavailable", name, err)
+		}
+	}
+	status = http.StatusNoContent
+	for name, call := range reads {
+		if err := call(); !errors.Is(err, slurm.ErrUnavailable) {
+			t.Errorf("%s with no body: %v, want ErrUnavailable", name, err)
+		}
+	}
+}

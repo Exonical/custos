@@ -21,19 +21,11 @@ func (c *Client) GetAccounts(ctx context.Context) ([]slurm.Account, error) {
 	if err != nil {
 		return nil, unavailable(err)
 	}
-	var body *api.V0045OpenapiAccountsResp
-	if rsp.JSON200 != nil {
-		body = rsp.JSON200
-	} else if rsp.JSONDefault != nil {
-		body = rsp.JSONDefault
-	}
+	body := pickBody(rsp.JSON200, rsp.JSONDefault)
 	if body == nil {
 		return nil, fmt.Errorf("%w: %v", slurm.ErrUnavailable, errEmpty)
 	}
-	if err := apiError(body.Errors, rsp.StatusCode()); err != nil {
-		return nil, err
-	}
-	if err := checkMeta(body.Meta); err != nil {
+	if err := checkEnvelope(body.Errors, body.Meta, rsp.StatusCode()); err != nil {
 		return nil, err
 	}
 	out := make([]slurm.Account, 0, len(body.Accounts))
@@ -54,19 +46,11 @@ func (c *Client) GetQoS(ctx context.Context) ([]slurm.QoS, error) {
 	if err != nil {
 		return nil, unavailable(err)
 	}
-	var body *api.V0045OpenapiSlurmdbdQosResp
-	if rsp.JSON200 != nil {
-		body = rsp.JSON200
-	} else if rsp.JSONDefault != nil {
-		body = rsp.JSONDefault
-	}
+	body := pickBody(rsp.JSON200, rsp.JSONDefault)
 	if body == nil {
 		return nil, fmt.Errorf("%w: %v", slurm.ErrUnavailable, errEmpty)
 	}
-	if err := apiError(body.Errors, rsp.StatusCode()); err != nil {
-		return nil, err
-	}
-	if err := checkMeta(body.Meta); err != nil {
+	if err := checkEnvelope(body.Errors, body.Meta, rsp.StatusCode()); err != nil {
 		return nil, err
 	}
 	out := make([]slurm.QoS, 0, len(body.Qos))
@@ -105,19 +89,11 @@ func (c *Client) GetAssociations(ctx context.Context,
 	if err != nil {
 		return nil, unavailable(err)
 	}
-	var body *api.V0045OpenapiAssocsResp
-	if rsp.JSON200 != nil {
-		body = rsp.JSON200
-	} else if rsp.JSONDefault != nil {
-		body = rsp.JSONDefault
-	}
+	body := pickBody(rsp.JSON200, rsp.JSONDefault)
 	if body == nil {
 		return nil, fmt.Errorf("%w: %v", slurm.ErrUnavailable, errEmpty)
 	}
-	if err := apiError(body.Errors, rsp.StatusCode()); err != nil {
-		return nil, err
-	}
-	if err := checkMeta(body.Meta); err != nil {
+	if err := checkEnvelope(body.Errors, body.Meta, rsp.StatusCode()); err != nil {
 		return nil, err
 	}
 	out := make([]slurm.Association, 0, len(body.Associations))
@@ -187,19 +163,11 @@ func (c *Client) GetJobRecords(ctx context.Context,
 	if err != nil {
 		return nil, unavailable(err)
 	}
-	var body *api.V0045OpenapiSlurmdbdJobsResp
-	if rsp.JSON200 != nil {
-		body = rsp.JSON200
-	} else if rsp.JSONDefault != nil {
-		body = rsp.JSONDefault
-	}
+	body := pickBody(rsp.JSON200, rsp.JSONDefault)
 	if body == nil {
 		return nil, fmt.Errorf("%w: %v", slurm.ErrUnavailable, errEmpty)
 	}
-	if err := apiError(body.Errors, rsp.StatusCode()); err != nil {
-		return nil, err
-	}
-	if err := checkMeta(body.Meta); err != nil {
+	if err := checkEnvelope(body.Errors, body.Meta, rsp.StatusCode()); err != nil {
 		return nil, err
 	}
 	out := make([]slurm.JobRecord, 0, len(body.Jobs))
@@ -307,20 +275,12 @@ func (c *Client) UpsertAccounts(ctx context.Context, accounts []slurm.Account) e
 		if err != nil {
 			return unavailable(err)
 		}
-		result := rsp.JSON200
-		if result == nil {
-			result = rsp.JSONDefault
+		if result := pickBody(rsp.JSON200, rsp.JSONDefault); result != nil {
+			err = checkEnvelope(result.Errors, result.Meta, rsp.StatusCode())
+		} else {
+			err = apiError(nil, rsp.StatusCode())
 		}
-		if result == nil {
-			if err = apiError(nil, rsp.StatusCode()); err != nil {
-				return err
-			}
-			continue
-		}
-		if err = apiError(result.Errors, rsp.StatusCode()); err != nil {
-			return err
-		}
-		if err = checkMeta(result.Meta); err != nil {
+		if err != nil {
 			return err
 		}
 	}
@@ -359,19 +319,10 @@ func (c *Client) postAssociations(ctx context.Context, associations []slurm.Asso
 	if err != nil {
 		return unavailable(err)
 	}
-	var result *api.V0045OpenapiResp
-	if rsp.JSON200 != nil {
-		result = rsp.JSON200
-	} else {
-		result = rsp.JSONDefault
+	if result := pickBody(rsp.JSON200, rsp.JSONDefault); result != nil {
+		return checkEnvelope(result.Errors, result.Meta, rsp.StatusCode())
 	}
-	if result == nil {
-		return apiError(nil, rsp.StatusCode())
-	}
-	if err = apiError(result.Errors, rsp.StatusCode()); err != nil {
-		return err
-	}
-	return checkMeta(result.Meta)
+	return apiError(nil, rsp.StatusCode())
 }
 
 func associationForWrite(a slurm.Association) (api.V0045Assoc, error) {
@@ -450,22 +401,12 @@ func (c *Client) DeleteAssociation(ctx context.Context, key slurm.AssociationKey
 		if err != nil {
 			return unavailable(err)
 		}
-		var result *api.V0045OpenapiAssocsRemovedResp
-		if rsp.JSON200 != nil {
-			result = rsp.JSON200
+		if result := pickBody(rsp.JSON200, rsp.JSONDefault); result != nil {
+			err = checkEnvelope(result.Errors, result.Meta, rsp.StatusCode())
 		} else {
-			result = rsp.JSONDefault
+			err = apiError(nil, rsp.StatusCode())
 		}
-		if result == nil {
-			if err := apiError(nil, rsp.StatusCode()); err != nil {
-				return err
-			}
-			continue
-		}
-		if err = apiError(result.Errors, rsp.StatusCode()); err != nil {
-			return err
-		}
-		if err = checkMeta(result.Meta); err != nil {
+		if err != nil {
 			return err
 		}
 	}
@@ -478,19 +419,10 @@ func (c *Client) DeleteAccount(ctx context.Context, name string) error {
 	if err != nil {
 		return unavailable(err)
 	}
-	var result *api.V0045OpenapiAccountsRemovedResp
-	if rsp.JSON200 != nil {
-		result = rsp.JSON200
-	} else {
-		result = rsp.JSONDefault
+	if result := pickBody(rsp.JSON200, rsp.JSONDefault); result != nil {
+		return checkEnvelope(result.Errors, result.Meta, rsp.StatusCode())
 	}
-	if result == nil {
-		return apiError(nil, rsp.StatusCode())
-	}
-	if err = apiError(result.Errors, rsp.StatusCode()); err != nil {
-		return err
-	}
-	return checkMeta(result.Meta)
+	return apiError(nil, rsp.StatusCode())
 }
 
 var _ slurm.AccountingAdmin = (*Client)(nil)
