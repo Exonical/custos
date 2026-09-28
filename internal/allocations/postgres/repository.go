@@ -20,13 +20,6 @@ type Repository struct{ pool *pgxpool.Pool }
 
 // New returns a Repository backed by p.
 func New(p *pgxpool.Pool) *Repository { return &Repository{p} }
-func scope(ctx context.Context, tx pgx.Tx, s tenants.Scope) error {
-	if s.IsPlatform() {
-		return db.SetPlatformScope(ctx, tx)
-	}
-	id, _ := s.TenantID()
-	return db.SetTenant(ctx, tx, id)
-}
 
 const cols = `id,tenant_id,project_id,binding_id,name,unit,limit_amount,period_start,period_end,enforcement,consumed_amount,consumed_as_of,version,created_at,updated_at,created_by`
 
@@ -34,7 +27,7 @@ func scan(row pgx.Row) (allocations.Allocation, error) {
 	var a allocations.Allocation
 	err := row.Scan(&a.ID, &a.TenantID, &a.ProjectID, &a.BindingID, &a.Name, &a.Unit, &a.LimitAmount, &a.PeriodStart, &a.PeriodEnd, &a.Enforcement, &a.ConsumedAmount, &a.ConsumedAsOf, &a.Version, &a.CreatedAt, &a.UpdatedAt, &a.CreatedBy)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return a, apperr.New(apperr.NotFound, "NOT_FOUND", "not found")
+		return a, db.ErrNotFound
 	}
 	return a, db.MapError(err)
 }
@@ -42,7 +35,7 @@ func scan(row pgx.Row) (allocations.Allocation, error) {
 // Create inserts an allocation within the supplied RLS scope.
 func (r *Repository) Create(ctx context.Context, s tenants.Scope, a allocations.Allocation) error {
 	return db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := scope(ctx, tx, s); err != nil {
+		if err := db.ApplyScope(ctx, tx, s); err != nil {
 			return err
 		}
 		_, err := tx.Exec(ctx, `INSERT INTO allocations(id,tenant_id,project_id,binding_id,name,unit,limit_amount,period_start,period_end,enforcement,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`, a.ID, a.TenantID, a.ProjectID, a.BindingID, a.Name, a.Unit, a.LimitAmount, a.PeriodStart, a.PeriodEnd, a.Enforcement, a.CreatedBy)
@@ -54,7 +47,7 @@ func (r *Repository) Create(ctx context.Context, s tenants.Scope, a allocations.
 func (r *Repository) Get(ctx context.Context, s tenants.Scope, pid, id uuid.UUID) (allocations.Allocation, error) {
 	var a allocations.Allocation
 	err := db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := scope(ctx, tx, s); err != nil {
+		if err := db.ApplyScope(ctx, tx, s); err != nil {
 			return err
 		}
 		var e error
@@ -68,7 +61,7 @@ func (r *Repository) Get(ctx context.Context, s tenants.Scope, pid, id uuid.UUID
 func (r *Repository) List(ctx context.Context, s tenants.Scope, pid uuid.UUID) ([]allocations.Allocation, error) {
 	var out []allocations.Allocation
 	err := db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := scope(ctx, tx, s); err != nil {
+		if err := db.ApplyScope(ctx, tx, s); err != nil {
 			return err
 		}
 		rows, err := tx.Query(ctx, `SELECT `+cols+` FROM allocations WHERE project_id=$1 ORDER BY name,id`, pid)
@@ -92,7 +85,7 @@ func (r *Repository) List(ctx context.Context, s tenants.Scope, pid uuid.UUID) (
 func (r *Repository) ListTenant(ctx context.Context, s tenants.Scope, tenantID uuid.UUID) ([]allocations.Allocation, error) {
 	var out []allocations.Allocation
 	err := db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := scope(ctx, tx, s); err != nil {
+		if err := db.ApplyScope(ctx, tx, s); err != nil {
 			return err
 		}
 		rows, err := tx.Query(ctx, `SELECT `+cols+` FROM allocations WHERE tenant_id=$1 ORDER BY project_id,name,id`, tenantID)
@@ -115,7 +108,7 @@ func (r *Repository) ListTenant(ctx context.Context, s tenants.Scope, tenantID u
 // Update applies an optimistic allocation update.
 func (r *Repository) Update(ctx context.Context, s tenants.Scope, a allocations.Allocation) error {
 	return db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := scope(ctx, tx, s); err != nil {
+		if err := db.ApplyScope(ctx, tx, s); err != nil {
 			return err
 		}
 		tag, err := tx.Exec(ctx, `UPDATE allocations SET name=$3,unit=$4,limit_amount=$5,period_start=$6,period_end=$7,enforcement=$8,version=version+1,updated_at=now() WHERE id=$1 AND tenant_id=$2 AND version=$9`, a.ID, a.TenantID, a.Name, a.Unit, a.LimitAmount, a.PeriodStart, a.PeriodEnd, a.Enforcement, a.Version)
@@ -132,7 +125,7 @@ func (r *Repository) Update(ctx context.Context, s tenants.Scope, a allocations.
 // Delete removes an allocation from a project.
 func (r *Repository) Delete(ctx context.Context, s tenants.Scope, pid, id uuid.UUID) error {
 	return db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := scope(ctx, tx, s); err != nil {
+		if err := db.ApplyScope(ctx, tx, s); err != nil {
 			return err
 		}
 		tag, err := tx.Exec(ctx, `DELETE FROM allocations WHERE project_id=$1 AND id=$2`, pid, id)
@@ -140,7 +133,7 @@ func (r *Repository) Delete(ctx context.Context, s tenants.Scope, pid, id uuid.U
 			return db.MapError(err)
 		}
 		if tag.RowsAffected() == 0 {
-			return apperr.New(apperr.NotFound, "NOT_FOUND", "not found")
+			return db.ErrNotFound
 		}
 		return nil
 	})
@@ -150,7 +143,7 @@ func (r *Repository) Delete(ctx context.Context, s tenants.Scope, pid, id uuid.U
 func (r *Repository) Active(ctx context.Context, s tenants.Scope, bid uuid.UUID, now time.Time) ([]allocations.Allocation, error) {
 	var out []allocations.Allocation
 	err := db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := scope(ctx, tx, s); err != nil {
+		if err := db.ApplyScope(ctx, tx, s); err != nil {
 			return err
 		}
 		rows, err := tx.Query(ctx, `SELECT `+cols+` FROM allocations WHERE binding_id=$1 AND period_start <= $2 AND period_end > $2`, bid, now)
@@ -174,7 +167,7 @@ func (r *Repository) Active(ctx context.Context, s tenants.Scope, bid uuid.UUID,
 func (r *Repository) InFlight(ctx context.Context, s tenants.Scope, bid uuid.UUID) (map[string]float64, error) {
 	out := map[string]float64{"cpu_hours": 0, "gpu_hours": 0, "node_hours": 0}
 	err := db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := scope(ctx, tx, s); err != nil {
+		if err := db.ApplyScope(ctx, tx, s); err != nil {
 			return err
 		}
 		var cpu, gpu, node float64

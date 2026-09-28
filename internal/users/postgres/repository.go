@@ -12,7 +12,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/Exonical/custos/internal/authn"
-	"github.com/Exonical/custos/internal/platform/apperr"
 	"github.com/Exonical/custos/internal/platform/db"
 	"github.com/Exonical/custos/internal/users"
 )
@@ -24,8 +23,6 @@ type Repository struct {
 
 // New returns a Repository on pool.
 func New(pool *pgxpool.Pool) *Repository { return &Repository{pool: pool} }
-
-var errNotFound = apperr.New(apperr.NotFound, "NOT_FOUND", "not found")
 
 func scanUser(row pgx.Row) (users.User, error) {
 	var u users.User
@@ -135,7 +132,7 @@ func (r *Repository) GetByID(ctx context.Context, id uuid.UUID) (users.User, err
 		return err
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
-		return users.User{}, errNotFound
+		return users.User{}, db.ErrNotFound
 	}
 	return u, err
 }
@@ -220,7 +217,7 @@ func (r *Repository) RevokePlatformRole(ctx context.Context, userID uuid.UUID, r
 			return db.MapError(err)
 		}
 		if tag.RowsAffected() == 0 {
-			return errNotFound
+			return db.ErrNotFound
 		}
 		return nil
 	})

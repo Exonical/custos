@@ -19,16 +19,6 @@ import (
 	"github.com/Exonical/custos/internal/validation/policy"
 )
 
-var errNotFound = apperr.New(apperr.NotFound, "NOT_FOUND", "not found")
-
-func applyScope(ctx context.Context, tx pgx.Tx, s tenants.Scope) error {
-	if s.IsPlatform() {
-		return db.SetPlatformScope(ctx, tx)
-	}
-	id, _ := s.TenantID()
-	return db.SetTenant(ctx, tx, id)
-}
-
 // PolicyStore is the PostgreSQL policy.Store.
 type PolicyStore struct {
 	pool *pgxpool.Pool
@@ -45,7 +35,7 @@ func (s *PolicyStore) Get(ctx context.Context, scope tenants.Scope,
 	var out policy.Scoped
 	var body []byte
 	err := db.WithTx(ctx, s.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		var updBy *uuid.UUID
@@ -61,7 +51,7 @@ func (s *PolicyStore) Get(ctx context.Context, scope tenants.Scope,
 		return err
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
-		return policy.Scoped{}, errNotFound
+		return policy.Scoped{}, db.ErrNotFound
 	}
 	if err != nil {
 		return policy.Scoped{}, err
@@ -86,7 +76,7 @@ func (s *PolicyStore) Put(ctx context.Context, scope tenants.Scope,
 	}
 	var out policy.Scoped
 	err = db.WithTx(ctx, s.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		var cur int64
@@ -161,7 +151,7 @@ func (s *ValidationStore) Put(ctx context.Context, scope tenants.Scope,
 		return err
 	}
 	return db.WithTx(ctx, s.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		// Validations are immutable content; the pipeline cache can hand
@@ -215,7 +205,7 @@ func (s *ValidationStore) Latest(ctx context.Context, scope tenants.Scope,
 	policyVersion int64, inputHash uint64) (validation.ScriptValidation, error) {
 	var sv validation.ScriptValidation
 	err := db.WithTx(ctx, s.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		var err error
@@ -228,7 +218,7 @@ func (s *ValidationStore) Latest(ctx context.Context, scope tenants.Scope,
 		return err
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
-		return validation.ScriptValidation{}, errNotFound
+		return validation.ScriptValidation{}, db.ErrNotFound
 	}
 	return sv, err
 }
@@ -238,7 +228,7 @@ func (s *ValidationStore) Get(ctx context.Context, scope tenants.Scope,
 	_, id uuid.UUID) (validation.ScriptValidation, error) {
 	var sv validation.ScriptValidation
 	err := db.WithTx(ctx, s.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		var err error
@@ -247,7 +237,7 @@ func (s *ValidationStore) Get(ctx context.Context, scope tenants.Scope,
 		return err
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
-		return validation.ScriptValidation{}, errNotFound
+		return validation.ScriptValidation{}, db.ErrNotFound
 	}
 	return sv, err
 }
@@ -258,7 +248,7 @@ func (s *ValidationStore) ListByWorkflowVersion(ctx context.Context,
 	scope tenants.Scope, tenantID, wfvID uuid.UUID) ([]validation.ScriptValidation, error) {
 	var out []validation.ScriptValidation
 	err := db.WithTx(ctx, s.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		rows, err := tx.Query(ctx, `

@@ -37,14 +37,6 @@ type Repository struct{ pool *pgxpool.Pool }
 // New returns a Repository on pool.
 func New(pool *pgxpool.Pool) *Repository { return &Repository{pool: pool} }
 
-func applyScope(ctx context.Context, tx pgx.Tx, s tenants.Scope) error {
-	if s.IsPlatform() {
-		return db.SetPlatformScope(ctx, tx)
-	}
-	id, _ := s.TenantID()
-	return db.SetTenant(ctx, tx, id)
-}
-
 // scanCluster scans a row whose leading columns are clusterCols (or
 // clusterColsQualified) into a Cluster; extra receives any trailing
 // columns selected after them.
@@ -341,7 +333,7 @@ func (r *Repository) GetAssignment(ctx context.Context, scope tenants.Scope,
 	clusterID, tenantID uuid.UUID) (clusters.Assignment, error) {
 	var a clusters.Assignment
 	err := db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		var err error
@@ -362,7 +354,7 @@ func (r *Repository) UpsertAssignment(ctx context.Context, scope tenants.Scope,
 	a clusters.Assignment) error {
 	def, _ := json.Marshal(a.Defaults)
 	return db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		_, err := tx.Exec(ctx, `
@@ -380,7 +372,7 @@ func (r *Repository) UpsertAssignment(ctx context.Context, scope tenants.Scope,
 func (r *Repository) DeleteAssignment(ctx context.Context, scope tenants.Scope,
 	clusterID, tenantID uuid.UUID) error {
 	return db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		_, err := tx.Exec(ctx, `
@@ -397,7 +389,7 @@ func (r *Repository) ListAssignments(ctx context.Context, scope tenants.Scope,
 	var out []clusters.Assignment
 	var next string
 	err := db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		q := `SELECT cluster_id, tenant_id, source, defaults, created_at, updated_at
@@ -443,7 +435,7 @@ func (r *Repository) ListVisibleForTenant(ctx context.Context, scope tenants.Sco
 	var out []clusters.Cluster
 	m := map[uuid.UUID]clusters.Assignment{}
 	err := db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		rows, err := tx.Query(ctx, `

@@ -17,7 +17,7 @@ import (
 // worker, so it must live in the same tx (outbox pattern).
 func (r *Repository) RequestDeletion(ctx context.Context, scope tenants.Scope, tenantID uuid.UUID) error {
 	return db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		tag, err := tx.Exec(ctx, `
@@ -46,7 +46,7 @@ func (r *Repository) RequestDeletion(ctx context.Context, scope tenants.Scope, t
 // its slug) stays — slugs are never reused. Idempotent.
 func (r *Repository) PurgeTenantData(ctx context.Context, tenantID uuid.UUID) error {
 	return db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, tenants.PlatformScope()); err != nil {
+		if err := db.ApplyScope(ctx, tx, tenants.PlatformScope()); err != nil {
 			return err
 		}
 		var state string

@@ -22,25 +22,6 @@ import (
 	"github.com/Exonical/custos/internal/validation"
 )
 
-var errNotFound = apperr.New(apperr.NotFound, "NOT_FOUND", "not found")
-
-func applyScope(ctx context.Context, tx pgx.Tx, s tenants.Scope) error {
-	if s.IsPlatform() {
-		return db.SetPlatformScope(ctx, tx)
-	}
-	id, _ := s.TenantID()
-	return db.SetTenant(ctx, tx, id)
-}
-
-// scopeTenant returns the RLS tenant when scoped; uuid.Nil under the
-// platform scope (callers pass the row's tenant_id explicitly then).
-func scopeTenant(s tenants.Scope, tenantID uuid.UUID) uuid.UUID {
-	if id, ok := s.TenantID(); ok {
-		return id
-	}
-	return tenantID
-}
-
 // Repository is the PostgreSQL executions store.
 type Repository struct {
 	pool *pgxpool.Pool
@@ -88,10 +69,10 @@ func (r *Repository) CreateWithIdempotency(ctx context.Context,
 	enqueue executions.EnqueueFunc) (executions.CreateResult, error) {
 	var res executions.CreateResult
 	err := db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
-		tid := scopeTenant(scope, e.TenantID)
+		tid := db.ScopeTenant(scope, e.TenantID)
 		var inserted uuid.UUID
 		err := tx.QueryRow(ctx, `
 			INSERT INTO idempotency_keys
@@ -158,7 +139,7 @@ func (r *Repository) Get(ctx context.Context, scope tenants.Scope,
 	_, id uuid.UUID) (executions.Execution, error) {
 	var e executions.Execution
 	err := db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		var err error
@@ -167,7 +148,7 @@ func (r *Repository) Get(ctx context.Context, scope tenants.Scope,
 		return err
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
-		return e, errNotFound
+		return e, db.ErrNotFound
 	}
 	return e, err
 }
@@ -180,11 +161,11 @@ func (r *Repository) List(ctx context.Context, scope tenants.Scope,
 	var out []executions.Execution
 	var next string
 	err := db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		where := []string{"tenant_id = $1"}
-		args := []any{scopeTenant(scope, tenantID)}
+		args := []any{db.ScopeTenant(scope, tenantID)}
 		add := func(clause string, v any) {
 			args = append(args, v)
 			where = append(where, fmt.Sprintf(clause, len(args)))
@@ -250,7 +231,7 @@ func (r *Repository) TransitionExec(ctx context.Context,
 	enqueue executions.EnqueueFunc) (executions.Execution, error) {
 	var e executions.Execution
 	err := db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		set := []string{"version = version + 1", "updated_at = now()"}
@@ -341,14 +322,14 @@ func (r *Repository) Materialize(ctx context.Context,
 	enqueue executions.EnqueueFunc) (executions.Execution, error) {
 	var e executions.Execution
 	err := db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		for _, t := range tasks {
 			if _, err := tx.Exec(ctx, `
 				INSERT INTO task_executions (`+taskCols+`)
 				VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
-				t.ID, t.ExecutionID, scopeTenant(scope, t.TenantID),
+				t.ID, t.ExecutionID, db.ScopeTenant(scope, t.TenantID),
 				t.TaskName, t.Index, t.Count, t.Attempt, string(t.State),
 				nilStr(t.StateReason), t.JobID, nil, nil, t.ValidationID,
 				t.CreatedAt, t.UpdatedAt, t.Version); err != nil {
@@ -402,7 +383,7 @@ func (r *Repository) CancelExec(ctx context.Context,
 	enqueue executions.EnqueueFunc) (executions.Execution, error) {
 	var e executions.Execution
 	err := db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		tag, err := tx.Exec(ctx, `
@@ -434,7 +415,7 @@ func (r *Repository) ListTasks(ctx context.Context, scope tenants.Scope,
 	_, executionID uuid.UUID) ([]executions.TaskExecution, error) {
 	var out []executions.TaskExecution
 	err := db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		rows, err := tx.Query(ctx,
@@ -462,7 +443,7 @@ func (r *Repository) GetTask(ctx context.Context, scope tenants.Scope,
 	_, id uuid.UUID) (executions.TaskExecution, error) {
 	var t executions.TaskExecution
 	err := db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		var err error
@@ -471,7 +452,7 @@ func (r *Repository) GetTask(ctx context.Context, scope tenants.Scope,
 		return err
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
-		return t, errNotFound
+		return t, db.ErrNotFound
 	}
 	return t, err
 }
@@ -481,7 +462,7 @@ func (r *Repository) GetTaskByJob(ctx context.Context,
 	scope tenants.Scope, jobID uuid.UUID) (executions.TaskExecution, error) {
 	var t executions.TaskExecution
 	err := db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		var err error
@@ -491,7 +472,7 @@ func (r *Repository) GetTaskByJob(ctx context.Context,
 		return err
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
-		return t, errNotFound
+		return t, db.ErrNotFound
 	}
 	return t, err
 }
@@ -504,7 +485,7 @@ func (r *Repository) TransitionTask(ctx context.Context,
 	enqueue executions.EnqueueFunc) (executions.TaskExecution, error) {
 	var t executions.TaskExecution
 	err := db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		set := []string{"version = version + 1", "updated_at = now()"}
@@ -613,7 +594,7 @@ func (r *Repository) AdmitTaskChecked(ctx context.Context,
 		return t, fmt.Errorf("jobs: marshal resource_request: %w", err)
 	}
 	err = db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		if guard != nil {
@@ -640,7 +621,7 @@ func (r *Repository) AdmitTaskChecked(ctx context.Context,
 			`INSERT INTO jobs (`+admitJobCols+`)
 			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,
 			        $16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29)`,
-			j.ID, scopeTenant(scope, j.TenantID), j.ProjectID, j.ClusterID,
+			j.ID, db.ScopeTenant(scope, j.TenantID), j.ProjectID, j.ClusterID,
 			j.CreatedBy, j.Name, string(j.State), nilStr(j.StateReason),
 			j.SlurmJobID, nilStr(j.SlurmState), j.ExitCode, j.ExitSignal,
 			reqJSON, specJSON, j.ExecutionSpecDigest[:], scriptDigest,

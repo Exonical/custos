@@ -26,16 +26,6 @@ type Repository struct {
 // New returns a Repository on pool.
 func New(pool *pgxpool.Pool) *Repository { return &Repository{pool: pool} }
 
-var errNotFound = apperr.New(apperr.NotFound, "NOT_FOUND", "not found")
-
-func applyScope(ctx context.Context, tx pgx.Tx, s tenants.Scope) error {
-	if s.IsPlatform() {
-		return db.SetPlatformScope(ctx, tx)
-	}
-	id, _ := s.TenantID()
-	return db.SetTenant(ctx, tx, id)
-}
-
 // tenantFilter returns the extra predicate fragment and args scoping a
 // tenant query to s. args continues numbering from nextArg.
 func tenantFilter(s tenants.Scope, nextArg int) (string, []any) {
@@ -81,7 +71,7 @@ func (r *Repository) Create(ctx context.Context, t tenants.Tenant) error {
 		return err
 	}
 	return db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, tenants.PlatformScope()); err != nil {
+		if err := db.ApplyScope(ctx, tx, tenants.PlatformScope()); err != nil {
 			return err
 		}
 		var ns *string
@@ -100,7 +90,7 @@ func (r *Repository) Create(ctx context.Context, t tenants.Tenant) error {
 func (r *Repository) GetBySlugOrID(ctx context.Context, scope tenants.Scope, ref string) (tenants.Tenant, error) {
 	var t tenants.Tenant
 	err := db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		filter, args := tenantFilter(scope, 2)
@@ -113,7 +103,7 @@ func (r *Repository) GetBySlugOrID(ctx context.Context, scope tenants.Scope, ref
 		return err
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
-		return tenants.Tenant{}, errNotFound
+		return tenants.Tenant{}, db.ErrNotFound
 	}
 	return t, err
 }
@@ -132,7 +122,7 @@ func (r *Repository) List(ctx context.Context, scope tenants.Scope, page tenants
 	var out []tenants.Tenant
 	var next string
 	err := db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		where := ""
@@ -180,7 +170,7 @@ func (r *Repository) Update(ctx context.Context, scope tenants.Scope, t tenants.
 		return err
 	}
 	return db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		var ns *string
@@ -205,7 +195,7 @@ func (r *Repository) Update(ctx context.Context, scope tenants.Scope, t tenants.
 			`SELECT 1 FROM tenants WHERE id=$1`+filter,
 			append([]any{t.ID}, args...)...).Scan(&exists)
 		if errors.Is(err, pgx.ErrNoRows) {
-			return errNotFound
+			return db.ErrNotFound
 		}
 		if err != nil {
 			return err
@@ -227,7 +217,7 @@ const memberCols = `tenant_id, user_id, roles, source, created_at, updated_at`
 func (r *Repository) GetMembership(ctx context.Context, scope tenants.Scope, tenantID, userID uuid.UUID) (tenants.Membership, error) {
 	var m tenants.Membership
 	err := db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		var err error
@@ -237,7 +227,7 @@ func (r *Repository) GetMembership(ctx context.Context, scope tenants.Scope, ten
 		return err
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
-		return tenants.Membership{}, errNotFound
+		return tenants.Membership{}, db.ErrNotFound
 	}
 	return m, err
 }
@@ -257,7 +247,7 @@ func (r *Repository) ListMemberships(ctx context.Context, scope tenants.Scope, t
 	var out []tenants.Membership
 	var next string
 	err := db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		where := " WHERE tenant_id = $1"
@@ -296,7 +286,7 @@ func (r *Repository) ListMemberships(ctx context.Context, scope tenants.Scope, t
 // UpsertMembership implements tenants.Repository.
 func (r *Repository) UpsertMembership(ctx context.Context, scope tenants.Scope, m tenants.Membership) error {
 	return db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		_, err := tx.Exec(ctx, `
@@ -313,7 +303,7 @@ func (r *Repository) UpsertMembership(ctx context.Context, scope tenants.Scope, 
 // DeleteMembership implements tenants.Repository.
 func (r *Repository) DeleteMembership(ctx context.Context, scope tenants.Scope, tenantID, userID uuid.UUID) error {
 	return db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		tag, err := tx.Exec(ctx,
@@ -323,7 +313,7 @@ func (r *Repository) DeleteMembership(ctx context.Context, scope tenants.Scope, 
 			return db.MapError(err)
 		}
 		if tag.RowsAffected() == 0 {
-			return errNotFound
+			return db.ErrNotFound
 		}
 		return nil
 	})
@@ -334,7 +324,7 @@ func (r *Repository) DeleteMembership(ctx context.Context, scope tenants.Scope, 
 func (r *Repository) ListMembershipsForUser(ctx context.Context, userID uuid.UUID) ([]tenants.Membership, error) {
 	var out []tenants.Membership
 	err := db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, tenants.PlatformScope()); err != nil {
+		if err := db.ApplyScope(ctx, tx, tenants.PlatformScope()); err != nil {
 			return err
 		}
 		rows, err := tx.Query(ctx, `
@@ -363,7 +353,7 @@ func (r *Repository) ListMembershipsForUser(ctx context.Context, userID uuid.UUI
 func (r *Repository) CountTenantAdmins(ctx context.Context, scope tenants.Scope, tenantID uuid.UUID) (int, error) {
 	var n int
 	err := db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := applyScope(ctx, tx, scope); err != nil {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
 		}
 		return tx.QueryRow(ctx,

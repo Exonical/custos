@@ -23,14 +23,6 @@ type Repository struct{ pool *pgxpool.Pool }
 // New returns a secret-reference repository on pool.
 func New(pool *pgxpool.Pool) *Repository { return &Repository{pool: pool} }
 
-func scope(ctx context.Context, tx pgx.Tx, s tenants.Scope) error {
-	if s.IsPlatform() {
-		return db.SetPlatformScope(ctx, tx)
-	}
-	id, _ := s.TenantID()
-	return db.SetTenant(ctx, tx, id)
-}
-
 //nolint:revive // Methods implement the secretrefs.Repository port.
 func (r *Repository) CreateConnector(ctx context.Context, s tenants.Scope, c secretrefs.Connector) error {
 	cfg, err := json.Marshal(c.Config)
@@ -46,7 +38,7 @@ func (r *Repository) CreateConnector(ctx context.Context, s tenants.Scope, c sec
 		cred = b
 	}
 	return db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := scope(ctx, tx, s); err != nil {
+		if err := db.ApplyScope(ctx, tx, s); err != nil {
 			return err
 		}
 		_, err := tx.Exec(ctx, `INSERT INTO secret_connectors
@@ -66,7 +58,7 @@ func scanConnector(row pgx.Row) (secretrefs.Connector, error) {
 	err := row.Scan(&c.ID, &c.TenantID, &c.Name, &c.Kind, &c.State, &cfg, &cred,
 		&c.CreatedBy, &c.CreatedAt, &c.UpdatedAt, &c.Version)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return c, apperr.New(apperr.NotFound, "NOT_FOUND", "not found")
+		return c, db.ErrNotFound
 	}
 	if err != nil {
 		return c, db.MapError(err)
@@ -91,7 +83,7 @@ func (r *Repository) GetConnector(ctx context.Context, s tenants.Scope, tenantID
 func getConnectorTx(ctx context.Context, pool *pgxpool.Pool, s tenants.Scope, tenantID uuid.UUID, ref string) (secretrefs.Connector, error) {
 	var out secretrefs.Connector
 	err := db.WithTx(ctx, pool, func(tx pgx.Tx) error {
-		if err := scope(ctx, tx, s); err != nil {
+		if err := db.ApplyScope(ctx, tx, s); err != nil {
 			return err
 		}
 		var row pgx.Row
@@ -111,7 +103,7 @@ func getConnectorTx(ctx context.Context, pool *pgxpool.Pool, s tenants.Scope, te
 func (r *Repository) ListConnectors(ctx context.Context, s tenants.Scope, tenantID uuid.UUID) ([]secretrefs.Connector, error) {
 	var out []secretrefs.Connector
 	err := db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := scope(ctx, tx, s); err != nil {
+		if err := db.ApplyScope(ctx, tx, s); err != nil {
 			return err
 		}
 		rows, err := tx.Query(ctx, `SELECT `+connectorCols+` FROM secret_connectors WHERE tenant_id=$1 ORDER BY name`, tenantID)
@@ -146,7 +138,7 @@ func (r *Repository) UpdateConnector(ctx context.Context, s tenants.Scope, c sec
 		cred = b
 	}
 	return db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := scope(ctx, tx, s); err != nil {
+		if err := db.ApplyScope(ctx, tx, s); err != nil {
 			return err
 		}
 		tag, err := tx.Exec(ctx, `UPDATE secret_connectors SET name=$3,state=$4,config=$5,credential_ref=$6,version=version+1,updated_at=now() WHERE tenant_id=$1 AND id=$2 AND version=$7`, c.TenantID, c.ID, c.Name, c.State, cfg, cred, c.Version)
@@ -163,7 +155,7 @@ func (r *Repository) UpdateConnector(ctx context.Context, s tenants.Scope, c sec
 //nolint:revive // Methods implement the secretrefs.Repository port.
 func (r *Repository) DeleteConnector(ctx context.Context, s tenants.Scope, tenantID, id uuid.UUID) error {
 	return db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := scope(ctx, tx, s); err != nil {
+		if err := db.ApplyScope(ctx, tx, s); err != nil {
 			return err
 		}
 		tag, err := tx.Exec(ctx, `DELETE FROM secret_connectors WHERE tenant_id=$1 AND id=$2`, tenantID, id)
@@ -171,7 +163,7 @@ func (r *Repository) DeleteConnector(ctx context.Context, s tenants.Scope, tenan
 			return db.MapError(err)
 		}
 		if tag.RowsAffected() == 0 {
-			return apperr.New(apperr.NotFound, "NOT_FOUND", "not found")
+			return db.ErrNotFound
 		}
 		return nil
 	})
@@ -181,7 +173,7 @@ func (r *Repository) DeleteConnector(ctx context.Context, s tenants.Scope, tenan
 func (r *Repository) ConnectorReferenceCount(ctx context.Context, s tenants.Scope, id uuid.UUID) (int, error) {
 	var n int
 	err := db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := scope(ctx, tx, s); err != nil {
+		if err := db.ApplyScope(ctx, tx, s); err != nil {
 			return err
 		}
 		return tx.QueryRow(ctx, `SELECT count(*) FROM secret_references WHERE connector_id=$1`, id).Scan(&n)
@@ -196,7 +188,7 @@ func scanRef(row pgx.Row) (secretrefs.Reference, error) {
 	var x secretrefs.Reference
 	err := row.Scan(&x.ID, &x.TenantID, &x.OwnerID, &x.ProjectID, &x.Name, &x.ConnectorID, &x.Namespace, &x.Mount, &x.Path, &x.Key, &x.SecretVersion, &x.Kind, &x.AllowedUses, &x.CreatedBy, &x.CreatedAt, &x.UpdatedAt, &x.Version)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return x, apperr.New(apperr.NotFound, "NOT_FOUND", "not found")
+		return x, db.ErrNotFound
 	}
 	return x, db.MapError(err)
 }
@@ -207,7 +199,7 @@ func (r *Repository) CreateReference(ctx context.Context, s tenants.Scope, x sec
 		x.AllowedUses = []string{}
 	}
 	return db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := scope(ctx, tx, s); err != nil {
+		if err := db.ApplyScope(ctx, tx, s); err != nil {
 			return err
 		}
 		_, err := tx.Exec(ctx, `INSERT INTO secret_references(id,tenant_id,owner_id,project_id,name,connector_id,namespace,mount,path,key,secret_version,kind,allowed_uses,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`, x.ID, x.TenantID, x.OwnerID, x.ProjectID, x.Name, x.ConnectorID, x.Namespace, x.Mount, x.Path, x.Key, x.SecretVersion, x.Kind, x.AllowedUses, x.CreatedBy)
@@ -219,7 +211,7 @@ func (r *Repository) CreateReference(ctx context.Context, s tenants.Scope, x sec
 func (r *Repository) GetReference(ctx context.Context, s tenants.Scope, tenantID uuid.UUID, ref string) (secretrefs.Reference, error) {
 	var x secretrefs.Reference
 	err := db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := scope(ctx, tx, s); err != nil {
+		if err := db.ApplyScope(ctx, tx, s); err != nil {
 			return err
 		}
 		var row pgx.Row
@@ -244,7 +236,7 @@ func (r *Repository) GetReferenceByName(ctx context.Context, s tenants.Scope, te
 func (r *Repository) ListReferences(ctx context.Context, s tenants.Scope, tenantID uuid.UUID) ([]secretrefs.Reference, error) {
 	var out []secretrefs.Reference
 	err := db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := scope(ctx, tx, s); err != nil {
+		if err := db.ApplyScope(ctx, tx, s); err != nil {
 			return err
 		}
 		rows, err := tx.Query(ctx, `SELECT `+refCols+` FROM secret_references WHERE tenant_id=$1 ORDER BY name`, tenantID)
@@ -267,7 +259,7 @@ func (r *Repository) ListReferences(ctx context.Context, s tenants.Scope, tenant
 //nolint:revive // Methods implement the secretrefs.Repository port.
 func (r *Repository) UpdateReference(ctx context.Context, s tenants.Scope, x secretrefs.Reference) error {
 	return db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := scope(ctx, tx, s); err != nil {
+		if err := db.ApplyScope(ctx, tx, s); err != nil {
 			return err
 		}
 		tag, err := tx.Exec(ctx, `UPDATE secret_references SET name=$3,owner_id=$4,project_id=$5,path=$6,key=$7,secret_version=$8,kind=$9,allowed_uses=$10,version=version+1,updated_at=now() WHERE tenant_id=$1 AND id=$2 AND version=$11`, x.TenantID, x.ID, x.Name, x.OwnerID, x.ProjectID, x.Path, x.Key, x.SecretVersion, x.Kind, x.AllowedUses, x.Version)
@@ -284,7 +276,7 @@ func (r *Repository) UpdateReference(ctx context.Context, s tenants.Scope, x sec
 //nolint:revive // Methods implement the secretrefs.Repository port.
 func (r *Repository) DeleteReference(ctx context.Context, s tenants.Scope, tenantID, id uuid.UUID) error {
 	return db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
-		if err := scope(ctx, tx, s); err != nil {
+		if err := db.ApplyScope(ctx, tx, s); err != nil {
 			return err
 		}
 		tag, err := tx.Exec(ctx, `DELETE FROM secret_references WHERE tenant_id=$1 AND id=$2`, tenantID, id)
@@ -292,7 +284,7 @@ func (r *Repository) DeleteReference(ctx context.Context, s tenants.Scope, tenan
 			return db.MapError(err)
 		}
 		if tag.RowsAffected() == 0 {
-			return apperr.New(apperr.NotFound, "NOT_FOUND", "not found")
+			return db.ErrNotFound
 		}
 		return nil
 	})
