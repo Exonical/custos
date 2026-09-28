@@ -45,7 +45,7 @@ services:
       - ./openbao.hcl:/openbao/config/openbao.hcl:ro
       - ./.secrets/openbao.crt:/openbao/tls/openbao.crt:ro
       - ./.secrets/openbao.key:/openbao/tls/openbao.key:ro
-      - openbaodata:/openbao/data
+      - openbaodata:/openbao/file
     healthcheck:
       test: ["CMD-SHELL", "bao status -address=https://openbao:8200 -ca-cert=/openbao/tls/openbao.crt >/dev/null 2>&1; test $$? -le 2"]
       interval: 3s
@@ -57,6 +57,8 @@ services:
   openbao-init:
     image: quay.io/openbao/openbao:2.6.2
     entrypoint: ["/bin/sh", "/bootstrap/init-openbao.sh"]
+    # Writes bootstrap output into the host-owned .secrets/ bind mount.
+    user: "0:0"
     volumes:
       - ./init-openbao.sh:/bootstrap/init-openbao.sh:ro
       - ./.secrets:/bootstrap

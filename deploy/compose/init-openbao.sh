@@ -10,7 +10,7 @@ if bao status -format=json 2>/dev/null | grep -q '"initialized": false'; then
 	init=$(bao operator init -key-shares=1 -key-threshold=1)
 	printf '%s\n' "$init" | sed -n 's/^Unseal Key 1: //p' > "$out/openbao-unseal-key"
 	printf '%s\n' "$init" | sed -n 's/^Initial Root Token: //p' > "$out/openbao-root-token"
-	chmod 600 "$out/openbao-unseal-key" "$out/openbao-root-token" 2>/dev/null || true
+	chmod 644 "$out/openbao-unseal-key" "$out/openbao-root-token" 2>/dev/null || true
 	rm -f "$out/openbao-bootstrapped"
 fi
 bao operator unseal "$(cat "$out/openbao-unseal-key")" >/dev/null 2>&1 || true
@@ -34,6 +34,6 @@ EOF
 bao policy write custos /tmp/custos-policy.hcl >/dev/null
 bao write auth/approle/role/custos role_id=custos-local-role token_policies=custos token_ttl=5m token_max_ttl=15m >/dev/null
 bao write -field=secret_id -f auth/approle/role/custos/secret-id > "$out/openbao-secret-id"
-chmod 600 "$out/openbao-secret-id" 2>/dev/null || true
+chmod 644 "$out/openbao-secret-id" 2>/dev/null || true
 bao token revoke -self >/dev/null
 touch "$out/openbao-bootstrapped"
