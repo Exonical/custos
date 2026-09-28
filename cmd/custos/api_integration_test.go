@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"encoding/pem"
 	"io"
 	"log/slog"
@@ -125,28 +124,7 @@ func TestAPIIntegration(t *testing.T) {
 		return idp.Token(t, c)
 	}
 	call := func(tok, method, path string, body any) (int, map[string]any) {
-		var rdr io.Reader
-		if body != nil {
-			b, _ := json.Marshal(body)
-			rdr = bytes.NewReader(b)
-		}
-		req, err := http.NewRequest(method, srv.URL+path, rdr)
-		if err != nil {
-			t.Fatal(err)
-		}
-		req.Header.Set("Authorization", "Bearer "+tok)
-		if body != nil {
-			req.Header.Set("Content-Type", "application/json")
-		}
-		resp, err := http.DefaultClient.Do(req)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer func() { _ = resp.Body.Close() }()
-		var out map[string]any
-		b, _ := io.ReadAll(resp.Body)
-		_ = json.Unmarshal(b, &out)
-		return resp.StatusCode, out
+		return apiCall(t, srv.URL, tok, method, path, body, "")
 	}
 
 	adminTok := token("admin-sub")
@@ -431,28 +409,7 @@ func TestAPIClusters(t *testing.T) {
 		return idp.Token(t, c)
 	}
 	call := func(tok, method, path string, body any) (int, map[string]any) {
-		var rdr io.Reader
-		if body != nil {
-			b, _ := json.Marshal(body)
-			rdr = bytes.NewReader(b)
-		}
-		req, err := http.NewRequest(method, srv.URL+path, rdr)
-		if err != nil {
-			t.Fatal(err)
-		}
-		req.Header.Set("Authorization", "Bearer "+tok)
-		if body != nil {
-			req.Header.Set("Content-Type", "application/json")
-		}
-		resp, err := http.DefaultClient.Do(req)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer func() { _ = resp.Body.Close() }()
-		var out map[string]any
-		b, _ := io.ReadAll(resp.Body)
-		_ = json.Unmarshal(b, &out)
-		return resp.StatusCode, out
+		return apiCall(t, srv.URL, tok, method, path, body, "")
 	}
 
 	adminTok := token("admin-sub")
@@ -669,28 +626,7 @@ func TestAPIProjects(t *testing.T) {
 		return idp.Token(t, c)
 	}
 	call := func(tok, method, path string, body any) (int, map[string]any) {
-		var rdr io.Reader
-		if body != nil {
-			b, _ := json.Marshal(body)
-			rdr = bytes.NewReader(b)
-		}
-		req, err := http.NewRequest(method, srv.URL+path, rdr)
-		if err != nil {
-			t.Fatal(err)
-		}
-		req.Header.Set("Authorization", "Bearer "+tok)
-		if body != nil {
-			req.Header.Set("Content-Type", "application/json")
-		}
-		resp, err := http.DefaultClient.Do(req)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer func() { _ = resp.Body.Close() }()
-		var out map[string]any
-		b, _ := io.ReadAll(resp.Body)
-		_ = json.Unmarshal(b, &out)
-		return resp.StatusCode, out
+		return apiCall(t, srv.URL, tok, method, path, body, "")
 	}
 
 	adminTok := token("admin-sub")

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"io"
@@ -153,33 +152,8 @@ func TestAPIJobs(t *testing.T) {
 		c["sub"] = sub
 		return idp.Token(t, c)
 	}
-	// call sends body as given; idemKey is set explicitly by callers.
 	call := func(tok, method, path string, body any, idemKey string) (int, map[string]any) {
-		var rdr io.Reader
-		if body != nil {
-			b, _ := json.Marshal(body)
-			rdr = bytes.NewReader(b)
-		}
-		req, err := http.NewRequest(method, srv.URL+path, rdr)
-		if err != nil {
-			t.Fatal(err)
-		}
-		req.Header.Set("Authorization", "Bearer "+tok)
-		if idemKey != "" {
-			req.Header.Set("Idempotency-Key", idemKey)
-		}
-		if body != nil {
-			req.Header.Set("Content-Type", "application/json")
-		}
-		resp, err := http.DefaultClient.Do(req)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer func() { _ = resp.Body.Close() }()
-		var out map[string]any
-		b, _ := io.ReadAll(resp.Body)
-		_ = json.Unmarshal(b, &out)
-		return resp.StatusCode, out
+		return apiCall(t, srv.URL, tok, method, path, body, idemKey)
 	}
 
 	adminTok := token("admin-sub")
