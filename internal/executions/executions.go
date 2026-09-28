@@ -6,6 +6,7 @@ package executions
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
@@ -248,5 +249,10 @@ type CheckedRepository interface {
 var ErrTransitionStale = apperr.New(apperr.Conflict, "TRANSITION_STALE",
 	"state or version changed underneath the worker")
 
-// IsStale reports whether err is a stale-transition conflict.
-func IsStale(err error) bool { return apperr.Is(err, apperr.Conflict) }
+// IsStale reports whether err is (or wraps) ErrTransitionStale. Other
+// Conflict-kind errors are not stale transitions.
+func IsStale(err error) bool {
+	var e *apperr.Error
+	return errors.As(err, &e) && e.Kind == ErrTransitionStale.Kind &&
+		e.Code == ErrTransitionStale.Code
+}
