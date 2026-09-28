@@ -52,45 +52,32 @@ func (d Deps) Preview(ctx context.Context, id uuid.UUID) (PlanResponse, error) {
 		}
 		return PlanResponse{ClusterID: id, Mode: effectiveMode(c, d.ConfigMode), Ops: []Op{}}, nil
 	}
-	return PlanResponse{ClusterID: id, Mode: effectiveMode(s.cluster, d.ConfigMode), Ops: Plan(s.desired, ObservedState{Accounts: s.accounts, Associations: s.associations, Managed: s.managed})}, nil
+	return PlanResponse{ClusterID: id, Mode: effectiveMode(s.cluster, d.ConfigMode), Ops: Plan(s.desired, s.observed())}, nil
 }
 
 // Reconcile executes the read/plan/apply/read policy-sync cycle.
 func (d Deps) Reconcile(ctx context.Context, id uuid.UUID) error {
-	s, bindings, err := d.load(ctx, id)
-	if errors.Is(err, ErrNoAccounting) {
-		return ErrNoAccounting
-	}
-	if err != nil {
+	markUnknown := func(bindings []projects.ClusterBinding, err error) error {
 		if len(bindings) > 0 {
 			return d.markUnknown(ctx, id, bindings, err)
 		}
 		return err
 	}
-	if s == nil {
-		return nil
+	s, _, err := d.loadOrMark(ctx, id, markUnknown)
+	if err != nil || s == nil {
+		return err
 	}
 	mode := effectiveMode(s.cluster, d.ConfigMode)
 	if mode == "report" {
-		ops := Plan(s.desired, ObservedState{Accounts: s.accounts, Associations: s.associations, Managed: s.managed})
+		ops := Plan(s.desired, s.observed())
 		return d.storeOutcome(ctx, s, mergeDrifts(s.baseDrift, DriftForOps(ops)), d.now(), "", nil, 0, 0)
 	}
-	fresh, freshBindings, err := d.load(ctx, id)
-	if errors.Is(err, ErrNoAccounting) {
-		return ErrNoAccounting
-	}
-	if err != nil {
-		if len(freshBindings) > 0 {
-			return d.markUnknown(ctx, id, freshBindings, err)
-		}
+	s, _, err = d.loadOrMark(ctx, id, markUnknown)
+	if err != nil || s == nil {
 		return err
 	}
-	if fresh == nil {
-		return nil
-	}
-	s, bindings = fresh, freshBindings
 	mode = effectiveMode(s.cluster, d.ConfigMode)
-	ops := Plan(s.desired, ObservedState{Accounts: s.accounts, Associations: s.associations, Managed: s.managed})
+	ops := Plan(s.desired, s.observed())
 	if mode == "report" || len(ops) == 0 {
 		return d.storeOutcome(ctx, s, mergeDrifts(s.baseDrift, DriftForOps(ops)), d.now(), "", nil, 0, 0)
 	}
@@ -123,17 +110,13 @@ func (d Deps) Reconcile(ctx context.Context, id uuid.UUID) error {
 		t := d.now()
 		lastApplied = &t
 	}
-	fresh, freshBindings, err = d.load(ctx, id)
-	if errors.Is(err, ErrNoAccounting) {
-		return ErrNoAccounting
-	}
-	if err != nil {
+	fresh, freshBindings, err := d.loadOrMark(ctx, id, func(_ []projects.ClusterBinding, err error) error {
 		return d.markUnknownRun(ctx, id, s.bindings, err, lastApplied, applied, failed)
+	})
+	if err != nil || fresh == nil {
+		return err
 	}
-	if fresh == nil {
-		return nil
-	}
-	remaining := Plan(fresh.desired, ObservedState{Accounts: fresh.accounts, Associations: fresh.associations, Managed: fresh.managed})
+	remaining := Plan(fresh.desired, fresh.observed())
 	drift := mergeDrifts(fresh.baseDrift, DriftForOps(remaining))
 	for _, op := range remaining {
 		if bindingID, ok := rejected[policyOpKey(op)]; ok {
@@ -163,6 +146,23 @@ func effectiveMode(c clusters.Cluster, configured string) string {
 		return "report"
 	}
 	return "enforce"
+}
+
+func (s *snapshot) observed() ObservedState {
+	return ObservedState{Accounts: s.accounts, Associations: s.associations, Managed: s.managed}
+}
+
+// loadOrMark loads a snapshot, passing load failures other than ErrNoAccounting
+// to mark. A nil snapshot with a nil error means there is nothing to reconcile.
+func (d Deps) loadOrMark(ctx context.Context, id uuid.UUID, mark func([]projects.ClusterBinding, error) error) (*snapshot, []projects.ClusterBinding, error) {
+	s, bindings, err := d.load(ctx, id)
+	if errors.Is(err, ErrNoAccounting) {
+		return nil, bindings, ErrNoAccounting
+	}
+	if err != nil {
+		return nil, bindings, mark(bindings, err)
+	}
+	return s, bindings, nil
 }
 
 func (d Deps) load(ctx context.Context, id uuid.UUID) (*snapshot, []projects.ClusterBinding, error) {
