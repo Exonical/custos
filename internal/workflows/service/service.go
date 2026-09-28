@@ -707,6 +707,18 @@ type Preview struct {
 	JobSubmission slurm.JobSubmission     `json:"jobSubmission"`
 }
 
+// resolveSecretRef resolves a tenant SecretReference name to its id.
+func (s *Service) resolveSecretRef(ctx context.Context, tenantID uuid.UUID,
+	ref string) (uuid.UUID, error) {
+	info, found := s.d.SecretReference(ctx, tenantID, ref)
+	id, err := uuid.Parse(info.ID)
+	if !found || err != nil {
+		return uuid.UUID{}, apperr.New(apperr.Validation,
+			"SECRET_REFERENCE_NOT_FOUND", "secret reference not found")
+	}
+	return id, nil
+}
+
 // PreviewSubmission builds — but never persists or submits — the
 // submission for one task (attempt=1, caller as principal).
 func (s *Service) PreviewSubmission(ctx context.Context, p authn.Principal,
@@ -754,11 +766,9 @@ func (s *Service) PreviewSubmission(ctx context.Context, p authn.Principal,
 				if path, sole := e.SoleRef(); sole && len(path) == 2 && path[0] == "secrets" {
 					handle := path[1]
 					use := spec.Spec.Secrets[handle]
-					info, found := s.d.SecretReference(ctx, w.TenantID, use.Ref)
-					id, idErr := uuid.Parse(info.ID)
-					if !found || idErr != nil {
-						return Preview{}, apperr.New(apperr.Validation,
-							"SECRET_REFERENCE_NOT_FOUND", "secret reference not found")
+					id, err := s.resolveSecretRef(ctx, w.TenantID, use.Ref)
+					if err != nil {
+						return Preview{}, err
 					}
 					secretRefs = append(secretRefs, admission.SecretEnvRef{
 						Name: workflowspec.SecretEnvName(handle, use), ReferenceID: id,
@@ -773,11 +783,9 @@ func (s *Service) PreviewSubmission(ctx context.Context, p authn.Principal,
 		if use.Use != "wrapped_token" {
 			continue
 		}
-		info, found := s.d.SecretReference(ctx, w.TenantID, use.Ref)
-		id, idErr := uuid.Parse(info.ID)
-		if !found || idErr != nil {
-			return Preview{}, apperr.New(apperr.Validation,
-				"SECRET_REFERENCE_NOT_FOUND", "secret reference not found")
+		id, err := s.resolveSecretRef(ctx, w.TenantID, use.Ref)
+		if err != nil {
+			return Preview{}, err
 		}
 		secretRefs = append(secretRefs, admission.SecretEnvRef{
 			Name:        "CUSTOS_SECRET_" + workflowspec.SecretEnvName(handle, use) + "_WRAP_TOKEN",
