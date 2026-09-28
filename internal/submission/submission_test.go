@@ -18,6 +18,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/Exonical/custos/internal/admission"
+	"github.com/Exonical/custos/internal/platform/apperr"
 	"github.com/Exonical/custos/internal/submission"
 	"github.com/Exonical/custos/internal/validation"
 	"github.com/Exonical/custos/internal/validation/shsyntax"
@@ -111,6 +112,23 @@ func TestWrapperParsesClean(t *testing.T) {
 func TestDigestMismatch(t *testing.T) {
 	if _, err := submission.Wrapper(mkSpec(payload), []byte("tampered")); err == nil {
 		t.Fatal("tampered payload accepted")
+	}
+}
+
+func TestWrapperUnsafeEnvNameIsInternalError(t *testing.T) {
+	for _, set := range []func(*admission.EnvSet){
+		func(e *admission.EnvSet) { e.Controlled["BAD NAME"] = "1" },
+		func(e *admission.EnvSet) { e.User["X;rm -rf /"] = "v" },
+		func(e *admission.EnvSet) {
+			e.Runtime = map[string]string{"$(id)": admission.RuntimeSlurmArrayTaskID}
+		},
+	} {
+		spec := mkSpec(payload)
+		set(&spec.Environment)
+		_, err := submission.Wrapper(spec, payload)
+		if !apperr.Is(err, apperr.Internal) {
+			t.Fatalf("unsafe env name: err = %v, want apperr.Internal", err)
+		}
 	}
 }
 

@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 	"text/template"
 	"time"
@@ -26,11 +27,12 @@ type SafeToken string
 
 var safeTokenRe = regexp.MustCompile(`^[A-Za-z0-9_.:@/-]+$`)
 
-func safeToken(s string) SafeToken {
+func safeToken(s string) (SafeToken, error) {
 	if !safeTokenRe.MatchString(s) {
-		panic("submission: unsafe token " + s) // admission-validated; panic = defect
+		return "", apperr.New(apperr.Internal, "INTERNAL",
+			"submission: unsafe token "+strconv.Quote(s))
 	}
-	return SafeToken(s)
+	return SafeToken(s), nil
 }
 
 // q single-quotes a value for shell ('a'\”b' style).
@@ -155,18 +157,27 @@ func Wrapper(spec admission.ExecutionSpec, payload []byte) (string, error) {
 	}
 	env := make([]envKV, 0, len(spec.Environment.Controlled)+
 		len(spec.Environment.User)+len(spec.Environment.Runtime))
-	for n, v := range spec.Environment.Controlled {
-		env = append(env, envKV{Name: safeToken(n), Value: v})
-	}
-	for n, v := range spec.Environment.User {
-		env = append(env, envKV{Name: safeToken(n), Value: v})
+	for _, vars := range []map[string]string{
+		spec.Environment.Controlled, spec.Environment.User,
+	} {
+		for n, v := range vars {
+			name, err := safeToken(n)
+			if err != nil {
+				return "", err
+			}
+			env = append(env, envKV{Name: name, Value: v})
+		}
 	}
 	for n, rt := range spec.Environment.Runtime {
 		if !admission.ValidRuntime(rt) {
 			return "", apperr.New(apperr.Internal, "INTERNAL",
 				"submission: unlisted runtime env "+n)
 		}
-		env = append(env, envKV{Name: safeToken(n),
+		name, err := safeToken(n)
+		if err != nil {
+			return "", err
+		}
+		env = append(env, envKV{Name: name,
 			Quoted: SafeToken(`"$` + rt + `"`), Runtime: true})
 	}
 	var modules []string
@@ -174,20 +185,29 @@ func Wrapper(spec admission.ExecutionSpec, payload []byte) (string, error) {
 		modules = append(modules, s.ModuleSpec...)
 	}
 	d := wrapperData{
-		ExecutionID:   safeToken(spec.ID.String()),
-		SpecDigest:    safeToken(hex.EncodeToString(spec.Digest[:])),
 		TaskName:      spec.TaskName,
 		Modules:       modules,
 		Env:           env,
 		Nonce:         SafeToken(nonce),
 		HasPayload:    hasPayload,
 		PayloadBase64: body,
-		PayloadDigest: safeToken(hex.EncodeToString(spec.Payload.Digest[:])),
 		WorkingDir:    spec.WorkingDir,
 		MPI:           spec.Resources.Tasks > 1,
-		Tasks:         safeToken(fmt.Sprint(spec.Resources.Tasks)),
 		Interpreter:   string(spec.Payload.Interpreter),
 		Argv:          argv,
+	}
+	for _, t := range []struct {
+		dst *SafeToken
+		src string
+	}{
+		{&d.ExecutionID, spec.ID.String()},
+		{&d.SpecDigest, hex.EncodeToString(spec.Digest[:])},
+		{&d.PayloadDigest, hex.EncodeToString(spec.Payload.Digest[:])},
+		{&d.Tasks, fmt.Sprint(spec.Resources.Tasks)},
+	} {
+		if *t.dst, err = safeToken(t.src); err != nil {
+			return "", err
+		}
 	}
 	var b strings.Builder
 	if err := tmpl.Execute(&b, d); err != nil {
