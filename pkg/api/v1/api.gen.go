@@ -2952,6 +2952,11 @@ type CreateWorkflowJSONBody struct {
 	Project     openapi_types.UUID `json:"project"`
 }
 
+// ArchiveWorkflowParams defines parameters for ArchiveWorkflow.
+type ArchiveWorkflowParams struct {
+	XExpectedVersion *int64 `json:"X-Expected-Version,omitempty"`
+}
+
 // PatchWorkflowJSONBody defines parameters for PatchWorkflow.
 type PatchWorkflowJSONBody struct {
 	Description *string `json:"description,omitempty"`
@@ -3430,7 +3435,7 @@ type ServerInterface interface {
 	CreateWorkflow(w http.ResponseWriter, r *http.Request, tenant TenantSlug)
 	// ArchiveWorkflow Archive a workflow
 	// (DELETE /tenants/{tenant}/workflows/{workflow})
-	ArchiveWorkflow(w http.ResponseWriter, r *http.Request, tenant TenantSlug, workflow WorkflowId)
+	ArchiveWorkflow(w http.ResponseWriter, r *http.Request, tenant TenantSlug, workflow WorkflowId, params ArchiveWorkflowParams)
 	// GetWorkflow Get a workflow
 	// (GET /tenants/{tenant}/workflows/{workflow})
 	GetWorkflow(w http.ResponseWriter, r *http.Request, tenant TenantSlug, workflow WorkflowId)
@@ -7543,8 +7548,32 @@ func (siw *ServerInterfaceWrapper) ArchiveWorkflow(w http.ResponseWriter, r *htt
 		return
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ArchiveWorkflowParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "X-Expected-Version" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Expected-Version")]; found {
+		var XExpectedVersion int64
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-Expected-Version", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Expected-Version", valueList[0], &XExpectedVersion, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "integer", Format: "int64"})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-Expected-Version", Err: err})
+			return
+		}
+
+		params.XExpectedVersion = &XExpectedVersion
+
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ArchiveWorkflow(w, r, tenant, workflow)
+		siw.Handler.ArchiveWorkflow(w, r, tenant, workflow, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -14110,6 +14139,7 @@ func (response CreateWorkflow403JSONResponse) VisitCreateWorkflowResponse(w http
 type ArchiveWorkflowRequestObject struct {
 	Tenant   TenantSlug `json:"tenant"`
 	Workflow WorkflowId `json:"workflow"`
+	Params   ArchiveWorkflowParams
 }
 
 type ArchiveWorkflowResponseObject interface {
@@ -18208,11 +18238,12 @@ func (sh *strictHandler) CreateWorkflow(w http.ResponseWriter, r *http.Request, 
 }
 
 // ArchiveWorkflow operation middleware
-func (sh *strictHandler) ArchiveWorkflow(w http.ResponseWriter, r *http.Request, tenant TenantSlug, workflow WorkflowId) {
+func (sh *strictHandler) ArchiveWorkflow(w http.ResponseWriter, r *http.Request, tenant TenantSlug, workflow WorkflowId, params ArchiveWorkflowParams) {
 	var request ArchiveWorkflowRequestObject
 
 	request.Tenant = tenant
 	request.Workflow = workflow
+	request.Params = params
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.ArchiveWorkflow(ctx, request.(ArchiveWorkflowRequestObject))
@@ -18890,29 +18921,29 @@ var swaggerSpec = []string{
 	"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",
-	"4eXc94M++Uovlu7ctCarqvTANMCw1VVXvQobzDSlUqJCkKaRQx98Nh9r8yX1m+xripKaZc68ls0Wj9PX",
-	"9fu9NP+YYb1NUY2NHv5wLRQq9KwCdb5cB3U+hOLBq8zK/f3sNT0ar8SfN3WbG5UuOjyYky445H996Qxa",
-	"dg5ZX8ZrHX6a5zULOLoG7+0Nh34Syu0aufVwJhcnQBx6kEOl+ASYceyaibuw7QP9m3bK9nsz+OthYnnc",
-	"z562k1atT95PuTZg66Pimh2DnRA9IsbBGFNWl2T1Rucs8QwXBh5xY9kmZScLrTkMfPkGVQGCA/ASvMNv",
-	"QAA/7e4D2SghYykyjiIGXuy9FNlTHoVjLpbTLQtkakMYywa4fxMT/OXFQET1SIhd6CtnkOwRpFo+iYSu",
-	"ffDy6AjcXJ2emKbUwIWUYsSA8DDsQc+jiIm8CfUoErMGBXNqvLmtr4I7F9Fn4BTvyDo+0eQ3opkn9FCt",
-	"oCvUSJndmmqBpU8wg65jiH3kgR2NPB/uZR4oQDNE5wCJWXb76tG5EwrnZAAg+Mfxu/ODX24uLxKi68OO",
-	"rQ1M7A09Clci8e8Z8ReXFRI38pIiP8Alnl1RChBjcGL/TjpNLYcpiZGioBk4EiUyvx0R4iMYtpRBxW4l",
-	"rxXyC4LADKj2u7KRjVyma0PBWBmO49j3rQ11dozU+LfdpKxFd8Yx5+9KIZ/1p1bJZOuXCM2j9Z7WZaql",
-	"LLsHoZUtPMP2pMTHnBWkfC/zK0lAPJYZLq9ASVsxbSMFl63uZaw0/K/k7o0Peoqgh2jqhP73vdNPEXI5",
-	"8vbSE1j80ZUm2LfEmhfUSYzJJyX2+uy99yZpN3k2jFDApBGI9N32tAbTrvY5JcQUSuy8PPwRvD+9vjm7",
-	"vBievXt3dyv6FwLCp4g+YoZ2F+O4Bx6KKHJr1ZO3ZshXy4ItrsLkUN4GkGixzO9k67nc73LKt/5uUQzx",
-	"4Zwo1tyCQ5+rwU8ZM9ZW9f2yoo9yvw6uyMOyqZYEMNhRzEK2JSyiAFv0xvWMDR0XEz1QdWyFwI2prIFQ",
-	"NTSlsLFIFVa2mppqT5xZluSKaPZOoGtwFFMlsr2r1kUT3ZPNQ3dKSUhi5s9398FlCFjsuoixXGXFCLkk",
-	"QCz7xmPo5dwo3zHZBJfxYQK9of71EHvSCyLUGE4CoQb5c5uj4kr98lkvbSO2r4pIujGuC7OqwzrcGO9z",
-	"r8RHiO5JhFdDgIfhJCSMY5dpB0dH7qAhm+gPJf7/umTL/cUsPoF8YQUil2tV2Qva1i3ZoI3IZllC5+TV",
-	"KvZNG4Hs4QIG6LmBc6mBs6ohSdzLggYD4uExXmfg/SzfRlm2LCg0BF5FE+NeRBRRNMPocY/FI10SUS2J",
-	"38TY95T0s6VUDsAjhVGEqKF4IQhDFHMKffALGd0kS0jxbNK/wA7kHAUR/5v0+fs+ouKxhqQ/6u4+uDLN",
-	"kEPCRWONAZDbTf9gFZnqZDnCTw/5rRD/8vyW2au0KKED8Ur5TQ5LSiP0/bdyVFpc8Cl+aKxcn9w89szS",
-	"Hgox6vEyirdHQn8OWOkQEtlJaJA9kZj6Xa3lkXJ33/+tSr59poTCiyeJltQ64Ps2+Y3NBc8J8d9nYsjQ",
-	"87DKO7zKrVxy+5corNKZr79K7rpNKl93779xviNPYvVOUm4uMHC3p/ff5vgnYUIy35mG3QvSSrpMp6yF",
-	"95mffaPmViHZIQ+nBP0bAk3d8IkNQDYxoauTomDuZxLI4QTikInkcsyM+ae2whCdmXuLqe+8cg5ghA9m",
-	"L5wv91/+3wA=",
+	"4eXc94M++Uovlu7ctCarqvTANMCw1VVXvQobzDSlUqJCkKaRQx98Nh9r8yX1m+xripKaZc68lL9PEfQQ",
+	"TRn8v++dfoqQy5G3p99/s/N6HPK/vnQG5cYIrbo4HqfP9vd7wv4xw9ObwiVrhOo64hpVClyB7F+ug+wf",
+	"QvGSVmbl/g78muaPV+LPm7rNjYotHXdsR3mDzabS1uGnebezgKNrcAvfcOgnMeKuIWEPZ5J8AsShBzlU",
+	"GlWAGceumbiLPDjQv2mnxb83g78eJpbH/expO6nr+uT9tHYDtj66s9kx2AnRI2IcjDFlddlbb3QyFM9w",
+	"YeARN5b9V3ay0JrDwJePWxUgOAAvwTv8BgTw0+4+kB0YMiYo4yhi4MXeS5GW5VE45mI53QtB5kyEseys",
+	"+zcxwV9eDES4kITYhb7yMsnmQ6qXlMgU2wcvj47AzdXpiel2DVxIKUYMCNfFHvQ8iphIyFCvLTFrtDFn",
+	"H6TKwlfAnYvoM3CKd2Qdn5gIG1H5E3qo1vwVaqTMbk1FxtLZmEHXMcQ+8sCORp4P9zLBFKAZonOAxCy7",
+	"fRX03AmF1zMAEPzj+N35wS83lxcJ0fVhx9bOKPZOIYUrkfj3jPiLywqJG3lJkR/gEs+uKAWIMTixfye9",
+	"sZbDlMRIUdAMHIkSmd+OCPERDFvKoGIblNcK+QVBYAZUX1/ZIUcu07VTYaws0nHs+9ZOPTtGavzbblIv",
+	"o1vumPN3pZDP+lOrLLX1S4Tm0XpP6zLVUpbdg9DKFp5he1LiY84KUr6X+ZVkNh7L1JlXoKStmH6UgstW",
+	"N0lWGv5XcverdX58I6x5QZ3EmHxSYq/P3ntvsoGT98gIBUwagUjfbU9rMG2Xn1NCTAXGzsvDH8H70+ub",
+	"s8uL4dm7d3e3ojEiIHyK6CNmaHcxjnvgoYgit1Y9eWuGfLUs2OIqTA7lbQCJFkspT7aeSyov55Lr7xbF",
+	"EB/OiWLNLTj0uRr8lDFjbeXkLysaNPdrDYs8LLt1SQCDHcUsZL/DIgqwRW9cz9jQyjHRA1UrWAjcmMri",
+	"ClWcU4pHixxkZaupqfbEmWWtrwiT7wS6uEcxVSL7xmpdNNE92Tx0p5SEJGb+fHcfXIaAxa6LGMuVbIyQ",
+	"SwLEso9Hhl7OjfIdk911GR8m0BvqXw+xJ70gQo3hJBBqkD+3OSqu1C+f9dI2YvuqiKQb47owqzqsw43x",
+	"Pvf8fITonkR4NQR4GE5Cwjh2mXZwdOQOGrKJ/lDi/69LttxfzOITyBdWIHJJXJVNpm1tmA3aiDSZJbRk",
+	"Xq1i37QRyB4uYICeO0OXOkOr4pTEvSxoMCAeHuN1RvTP8v2ZZS+EQqfhVXRH7kVEEUUzjB73WDzStRbV",
+	"kvhNjH1PST9bruYAPFIYRYgaiheCMEQxp9AHv5DRTbKEFM8mrwzsQM5REPG/SZ+/7yMqXoFIGq/u7oMr",
+	"02U5JFx07BgAud30D1aRqU6WI/z0kN8K8S/Pb5m9SosSOhDPn9/ksKQ0Qt9/K0elxQWf4ofGyvXJzWPP",
+	"LO2hEKMeT654eyT054CVDiGRnYQG2ROJqR/sWh4pd/f936qs3mdKKDylkmhJrQO+b5Pf2FzwnBD/fSaG",
+	"DD0Pq4TGq9zKJbd/icIqnfn6q+Su2+QIdvf+G+c78iRW7yR17AIDd3t6/22OfxImJPOd6QS+IK2ky3TK",
+	"Wnif+dk3am4Vkh3ycErQvyHQ1A2f2ABkExO6OikK5n4mMx1OIA6ZyFrHzJh/aisM0Zm5t5j6zivnAEb4",
+	"YPbC+XL/5f8NAA==",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,
