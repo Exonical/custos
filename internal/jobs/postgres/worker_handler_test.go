@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/Exonical/custos/internal/audit"
 	clusterpg "github.com/Exonical/custos/internal/clusters/postgres"
 	"github.com/Exonical/custos/internal/jobs"
 	jobpg "github.com/Exonical/custos/internal/jobs/postgres"
@@ -104,6 +105,85 @@ func TestReconcileReschedulesObserved(t *testing.T) {
 	}
 	if lo, hi := before.Add(3*time.Second), time.Now().Add(8*time.Second); rs.At.Before(lo) || rs.At.After(hi) {
 		t.Fatalf("reschedule at %v, want ~now+5s", rs.At)
+	}
+}
+
+type captureAudit struct{ events []audit.Event }
+
+func (c *captureAudit) Record(_ context.Context, e audit.Event) error {
+	c.events = append(c.events, e)
+	return nil
+}
+
+type unavailableTransitionRepo struct{ jobs.Repository }
+
+func (unavailableTransitionRepo) Transition(context.Context, tenants.Scope, uuid.UUID, int, jobs.Patch) (jobs.Job, error) {
+	return jobs.Job{}, apperr.New(apperr.Unavailable, "DB_UNAVAILABLE", "database unavailable")
+}
+
+func mkLostQueuedJob(t *testing.T, repo *jobpg.Repository, tid, pid, cid, uid uuid.UUID) jobs.Job {
+	t.Helper()
+	j := mkJob(t, tid, pid, cid, uid)
+	j.State = jobs.StateQueued
+	sid := int64(4242)
+	j.SlurmJobID = &sid
+	submitted := time.Now().UTC().Add(-11 * time.Minute)
+	j.SubmittedAt = &submitted
+	if err := repo.Create(context.Background(), tenants.TenantScope(tid), j, nil); err != nil {
+		t.Fatal(err)
+	}
+	return j
+}
+
+// A job absent from the scheduler for over lostAfter is marked LOST by
+// the sweep with the same effects as the reconcile path, including the
+// job.lost audit event.
+func TestSweepMarksLostJobAndAudits(t *testing.T) {
+	pool := dbtest.Pool(t)
+	repo := jobpg.New(pool)
+	ctx := context.Background()
+	tid, uid := mkTenant(t, pool, "sweep-lost-a"), mkUser(t, pool, "sweep-lost-u")
+	pid, cid := mkProject(t, pool, tid), mkCluster(t, pool, "sweep-lost-c")
+	j := mkLostQueuedJob(t, repo, tid, pid, cid, uid)
+
+	rec := &captureAudit{}
+	d := worker.Deps{Jobs: repo, Clusters: clusterpg.New(pool), Factory: fakeFactory{fake.New()}, Exec: pool, Audit: rec}
+	err := worker.Sweep(d)(ctx, workqueue.Item{Kind: worker.KindSweep, Key: "sweep:" + cid.String()})
+	var rs workqueue.Reschedule
+	if !errors.As(err, &rs) {
+		t.Fatalf("sweep result=%v, want reschedule", err)
+	}
+	got, err := repo.Get(ctx, tenants.TenantScope(tid), j.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.State != jobs.StateFailed || got.StateReason != "LOST" {
+		t.Fatalf("swept job=%+v, want FAILED/LOST", got)
+	}
+	if len(rec.events) != 1 || rec.events[0].Action != "job.lost" || rec.events[0].Target.ID != j.ID.String() {
+		t.Fatalf("audit events=%+v, want one job.lost for %s", rec.events, j.ID)
+	}
+}
+
+// A non-Conflict failure while marking a job LOST is returned so the
+// work queue retries the sweep.
+func TestSweepReturnsLostTransitionError(t *testing.T) {
+	pool := dbtest.Pool(t)
+	repo := jobpg.New(pool)
+	ctx := context.Background()
+	tid, uid := mkTenant(t, pool, "sweep-lost-err-a"), mkUser(t, pool, "sweep-lost-err-u")
+	pid, cid := mkProject(t, pool, tid), mkCluster(t, pool, "sweep-lost-err-c")
+	mkLostQueuedJob(t, repo, tid, pid, cid, uid)
+
+	rec := &captureAudit{}
+	d := worker.Deps{Jobs: unavailableTransitionRepo{repo}, Clusters: clusterpg.New(pool), Factory: fakeFactory{fake.New()}, Exec: pool, Audit: rec}
+	err := worker.Sweep(d)(ctx, workqueue.Item{Kind: worker.KindSweep, Key: "sweep:" + cid.String()})
+	var rs workqueue.Reschedule
+	if err == nil || errors.As(err, &rs) || !apperr.Is(err, apperr.Unavailable) {
+		t.Fatalf("sweep result=%v, want unavailable error", err)
+	}
+	if len(rec.events) != 0 {
+		t.Fatalf("audit events=%+v, want none on failed transition", rec.events)
 	}
 }
 
