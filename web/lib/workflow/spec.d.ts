@@ -89,7 +89,15 @@ export interface Execution {
  */
 export interface Task {
   name: string;
+  /**
+   * @deprecated
+   * Deprecated compatibility aliases. New specs should omit type except for shell and condition; use launch to choose sbatch or srun.
+   */
   type?: "batch" | "mpi" | "gpu" | "array" | "shell" | "stageIn" | "stageOut" | "interactive" | "condition";
+  /**
+   * Slurm launch model; defaults to sbatch, except legacy type mpi defaults to srun.
+   */
+  launch?: "sbatch" | "srun";
   dependsOn?: string[];
   onDependencyFailure?: "fail" | "run";
   when?: string;

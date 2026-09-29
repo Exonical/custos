@@ -10,7 +10,7 @@ describe("normalizeWorkflowSpec", () => {
       spec: { parameters: {}, tasks: [], secrets: {} },
     });
     expect(normalizeWorkflowSpec({ spec: { tasks: [null, {}, { name: 2 }, { name: "ok", dependsOn: "bad", env: ["bad"] }] } })).toMatchObject({
-      spec: { tasks: [{ name: "ok", type: "batch", dependsOn: [] }] },
+      spec: { tasks: [{ name: "ok", launch: "sbatch", dependsOn: [] }] },
     });
   });
 

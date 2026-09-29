@@ -11,6 +11,7 @@ import (
 	"net/netip"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -282,7 +283,12 @@ func cmdServe(parent context.Context, configPath string, lookupEnv config.Lookup
 		httpx.RealIP(trustedProxies(logger, cfg)),
 		httpx.SecurityHeaders,
 		httpx.CORS(cfg.Server.CORS.AllowedOrigins),
-		httpx.BodyLimit(cfg.Server.MaxBodyBytes),
+		httpx.BodyLimitFor(func(r *http.Request) int64 {
+			if r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/workflow-imports/sbatch") {
+				return api.WorkflowImportBodyLimit
+			}
+			return cfg.Server.MaxBodyBytes
+		}),
 		httpx.Timeout(cfg.Server.RequestTimeout),
 		httpx.AccessLog(logger),
 		otel.RouteLabeler,

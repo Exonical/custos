@@ -4,8 +4,8 @@ title: Hybrid MPI + OpenMP
 summary: MPI ranks across two nodes, each rank running OpenMP threads.
 description: |
   Requests 2 nodes with 4 ranks per node and 5 CPUs per rank, exports
-  OMP_NUM_THREADS from the per-rank CPU count, and launches the 8 ranks
-  with srun after loading the gcc and openmpi modules.
+  OMP_NUM_THREADS from the per-rank CPU count, and lets srun inherit the
+  allocation after loading the gcc and openmpi modules.
 workflow:
   apiVersion: custos.io/v1alpha1
   kind: Workflow
@@ -24,11 +24,10 @@ workflow:
         default: ./a.out
     tasks:
       - name: run
-        type: mpi
+        launch: srun
         resources:
           nodes: 2
           tasksPerNode: 4
-          tasks: 8
           cpusPerTask: 5
           walltime: "00:00:30"
         software:

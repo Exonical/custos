@@ -24,7 +24,6 @@ workflow:
         default: ./a.out
     tasks:
       - name: run
-        type: batch
         resources:
           nodes: 1
           tasksPerNode: 1

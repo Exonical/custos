@@ -218,6 +218,32 @@ func TestBodyLimit(t *testing.T) {
 	}
 }
 
+func TestBodyLimitForRouteOverride(t *testing.T) {
+	h := BodyLimitFor(func(r *http.Request) int64 {
+		if strings.HasSuffix(r.URL.Path, "/workflow-imports/sbatch") {
+			return 16
+		}
+		return 8
+	})(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.Copy(io.Discard, r.Body)
+		w.WriteHeader(http.StatusOK)
+	}))
+	for _, tc := range []struct {
+		path string
+		body string
+		want int
+	}{
+		{path: "/api/v1/tenants/acme/jobs", body: "0123456789", want: http.StatusRequestEntityTooLarge},
+		{path: "/api/v1/tenants/acme/workflow-imports/sbatch", body: "0123456789", want: http.StatusOK},
+	} {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, tc.path, strings.NewReader(tc.body)))
+		if rec.Code != tc.want {
+			t.Errorf("%s: status=%d want=%d", tc.path, rec.Code, tc.want)
+		}
+	}
+}
+
 func TestTimeout(t *testing.T) {
 	h := Timeout(20 * time.Millisecond)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		select {

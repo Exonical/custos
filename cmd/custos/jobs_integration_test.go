@@ -360,7 +360,7 @@ func TestAPIJobs(t *testing.T) {
 	}
 	// Execution spec is retrievable.
 	code, er := call(tokR, "GET", base+"/"+jid+"/execution-spec", nil, "")
-	if code != 200 || er["payload"] == nil {
+	if code != 200 || er["payload"] == nil || er["launch"] != "sbatch" {
 		t.Fatalf("execution-spec: %d %v", code, er)
 	}
 
@@ -398,7 +398,19 @@ func TestAPIJobs(t *testing.T) {
 	if len(vdiags) == 0 || vr["digest"] == nil {
 		t.Fatalf("validate response: %v", vr)
 	}
-	// Legacy import disabled by default -> 403 IMPORT_DISABLED.
+	// Explicitly disable legacy import at tenant scope for the gate test;
+	// the built-in default now allows import.
+	if code, tp := call(adminTok, "PUT",
+		"/api/v1/tenants/j-tenant/policies/validation",
+		map[string]any{"policy": map[string]any{
+			"blockAt":                   "ERROR",
+			"allowLegacySbatchImport":   false,
+			"shellcheckShell":           "bash",
+			"forbiddenCommands":         []string{"sbatch", "salloc"},
+			"forbiddenCommandsSeverity": "WARNING",
+		}, "version": 0}, ""); code != 200 {
+		t.Fatalf("tenant policy disable: %d %v", code, tp)
+	}
 	if code, ir := call(adminTok, "POST",
 		"/api/v1/tenants/j-tenant/scripts/import-sbatch",
 		map[string]any{"language": "bash",
@@ -422,7 +434,7 @@ func TestAPIJobs(t *testing.T) {
 			"allowLegacySbatchImport":   true,
 			"shellcheckShell":           "bash",
 			"forbiddenCommands":         []string{"sbatch", "salloc"},
-			"forbiddenCommandsSeverity": "WARNING"}, "version": 0}, "")
+			"forbiddenCommandsSeverity": "WARNING"}, "version": 1}, "")
 	if code != 200 {
 		t.Fatalf("policy put: %d %v", code, pr)
 	}

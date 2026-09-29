@@ -3,10 +3,9 @@ order: 40
 title: MPI (by node count)
 summary: Two full nodes with 20 MPI ranks each.
 description: |
-  Requests 2 nodes with 20 tasks per node (40 ranks). Adjust tasksPerNode
-  to the cores per node on your cluster and keep tasks equal to
-  nodes x tasksPerNode. Ranks are launched with srun after the gcc and
-  openmpi modules are loaded.
+  Requests 2 nodes with 20 tasks per node. Adjust tasksPerNode to the
+  cores per node on your cluster. The srun launch inherits the full Slurm
+  allocation after the gcc and openmpi modules are loaded.
 workflow:
   apiVersion: custos.io/v1alpha1
   kind: Workflow
@@ -25,11 +24,10 @@ workflow:
         default: ./a.out
     tasks:
       - name: run
-        type: mpi
+        launch: srun
         resources:
           nodes: 2
           tasksPerNode: 20
-          tasks: 40
           cpusPerTask: 1
           walltime: "00:00:30"
         software:

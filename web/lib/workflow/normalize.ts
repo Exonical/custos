@@ -109,16 +109,36 @@ function normalizeResources(value: unknown): TaskResources | undefined {
   return resources;
 }
 
+// Only these task kinds still change behavior; batch/mpi/gpu/array are
+// deprecated aliases folded into `launch` and resources.
+const specialKinds = ["shell", "condition", "stageIn", "stageOut", "interactive"] as const;
+export type TaskKind = (typeof specialKinds)[number];
+
+function setTaskKind(task: Task, kind: TaskKind) {
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- `type` remains the field for special kinds
+  task.type = kind;
+}
+
+/** Returns the behavior-changing kind (shell, condition, ...) or undefined for ordinary Slurm tasks. */
+export function taskKind(task: Task): TaskKind | undefined {
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- read the special kind, never the legacy aliases
+  const value = task.type;
+  return specialKinds.find((candidate) => candidate === value);
+}
+
 function normalizeTask(value: unknown): Task | undefined {
   const source = record(value);
   const name = text(source?.name);
   if (!source || !name) return undefined;
-  const taskTypes: NonNullable<Task["type"]>[] = ["batch", "mpi", "gpu", "array", "shell", "stageIn", "stageOut", "interactive", "condition"];
+  const rawType = text(source.type);
   const task: Task = {
     name,
-    type: taskTypes.includes(source.type as NonNullable<Task["type"]>) ? source.type as NonNullable<Task["type"]> : "batch",
+    // Legacy `type: mpi` means srun; the other legacy aliases mean sbatch.
+    launch: source.launch === "srun" || source.launch === "sbatch" ? source.launch : rawType === "mpi" ? "srun" : "sbatch",
     dependsOn: strings(source.dependsOn) ?? [],
   };
+  const kind = specialKinds.find((candidate) => candidate === rawType);
+  if (kind) setTaskKind(task, kind);
   const textFields = ["when", "partition", "qos", "workingDirectory", "stdout", "stderr"] as const;
   for (const key of textFields) {
     const string = text(source[key]);

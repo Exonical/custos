@@ -65,14 +65,13 @@ spec:
 
   tasks:
     - name: prepare
-      type: batch
       resources: { cpu: 4, memory: 8Gi, walltime: 30m }
       command: ["./prepare", "{{ parameters.molecule }}"]
       outputs:
         shardList: { type: file, path: "shards.json" }
 
     - name: simulate
-      type: mpi
+      launch: srun
       dependsOn: [prepare]
       fanOut:
         count: "{{ parameters.shards }}"      # static fan-out from a parameter
@@ -82,14 +81,12 @@ spec:
       retry: { attempts: 2, on: [FAILED, NODE_FAIL] }
 
     - name: merge
-      type: batch
       dependsOn: [simulate]        # fan-in: waits for all simulate instances
       when: "{{ tasks.simulate.succeededCount }} > 0"
       resources: { cpu: 16, memory: 64Gi, walltime: 1h }
       command: ["./merge"]
 
     - name: train
-      type: gpu
       dependsOn: [merge]
       resources: { gpu: { count: 4, type: a100 }, cpu: 32, memory: 256Gi, walltime: 12h }
       software:                    # structured; resolved against the cluster software catalog
@@ -100,24 +97,36 @@ spec:
       env: { WANDB_MODE: offline }
 
     - name: sweep
-      type: array
       dependsOn: [merge]
       array: { start: 0, end: 99, maxConcurrent: 20 }
       command: ["./sweep", "{{ array.taskId }}"]
 ```
 
-### Task types (v1alpha1)
+### Launch model and task compatibility (v1alpha1)
+
+A Slurm-backed task is submitted as one sbatch allocation. Its `launch`
+field controls only how the payload is started inside that allocation:
+
+| launch | Wrapper behavior |
+| --- | --- |
+| omitted or `sbatch` | Run the executable once in the batch script. Resource counts describe the allocation; they do not repeat the executable. |
+| `srun` | Start the executable once under `srun`; emit `--ntasks=N` when `resources.tasks` is positive, otherwise inherit the allocation (for example nodes × tasksPerNode). |
+
+`type: batch`, `mpi`, `gpu`, and `array` remain accepted as deprecated
+compatibility aliases for stored specs; legacy `type: mpi` defaults to
+`launch: srun`, and the other aliases default to `sbatch`. They are not
+normalized during decode or canonical hashing, so existing published spec
+hashes remain unchanged. New documents omit `type` unless using `shell` or
+`condition`. `type: array` still requires an `array` block, but an `array`
+block is also valid on any Slurm-backed non-condition task.
 
 | type | Slurm mapping | Notes |
 | --- | --- | --- |
-| `batch` | one sbatch | default |
-| `mpi` | sbatch with `nodes/ntasks-per-node`; command executed via `srun` | Custos emits `srun --ntasks=... <argv>` |
-| `gpu` | sbatch with `--gres=gpu[:type]:N` | requires cluster GRES capability |
-| `array` | sbatch `--array` | one `TaskExecution`, one `Job`; array task states aggregated |
+| omitted, `batch`, `mpi`, `gpu`, `array` | one sbatch allocation | `launch` controls whether the payload itself runs under srun |
 | `shell` | Custos wrapper executing the payload as an unrestricted shell script | privileged; gated by `workflow.publish` plus `allowShellTasks: true` in the effective ValidationPolicy — there is deliberately no `workflow.shell` permission; command absent, `script` present |
 | `stageIn` / `stageOut` | sbatch on a data-mover partition (or future control-plane mover) | v1alpha1 reserves the type; implementation Milestone 7+ |
 | `interactive` | reserved (`salloc`/`srun --pty` or Jupyter) | model reserved; not executed before Milestone 8+ |
-| `condition` | no Slurm job; engine evaluates expression | for `when` on downstream tasks |
+| `condition` | no Slurm job; engine evaluates expression | for `when` on downstream tasks; cannot specify `launch` or `array` |
 
 Every Slurm-backed task carries either `command` (argv executed directly by
 the wrapper) or `script` (`{ref: sha256:…, language}` pointing at a
@@ -139,9 +148,10 @@ and `fanOut.count`. No function calls, no loops, no string-to-code. All
 substitutions happen into argv elements or env values, never into shell
 text. One exception: `{{ array.taskId }}` does not render to text — it
 becomes the allow-listed runtime reference `"$SLURM_ARRAY_TASK_ID"` in
-the generated wrapper, so it is legal only as the **entire** argv
-element or env value (never embedded in literal text or arithmetic);
-static validation rejects it otherwise (`REF_ARRAY_RUNTIME_WHOLE`).
+the generated wrapper, so it is legal only on a task with an `array`
+spec and as the **entire** argv element or env value (never embedded in
+literal text or arithmetic); static validation rejects it otherwise
+(`REF_ARRAY_RUNTIME_WHOLE`).
 Implementation: hand-written lexer/parser in `internal/workflowspec/expr`
 (~500 lines) rather than pulling in a general template engine; the small
 grammar is a security feature.

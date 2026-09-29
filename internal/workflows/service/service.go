@@ -6,11 +6,17 @@ package service
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"path"
+	"regexp"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"gopkg.in/yaml.v3"
 
 	"github.com/Exonical/custos/internal/admission"
 	"github.com/Exonical/custos/internal/audit"
@@ -20,6 +26,7 @@ import (
 	"github.com/Exonical/custos/internal/platform/apperr"
 	policiessvc "github.com/Exonical/custos/internal/policies/service"
 	projectsvc "github.com/Exonical/custos/internal/projects/service"
+	"github.com/Exonical/custos/internal/sbatchexport"
 	"github.com/Exonical/custos/internal/scripts"
 	"github.com/Exonical/custos/internal/slurm"
 	"github.com/Exonical/custos/internal/submission"
@@ -699,6 +706,280 @@ func (s *Service) TaskImportSbatch(ctx context.Context, p authn.Principal,
 	return prop, nil
 }
 
+const maxWorkflowImportScripts = 20
+
+var workflowImportLabelInvalid = regexp.MustCompile(`[^a-z0-9-]+`)
+var workflowImportLabelRuns = regexp.MustCompile(`-+`)
+
+// SbatchImportFile is one named script in a multi-file import request.
+type SbatchImportFile struct {
+	Filename string
+	Content  string
+}
+
+// SbatchWorkflowImportInput is the workflow-level sbatch import request.
+type SbatchWorkflowImportInput struct {
+	Name    string
+	Scripts []SbatchImportFile
+}
+
+// SbatchImportedTask summarizes one imported script and its diagnostics.
+type SbatchImportedTask struct {
+	Filename     string                  `json:"filename"`
+	Task         string                  `json:"task"`
+	ScriptDigest string                  `json:"scriptDigest"`
+	Imported     []string                `json:"imported"`
+	Diagnostics  []validation.Diagnostic `json:"diagnostics"`
+}
+
+// SbatchWorkflowImportResult is the statically validated workflow import proposal.
+type SbatchWorkflowImportResult struct {
+	Spec  workflowspec.Workflow `json:"spec"`
+	YAML  string                `json:"yaml"`
+	Tasks []SbatchImportedTask  `json:"tasks"`
+}
+
+func sbatchLanguage(script []byte) workflowspec.Language {
+	line, _, _ := strings.Cut(string(script), "\n")
+	line = strings.TrimSuffix(line, "\r")
+	fields := strings.Fields(line)
+	if line == "#!/bin/sh" || strings.HasPrefix(line, "#!/bin/sh ") ||
+		(len(fields) >= 2 && fields[0] == "#!/usr/bin/env" && fields[1] == "sh") {
+		return workflowspec.LanguageSh
+	}
+	return workflowspec.LanguageBash
+}
+
+func sanitizeWorkflowLabel(value, fallback string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	value = workflowImportLabelInvalid.ReplaceAllString(value, "-")
+	value = workflowImportLabelRuns.ReplaceAllString(value, "-")
+	value = strings.Trim(value, "-")
+	if value == "" {
+		value = fallback
+	}
+	if len(value) > 63 {
+		value = strings.TrimRight(value[:63], "-")
+	}
+	if value == "" {
+		return "task"
+	}
+	return value
+}
+
+func uniqueWorkflowTaskName(value string, used map[string]bool) string {
+	base := sanitizeWorkflowLabel(value, "task")
+	if !used[base] {
+		used[base] = true
+		return base
+	}
+	for suffix := 2; ; suffix++ {
+		tail := fmt.Sprintf("-%d", suffix)
+		prefix := strings.TrimRight(base[:min(len(base), 63-len(tail))], "-")
+		candidate := prefix + tail
+		if !used[candidate] {
+			used[candidate] = true
+			return candidate
+		}
+	}
+}
+
+func importedTaskResources(src workflowspec.Resources, taskIndex int) (workflowspec.TaskResources, *workflowspec.ArraySpecYAML, []validation.Diagnostic) {
+	var out workflowspec.TaskResources
+	var array *workflowspec.ArraySpecYAML
+	out.Nodes = src.Nodes
+	out.Tasks = src.Tasks
+	out.TasksPerNode = src.TasksPerNode
+	out.CPUsPerTask = src.CPUsPerTask
+	out.Constraints = src.Constraints
+	out.Licenses = append([]string(nil), src.Licenses...)
+	out.Exclusive = src.Exclusive
+	if src.MemoryPerNodeMiB > 0 {
+		out.Memory = fmt.Sprintf("%dMi", src.MemoryPerNodeMiB)
+	}
+	if src.Walltime > 0 {
+		out.Walltime = time.Duration(src.Walltime).String()
+	}
+	if src.GPU != nil {
+		out.GPU = &workflowspec.GPURequest{Type: src.GPU.Type, Count: src.GPU.Count}
+	}
+	if src.Array != nil {
+		array = &workflowspec.ArraySpecYAML{
+			Start: src.Array.Start, End: src.Array.End,
+			Step: src.Array.Step, MaxConcurrent: src.Array.MaxConcurrent,
+		}
+	}
+	var diagnostics []validation.Diagnostic
+	if src.MemoryPerCPUMiB > 0 {
+		diagnostics = append(diagnostics, validation.Diagnostic{
+			Source: "sbatchimport", Code: "CUSTOS202", Severity: validation.SeverityWarning,
+			Field:   fmt.Sprintf("spec.tasks[%d].resources.memoryPerCpu", taskIndex),
+			Message: "--mem-per-cpu is not representable by the workflow resource model and was not imported",
+		})
+	}
+	return out, array, diagnostics
+}
+
+// ImportWorkflowSbatch proposes a new workflow made of independent script tasks.
+// It stores only rewritten script bodies; workflow/version creation remains a
+// separate client action so diagnostics can be reviewed before persistence.
+func (s *Service) ImportWorkflowSbatch(ctx context.Context, p authn.Principal,
+	tc tenants.TenantContext, in SbatchWorkflowImportInput) (SbatchWorkflowImportResult, error) {
+	if err := authz.Require(ctx, s.d.AZ, p, authz.WorkflowCreate,
+		authz.Resource{Kind: "tenant", ID: tc.Tenant.ID.String(), TenantID: tc.Tenant.ID.String()}, s.d.Audit); err != nil {
+		return SbatchWorkflowImportResult{}, err
+	}
+	if len(in.Scripts) == 0 || len(in.Scripts) > maxWorkflowImportScripts {
+		return SbatchWorkflowImportResult{}, apperr.New(apperr.Invalid,
+			"WORKFLOW_IMPORT_COUNT", "scripts must contain between 1 and 20 files")
+	}
+	scope := tenants.ScopeFor(&tc)
+	pol, _, err := s.d.VPolicy.Effective(ctx, scope, tc.Tenant.ID, nil)
+	if err != nil {
+		return SbatchWorkflowImportResult{}, err
+	}
+	if !pol.AllowLegacySbatchImport {
+		s.audit(ctx, p, tc.Tenant.ID, "workflow.script.import", "",
+			"legacy sbatch import disabled", audit.ResultDeny, nil)
+		return SbatchWorkflowImportResult{}, apperr.New(apperr.Forbidden,
+			"IMPORT_DISABLED", "legacy #SBATCH import is disabled by validation policy")
+	}
+	if len(in.Name) > 256 {
+		return SbatchWorkflowImportResult{}, apperr.New(apperr.Invalid,
+			"WORKFLOW_IMPORT_NAME", "workflow name exceeds 256 bytes")
+	}
+
+	used := make(map[string]bool, len(in.Scripts))
+	out := SbatchWorkflowImportResult{
+		Spec: workflowspec.Workflow{
+			APIVersion: workflowspec.APIVersionV1Alpha1,
+			Kind:       workflowspec.KindWorkflow,
+			Spec:       workflowspec.Spec{Tasks: make([]workflowspec.Task, 0, len(in.Scripts))},
+		},
+		Tasks: make([]SbatchImportedTask, 0, len(in.Scripts)),
+	}
+	for i, file := range in.Scripts {
+		if strings.TrimSpace(file.Filename) == "" {
+			return SbatchWorkflowImportResult{}, apperr.New(apperr.Invalid,
+				"WORKFLOW_IMPORT_FILENAME", fmt.Sprintf("scripts[%d].filename is required", i))
+		}
+		if len(file.Filename) > 1024 {
+			return SbatchWorkflowImportResult{}, apperr.New(apperr.Invalid,
+				"WORKFLOW_IMPORT_FILENAME", fmt.Sprintf("scripts[%d].filename exceeds 1024 bytes", i))
+		}
+		script := []byte(file.Content)
+		if len(script) == 0 {
+			return SbatchWorkflowImportResult{}, apperr.New(apperr.Invalid,
+				"SCRIPT_REQUIRED", fmt.Sprintf("scripts[%d].content is empty", i))
+		}
+		if len(script) > validation.DefaultLimits.MaxScriptBytes {
+			return SbatchWorkflowImportResult{}, apperr.New(apperr.Invalid,
+				"SCRIPT_LIMITS", fmt.Sprintf("scripts[%d].content exceeds the 256 KiB script limit", i))
+		}
+		language := sbatchLanguage(script)
+		proposal, err := sbatchimport.Import(script, language)
+		if err != nil {
+			return SbatchWorkflowImportResult{}, apperr.New(apperr.Validation,
+				"IMPORT_FAILED", fmt.Sprintf("scripts[%d]: %v", i, err))
+		}
+		storedDigest, err := s.d.Scripts.Put(ctx, scope, tc.Tenant.ID,
+			language, proposal.Rewritten, p.UserID)
+		if err != nil {
+			return SbatchWorkflowImportResult{}, err
+		}
+		stem := strings.TrimSuffix(path.Base(strings.ReplaceAll(file.Filename, "\\", "/")), path.Ext(path.Base(strings.ReplaceAll(file.Filename, "\\", "/"))))
+		if proposal.Name != "" {
+			stem = proposal.Name
+		}
+		if stem == "" {
+			stem = fmt.Sprintf("task-%d", i+1)
+		}
+		taskName := uniqueWorkflowTaskName(stem, used)
+		resources, array, resourceDiagnostics := importedTaskResources(proposal.Resources, i)
+		diagnostics := make([]validation.Diagnostic, 0, len(proposal.Diagnostics)+len(resourceDiagnostics))
+		diagnostics = append(diagnostics, proposal.Diagnostics...)
+		diagnostics = append(diagnostics, resourceDiagnostics...)
+		validation.SortDiagnostics(diagnostics)
+		imported := append([]string{}, proposal.Imported...)
+		task := workflowspec.Task{
+			Name:             taskName,
+			Launch:           workflowspec.LaunchSbatch,
+			Resources:        resources,
+			Array:            array,
+			Script:           &workflowspec.ScriptRef{Digest: storedDigest.String(), Language: language},
+			Partition:        proposal.Partition,
+			QoS:              proposal.QoS,
+			WorkingDirectory: proposal.WorkingDir,
+			Stdout:           proposal.Stdout,
+			Stderr:           proposal.Stderr,
+		}
+		out.Spec.Spec.Tasks = append(out.Spec.Spec.Tasks, task)
+		out.Tasks = append(out.Tasks, SbatchImportedTask{
+			Filename: file.Filename, Task: taskName,
+			ScriptDigest: storedDigest.String(), Imported: imported,
+			Diagnostics: diagnostics,
+		})
+		s.audit(ctx, p, tc.Tenant.ID, "workflow.script.import", "", "",
+			audit.ResultAllow, map[string]any{
+				"filename":      file.Filename,
+				"task":          taskName,
+				"digest_before": validation.DigestOf(script).String(),
+				"digest_after":  storedDigest.String(),
+				"imported":      imported,
+			})
+	}
+	workflowName := sanitizeWorkflowLabel(in.Name, out.Spec.Spec.Tasks[0].Name)
+	out.Spec.Metadata.Name = workflowName
+	if errs := wfvalidate.Static(out.Spec); len(errs) != 0 {
+		return SbatchWorkflowImportResult{}, fieldErrs(errs)
+	}
+	canonical, err := workflowspec.Canonical(out.Spec)
+	if err != nil {
+		return SbatchWorkflowImportResult{}, err
+	}
+	var yamlValue any
+	if err := json.Unmarshal(canonical, &yamlValue); err != nil {
+		return SbatchWorkflowImportResult{}, err
+	}
+	yamlBytes, err := yaml.Marshal(yamlValue)
+	if err != nil {
+		return SbatchWorkflowImportResult{}, err
+	}
+	out.YAML = string(yamlBytes)
+	return out, nil
+}
+
+// ExportTaskSbatch renders a workflow task without mutating the version.
+func (s *Service) ExportTaskSbatch(ctx context.Context, p authn.Principal,
+	tc tenants.TenantContext, workflowID, versionID uuid.UUID, taskName string) (string, error) {
+	w, _, spec, task, err := s.taskContext(ctx, p, tc, workflowID, versionID, taskName)
+	if err != nil {
+		return "", err
+	}
+	var payload []byte
+	if task.Script != nil {
+		digest, err := validation.ParseDigest(task.Script.Digest)
+		if err != nil {
+			return "", apperr.New(apperr.NotFound, "SCRIPT_UNKNOWN", "script payload not found")
+		}
+		payload, err = s.d.Scripts.Get(ctx, tenants.ScopeFor(&tc), w.TenantID, digest)
+		if err != nil {
+			return "", err
+		}
+	}
+	rendered, err := sbatchexport.Render(spec, task, payload)
+	if err != nil {
+		var unsupported *sbatchexport.UnsupportedError
+		if errors.As(err, &unsupported) {
+			apiErr := apperr.New(apperr.Validation, "EXPORT_UNSUPPORTED", unsupported.Error())
+			apiErr.Details = append(apiErr.Details, apperr.Detail{Field: unsupported.Field, Reason: unsupported.Reason})
+			return "", apiErr
+		}
+		return "", err
+	}
+	return rendered, nil
+}
+
 // Preview is the read-only submission preview: the frozen
 // ExecutionSpec, the wrapper script and the neutral JobSubmission.
 type Preview struct {
@@ -809,6 +1090,7 @@ func (s *Service) PreviewSubmission(ctx context.Context, p authn.Principal,
 		ProjectID:   w.ProjectID,
 		PrincipalID: p.UserID,
 		TaskName:    task.Name,
+		Launch:      task.EffectiveLaunch(),
 		Attempt:     1,
 		Cluster: admission.ClusterRef{
 			ID: cluster.ID, Name: cluster.Name,

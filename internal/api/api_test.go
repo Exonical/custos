@@ -145,6 +145,41 @@ func TestOpenAPIJSON(t *testing.T) {
 		t.Fatal("ConnectorAuthConfig must reject unknown fields")
 	}
 
+	importPath := "/tenants/{tenant}/workflow-imports/sbatch"
+	importItem, ok := paths[importPath].(map[string]any)
+	if !ok {
+		t.Fatalf("path %q missing", importPath)
+	}
+	importOperation, ok := importItem["post"].(map[string]any)
+	if !ok {
+		t.Fatalf("POST %q missing", importPath)
+	}
+	importRequestBody := importOperation["requestBody"].(map[string]any)
+	importRequestContent := importRequestBody["content"].(map[string]any)
+	importRequestSchema := importRequestContent["application/json"].(map[string]any)["schema"].(map[string]any)
+	if importRequestSchema["$ref"] != "#/components/schemas/WorkflowSbatchImportRequest" {
+		t.Fatalf("workflow import request schema = %v", importRequestSchema)
+	}
+	importResponses := importOperation["responses"].(map[string]any)
+	importResponseSchema := importResponses["200"].(map[string]any)["content"].(map[string]any)["application/json"].(map[string]any)["schema"].(map[string]any)
+	if importResponseSchema["$ref"] != "#/components/schemas/WorkflowSbatchImportResponse" {
+		t.Fatalf("workflow import response schema = %v", importResponseSchema)
+	}
+
+	exportPath := "/tenants/{tenant}/workflows/{workflow}/versions/{version}/tasks/{task}/sbatch"
+	exportItem := paths[exportPath].(map[string]any)
+	exportOperation := exportItem["get"].(map[string]any)
+	exportResponses := exportOperation["responses"].(map[string]any)
+	exportScript := exportResponses["200"].(map[string]any)["content"].(map[string]any)["text/x-shellscript"].(map[string]any)["schema"].(map[string]any)
+	if exportScript["type"] != "string" {
+		t.Fatalf("sbatch export response schema = %v", exportScript)
+	}
+	for _, status := range []string{"401", "403", "404", "422"} {
+		if got := responseSchemaRef(t, doc, exportPath, status); got != "#/components/schemas/Error" {
+			t.Errorf("GET %s %s schema = %q, want Error", exportPath, status, got)
+		}
+	}
+
 	// ETag is stable and honored.
 	req, _ := http.NewRequest("GET", srv.URL+"/api/v1/openapi.json", nil)
 	req.Header.Set("If-None-Match", etag)

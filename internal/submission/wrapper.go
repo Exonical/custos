@@ -19,13 +19,14 @@ import (
 	"github.com/Exonical/custos/internal/platform/apperr"
 	"github.com/Exonical/custos/internal/slurm"
 	"github.com/Exonical/custos/internal/validation"
+	"github.com/Exonical/custos/internal/workflowspec"
 )
 
 // SafeToken is a value proven safe for unquoted shell interpolation by
 // regex (env names, digests, nonces, interpreter paths).
 type SafeToken string
 
-var safeTokenRe = regexp.MustCompile(`^[A-Za-z0-9_.:@/-]+$`)
+var safeTokenRe = regexp.MustCompile(`^[A-Za-z0-9_.:@/=-]+$`)
 
 func safeToken(s string) (SafeToken, error) {
 	if !safeTokenRe.MatchString(s) {
@@ -42,7 +43,7 @@ func q(v any) string {
 
 // wrapperTemplate is the documented v1 wrapper, verbatim. Argv
 // elements and runtime env values arrive pre-quoted ('literal' or
-// "$VAR") — the template never interpolates raw user text.
+// "$VAR"); launch/container prefixes are SafeToken words, never raw user text.
 const wrapperTemplate = `#!/bin/bash
 # custos wrapper v1 — generated; do not edit
 # execution: {{ .ExecutionID }} digest: {{ .SpecDigest }}
@@ -64,7 +65,7 @@ CUSTOS_PAYLOAD_{{ .Nonce }}
 echo {{ q .PayloadDigest }}"  $CUSTOS_JOB_DIR/payload" | sha256sum -c --quiet
 chmod 0500 "$CUSTOS_JOB_DIR/payload"{{ end }}
 cd {{ q .WorkingDir }}
-{{ if .MPI }}exec srun --ntasks={{ .Tasks }} {{ end }}{{ if .HasPayload }}{{ q .Interpreter }} "$CUSTOS_JOB_DIR/payload"{{ end }}{{ range .Argv }} {{ . }}{{ end }}
+{{ range .LaunchWords }}{{ . }} {{ end }}{{ range .ContainerWords }}{{ . }} {{ end }}{{ if .HasPayload }}{{ q .Interpreter }} "$CUSTOS_JOB_DIR/payload"{{ end }}{{ range $i, $a := .Argv }}{{ if or $i $.HasPayload }} {{ end }}{{ $a }}{{ end }}
 `
 
 type envKV struct {
@@ -75,20 +76,20 @@ type envKV struct {
 }
 
 type wrapperData struct {
-	ExecutionID   SafeToken
-	SpecDigest    SafeToken
-	TaskName      string
-	Modules       []string
-	Env           []envKV
-	Nonce         SafeToken
-	HasPayload    bool
-	PayloadBase64 string
-	PayloadDigest SafeToken
-	WorkingDir    string
-	MPI           bool
-	Tasks         SafeToken
-	Interpreter   string
-	Argv          []string // pre-quoted: 'literal' or "$VAR"
+	ExecutionID    SafeToken
+	SpecDigest     SafeToken
+	TaskName       string
+	Modules        []string
+	Env            []envKV
+	Nonce          SafeToken
+	HasPayload     bool
+	PayloadBase64  string
+	PayloadDigest  SafeToken
+	WorkingDir     string
+	LaunchWords    []SafeToken
+	ContainerWords []SafeToken
+	Interpreter    string
+	Argv           []string // pre-quoted: 'literal' or "$VAR"
 }
 
 var tmpl = template.Must(template.New("wrapper").
@@ -132,6 +133,37 @@ func renderArgv(spec admission.ExecutionSpec) ([]string, error) {
 	return out, nil
 }
 
+// launchWords composes the trusted launcher prefix. An empty Launch is
+// reserved for older frozen ExecutionSpecs and keeps their prior behavior.
+func launchWords(spec admission.ExecutionSpec) ([]SafeToken, error) {
+	useSrun := false
+	switch spec.Launch {
+	case workflowspec.LaunchSbatch:
+	case workflowspec.LaunchSrun:
+		useSrun = true
+	case "":
+		useSrun = spec.Resources.Tasks > 1
+	default:
+		return nil, apperr.New(apperr.Internal, "INTERNAL", "submission: invalid frozen launch mode")
+	}
+	if !useSrun {
+		return nil, nil
+	}
+	words := []string{"srun"}
+	if spec.Resources.Tasks > 0 {
+		words = append(words, fmt.Sprintf("--ntasks=%d", spec.Resources.Tasks))
+	}
+	out := make([]SafeToken, 0, len(words))
+	for _, word := range words {
+		safe, err := safeToken(word)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, safe)
+	}
+	return out, nil
+}
+
 // Wrapper renders the wrapper script for spec. Script tasks embed the
 // payload (base64) after verifying sha256(payload) ==
 // spec.Payload.Digest — the admission↔bytes integrity leg. Command
@@ -152,6 +184,10 @@ func Wrapper(spec admission.ExecutionSpec, payload []byte) (string, error) {
 		return "", err
 	}
 	argv, err := renderArgv(spec)
+	if err != nil {
+		return "", err
+	}
+	launcherWords, err := launchWords(spec)
 	if err != nil {
 		return "", err
 	}
@@ -185,16 +221,17 @@ func Wrapper(spec admission.ExecutionSpec, payload []byte) (string, error) {
 		modules = append(modules, s.ModuleSpec...)
 	}
 	d := wrapperData{
-		TaskName:      spec.TaskName,
-		Modules:       modules,
-		Env:           env,
-		Nonce:         SafeToken(nonce),
-		HasPayload:    hasPayload,
-		PayloadBase64: body,
-		WorkingDir:    spec.WorkingDir,
-		MPI:           spec.Resources.Tasks > 1,
-		Interpreter:   string(spec.Payload.Interpreter),
-		Argv:          argv,
+		TaskName:       spec.TaskName,
+		Modules:        modules,
+		Env:            env,
+		Nonce:          SafeToken(nonce),
+		HasPayload:     hasPayload,
+		PayloadBase64:  body,
+		WorkingDir:     spec.WorkingDir,
+		LaunchWords:    launcherWords,
+		ContainerWords: nil,
+		Interpreter:    string(spec.Payload.Interpreter),
+		Argv:           argv,
 	}
 	for _, t := range []struct {
 		dst *SafeToken
@@ -203,7 +240,6 @@ func Wrapper(spec admission.ExecutionSpec, payload []byte) (string, error) {
 		{&d.ExecutionID, spec.ID.String()},
 		{&d.SpecDigest, hex.EncodeToString(spec.Digest[:])},
 		{&d.PayloadDigest, hex.EncodeToString(spec.Payload.Digest[:])},
-		{&d.Tasks, fmt.Sprint(spec.Resources.Tasks)},
 	} {
 		if *t.dst, err = safeToken(t.src); err != nil {
 			return "", err

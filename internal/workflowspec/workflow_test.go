@@ -2,6 +2,7 @@ package workflowspec_test
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -112,6 +113,52 @@ func TestCanonicalEquivalence(t *testing.T) {
 	hj, _ := workflowspec.SpecHash(wj)
 	if hy != hj {
 		t.Fatal("spec hash differs across encodings")
+	}
+}
+
+func TestEffectiveLaunchCompatibility(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		task workflowspec.Task
+		want string
+	}{
+		{name: "legacy mpi", task: workflowspec.Task{Type: "mpi"}, want: workflowspec.LaunchSrun},
+		{name: "legacy batch", task: workflowspec.Task{Type: "batch"}, want: workflowspec.LaunchSbatch},
+		{name: "omitted type", task: workflowspec.Task{}, want: workflowspec.LaunchSbatch},
+		{name: "explicit sbatch overrides mpi alias", task: workflowspec.Task{Type: "mpi", Launch: workflowspec.LaunchSbatch}, want: workflowspec.LaunchSbatch},
+		{name: "explicit srun", task: workflowspec.Task{Launch: workflowspec.LaunchSrun}, want: workflowspec.LaunchSrun},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.task.EffectiveLaunch(); got != tt.want {
+				t.Fatalf("EffectiveLaunch() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestLegacyCanonicalSpecHashIsUnchanged(t *testing.T) {
+	legacy := workflowspec.Workflow{
+		APIVersion: workflowspec.APIVersionV1Alpha1,
+		Kind:       workflowspec.KindWorkflow,
+		Metadata:   workflowspec.Metadata{Name: "legacy"},
+		Spec: workflowspec.Spec{Tasks: []workflowspec.Task{{
+			Name: "run", Type: "mpi", Command: []string{"./a.out"},
+		}}},
+	}
+	want := []byte(`{"apiVersion":"custos.io/v1alpha1","kind":"Workflow","metadata":{"name":"legacy"},"spec":{"tasks":[{"name":"run","type":"mpi","resources":{},"command":["./a.out"]}]}}`)
+	canonical, err := workflowspec.Canonical(legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(canonical, want) {
+		t.Fatalf("legacy canonical bytes changed:\n got %s\nwant %s", canonical, want)
+	}
+	got, err := workflowspec.SpecHash(legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if wantHash := sha256.Sum256(want); got != wantHash {
+		t.Fatalf("legacy spec hash changed: got %x want %x", got, wantHash)
 	}
 }
 

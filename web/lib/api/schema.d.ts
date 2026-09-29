@@ -686,6 +686,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/tenants/{tenant}/workflow-imports/sbatch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import multiple sbatch scripts as a new workflow draft proposal
+         * @description Imports 1-20 scripts (each at most 256 KiB), stores only the directive-rewritten payloads, and returns a validated workflow document proposal. It does not create a Workflow or WorkflowVersion. Import is enabled by default and can be disabled by effective policy.
+         */
+        post: operations["importWorkflowSbatch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tenants/{tenant}/scripts": {
         parameters: {
             query?: never;
@@ -972,6 +992,26 @@ export interface paths {
          * @description Builds the frozen ExecutionSpec, wrapper script and neutral JobSubmission for the task (attempt=1, caller as principal). Persists nothing, submits nothing.
          */
         post: operations["previewWorkflowTaskSubmission"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{tenant}/workflows/{workflow}/versions/{version}/tasks/{task}/sbatch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export one workflow task as a portable sbatch script
+         * @description Renders only fields representable in a standalone Slurm script. Account is intentionally omitted and must come from the destination site. Unsupported workflow references return 422 EXPORT_UNSUPPORTED.
+         */
+        get: operations["exportWorkflowTaskSbatch"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2580,6 +2620,79 @@ export interface components {
             rewritten: string;
             imported: string[];
             diagnostics: components["schemas"]["Diagnostic"][];
+        };
+        WorkflowSbatchImportRequest: {
+            name?: string;
+            scripts: components["schemas"]["WorkflowSbatchImportScript"][];
+        };
+        WorkflowSbatchImportScript: {
+            filename: string;
+            /** @description Script contents; UTF-8 byte size is limited to 256 KiB. */
+            content: string;
+        };
+        WorkflowSbatchImportDocument: {
+            /** @enum {string} */
+            apiVersion: "custos.io/v1alpha1";
+            /** @enum {string} */
+            kind: "Workflow";
+            metadata: {
+                name: string;
+            };
+            spec: {
+                tasks: components["schemas"]["WorkflowSbatchImportTask"][];
+            };
+        };
+        WorkflowSbatchImportTask: {
+            name: string;
+            /** @enum {string} */
+            launch: "sbatch" | "srun";
+            resources?: components["schemas"]["WorkflowSbatchImportResources"];
+            script: {
+                ref: string;
+                /** @enum {string} */
+                language: "bash" | "sh";
+            };
+            array?: components["schemas"]["WorkflowSbatchImportArray"];
+            partition?: string;
+            qos?: string;
+            workingDirectory?: string;
+            stdout?: string;
+            stderr?: string;
+        };
+        WorkflowSbatchImportResources: {
+            cpu?: number;
+            nodes?: number;
+            tasks?: number;
+            tasksPerNode?: number;
+            cpusPerTask?: number;
+            memory?: string;
+            walltime?: string;
+            memoryPerNode?: string;
+            gpu?: {
+                type?: string;
+                count: number;
+            };
+            licenses?: string[];
+            constraints?: string;
+            exclusive?: boolean;
+        };
+        WorkflowSbatchImportArray: {
+            start: number;
+            end: number;
+            step?: number;
+            maxConcurrent?: number;
+        };
+        WorkflowSbatchImportedTask: {
+            filename: string;
+            task: string;
+            scriptDigest: string;
+            imported: string[];
+            diagnostics: components["schemas"]["Diagnostic"][];
+        };
+        WorkflowSbatchImportResponse: {
+            spec: components["schemas"]["WorkflowSbatchImportDocument"];
+            yaml: string;
+            tasks: components["schemas"]["WorkflowSbatchImportedTask"][];
         };
         Diagnostic: {
             source: string;
@@ -5767,6 +5880,87 @@ export interface operations {
             };
         };
     };
+    importWorkflowSbatch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug or uuid. */
+                tenant: components["parameters"]["TenantSlug"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkflowSbatchImportRequest"];
+            };
+        };
+        responses: {
+            /** @description New workflow document and per-script import diagnostics. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowSbatchImportResponse"];
+                };
+            };
+            /** @description Malformed request or script count out of range. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Requires workflow.create or import disabled by effective policy. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Request exceeds the multi-script import body limit. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description One or more scripts could not be parsed or stored, or the assembled document is invalid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Per-principal import rate limit exceeded. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     uploadScript: {
         parameters: {
             query?: never;
@@ -6504,6 +6698,70 @@ export interface operations {
                 };
             };
             /** @description Admission denied. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    exportWorkflowTaskSbatch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug or uuid. */
+                tenant: components["parameters"]["TenantSlug"];
+                workflow: components["parameters"]["WorkflowId"];
+                version: components["parameters"]["VersionId"];
+                task: components["parameters"]["TaskName"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Portable sbatch script. */
+            200: {
+                headers: {
+                    /** @description Attachment filename `<task>.sbatch`. */
+                    "Content-Disposition"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/x-shellscript": string;
+                };
+            };
+            /** @description Unauthenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Requires workflow.read. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Workflow, version, task, or stored script not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description A task feature cannot be represented in standalone sbatch. */
             422: {
                 headers: {
                     [name: string]: unknown;

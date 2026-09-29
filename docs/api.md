@@ -174,6 +174,7 @@ POST   /api/v1/tenants/{tenant}/secret-references/{reference}/test returns `{ok,
 GET    /api/v1/schemas/workflow/v1alpha1                       unauthenticated JSON Schema; ETag-cached
 GET    /api/v1/workflow-templates                              any authenticated principal; built-in catalog summaries (ADR-024)
 GET    /api/v1/workflow-templates/{template}                   summary + canonical `spec` + authored `yaml`
+POST   /api/v1/tenants/{tenant}/workflow-imports/sbatch         workflow.create; 1-20 scripts (256 KiB each); returns a new spec/YAML proposal, stores rewritten payloads only
 POST   /api/v1/tenants/{tenant}/workflows                      workflow.create on the project
 GET    /api/v1/tenants/{tenant}/workflows                      workflow.read; `?project=<uuid>` filter
 GET    /api/v1/tenants/{tenant}/workflows/{workflow}
@@ -189,11 +190,12 @@ POST   /api/v1/tenants/{tenant}/workflows/{workflow}/versions/{version}/publish 
 POST   /api/v1/tenants/{tenant}/workflows/{workflow}/versions/{version}/deprecate  workflow.publish
 POST   /api/v1/tenants/{tenant}/workflows/{workflow}/versions/{version}/tasks/{task}/validate
 POST   /api/v1/tenants/{tenant}/workflows/{workflow}/versions/{version}/tasks/{task}/import-sbatch
+GET    /api/v1/tenants/{tenant}/workflows/{workflow}/versions/{version}/tasks/{task}/sbatch   workflow.read; text/x-shellscript attachment; 422 EXPORT_UNSUPPORTED
 POST   /api/v1/tenants/{tenant}/workflows/{workflow}/versions/{version}/tasks/{task}/preview-submission
 GET    /api/v1/tenants/{tenant}/workflows/{workflow}/versions/{version}/validations
 POST   /api/v1/tenants/{tenant}/scripts                        workflow.create; stores bytes, returns `{digest, size}`; rate-limited
 POST   /api/v1/tenants/{tenant}/scripts/validate                workflow.create; ad-hoc editor validation (see script-validation.md); rate-limited 30/min per principal
-POST   /api/v1/tenants/{tenant}/scripts/import-sbatch           workflow.create; ad-hoc legacy import proposal; 403 IMPORT_DISABLED unless the effective policy allows it; rate-limited
+POST   /api/v1/tenants/{tenant}/scripts/import-sbatch           workflow.create; ad-hoc legacy import proposal; default-on, 403 IMPORT_DISABLED when effective policy disables it; rate-limited
 POST   /api/v1/tenants/{tenant}/workflow-executions              workflow.execute; 202; body `{workflow, version?, parameters}`; `version` defaults to latest published; Idempotency-Key required
 GET    /api/v1/tenants/{tenant}/workflow-executions              execution.read.self/project/tenant; `?workflow=` and `?state=` filters
 GET    /api/v1/tenants/{tenant}/workflow-executions/{execution}  execution.read.self/project/tenant

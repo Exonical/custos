@@ -5,7 +5,7 @@ import { Background, BackgroundVariant, Controls, Handle, MarkerType, Position, 
 import type { TaskExecution } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
 import { aggregateTaskExecutions, buildWorkflowGraph, type WorkflowNode } from "@/lib/workflow/graph";
-import type { NormalizedWorkflowSpec } from "@/lib/workflow/normalize";
+import { taskKind, type NormalizedWorkflowSpec } from "@/lib/workflow/normalize";
 
 function stateClass(state: string): string {
   switch (state) {
@@ -39,7 +39,7 @@ function TaskNodeView({ data }: NodeProps<WorkflowNode>) {
       <Handle type="target" position={Position.Left} className="!size-2 !border-0 !bg-primary" />
       <header className="flex items-start justify-between gap-2">
         <span className="min-w-0 truncate font-mono text-xs font-semibold">{task.name}</span>
-        <span className="shrink-0 font-mono text-[9px] uppercase text-muted-foreground">{task.type}</span>
+        <span className="shrink-0 font-mono text-[9px] uppercase text-muted-foreground">{taskKind(task) ?? task.launch}</span>
       </header>
       <p className="mt-2 font-mono text-[9px] uppercase tracking-[0.08em] text-muted-foreground">{data.aggregate.label}</p>
       {tags.length > 0 ? <div className="mt-2 flex flex-wrap gap-1">{tags.map((tag) => <span key={tag} className="border border-border px-1 py-0.5 font-mono text-[8px] uppercase text-muted-foreground">{tag}</span>)}</div> : null}
@@ -62,7 +62,8 @@ function taskProperties(spec: NormalizedWorkflowSpec, task: WorkflowNode["data"]
   const qos = task.qos ?? spec.spec.defaults?.qos;
   const secrets = Object.entries(spec.spec.secrets).map(([handle, secret]) => ({ handle, ref: secret.ref, use: secret.use }));
   return [
-    ["TYPE", task.type],
+    ["KIND", taskKind(task)],
+    ["LAUNCH", taskKind(task) === "condition" ? undefined : task.launch],
     ["RESOURCES", task.resources],
     ["CLUSTER", placement],
     ["PARTITION", partition],

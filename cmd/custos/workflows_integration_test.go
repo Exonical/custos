@@ -47,6 +47,8 @@ import (
 	"github.com/Exonical/custos/internal/validation/shsyntax"
 	wfpg "github.com/Exonical/custos/internal/workflows/postgres"
 	wfsvc "github.com/Exonical/custos/internal/workflows/service"
+	"github.com/Exonical/custos/internal/workflowspec"
+	wfvalidate "github.com/Exonical/custos/internal/workflowspec/validate"
 )
 
 // TestAPIWorkflows exercises the M5-B surface end to end: version
@@ -350,6 +352,10 @@ func TestAPIWorkflows(t *testing.T) {
 	if code != 200 {
 		t.Fatalf("preview: %d %v", code, prev)
 	}
+	previewSpec, _ := prev["executionSpec"].(map[string]any)
+	if previewSpec["launch"] != "sbatch" {
+		t.Fatalf("preview launch = %v, want sbatch", previewSpec["launch"])
+	}
 	wrapper, _ := prev["wrapper"].(string)
 	if strings.Contains(wrapper, "#SBATCH") {
 		t.Fatalf("wrapper leaked directives: %s", wrapper)
@@ -358,6 +364,128 @@ func TestAPIWorkflows(t *testing.T) {
 	name, _ := js["Name"].(string)
 	if !strings.HasPrefix(name, "custos-") {
 		t.Fatalf("job name not custos-controlled: %q %v", name, js)
+	}
+
+	// GetVersion negotiates a whole-workflow YAML representation.
+	yamlReq, _ := http.NewRequest(http.MethodGet, srv.URL+vbase, nil)
+	yamlReq.Header.Set("Authorization", "Bearer "+tokR)
+	yamlReq.Header.Set("Accept", "application/yaml")
+	yamlResp, err := http.DefaultClient.Do(yamlReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	yamlBody, _ := io.ReadAll(yamlResp.Body)
+	_ = yamlResp.Body.Close()
+	if yamlResp.StatusCode != http.StatusOK || yamlResp.Header.Get("Content-Type") != "application/yaml" || !strings.Contains(string(yamlBody), "apiVersion: custos.io/v1alpha1") {
+		t.Fatalf("whole workflow YAML: status=%d type=%q body=%s", yamlResp.StatusCode, yamlResp.Header.Get("Content-Type"), yamlBody)
+	}
+
+	// Multi-script import returns a complete, statically valid proposal;
+	// it stores rewritten scripts but does not create a workflow record.
+	code, beforeImport := call(tokR, "GET", "/api/v1/tenants/w-tenant/workflows", nil)
+	if code != http.StatusOK {
+		t.Fatalf("list before import: %d %v", code, beforeImport)
+	}
+	workflowsBefore, _ := beforeImport["workflows"].([]any)
+	importBody := map[string]any{"name": "OpenMP Imported", "scripts": []any{
+		map[string]any{"filename": "worker.sbatch", "content": "#!/bin/bash\n#SBATCH --job-name=worker\n#SBATCH --nodes=1\n#SBATCH --ntasks=1\n#SBATCH --cpus-per-task=4\n#SBATCH --mem=4096M\n#SBATCH --time=01:30:00\n#SBATCH --partition=gpu\n#SBATCH --qos=normal\n#SBATCH --output=out-%j.log\n#SBATCH --error=err-%j.log\n#SBATCH --chdir=/scratch/openmp\nexport OMP_NUM_THREADS=4\n./a.out\n"},
+		map[string]any{"filename": "worker-copy.sbatch", "content": "#!/bin/sh\n#SBATCH --job-name=worker\n#SBATCH --mem-per-cpu=1024M\n#SBATCH --time=00:30:00\n#SBATCH --account=legacy\necho second\n"},
+	}}
+	code, imported := call(tokR, "POST", "/api/v1/tenants/w-tenant/workflow-imports/sbatch", importBody)
+	if code != 200 {
+		t.Fatalf("workflow sbatch import: %d %v", code, imported)
+	}
+	importSpec, ok := imported["spec"].(map[string]any)
+	if !ok {
+		t.Fatalf("workflow import omitted spec: %v", imported)
+	}
+	importMetadata, _ := importSpec["metadata"].(map[string]any)
+	if importMetadata["name"] != "openmp-imported" {
+		t.Fatalf("workflow name not sanitized: %v", importMetadata)
+	}
+	importDocumentSpec, _ := importSpec["spec"].(map[string]any)
+	importDocumentTasks, _ := importDocumentSpec["tasks"].([]any)
+	if len(importDocumentTasks) != 2 {
+		t.Fatalf("imported spec task count: %v", importDocumentSpec["tasks"])
+	}
+	secondScript, _ := importDocumentTasks[1].(map[string]any)["script"].(map[string]any)
+	if secondScript["language"] != "sh" {
+		t.Fatalf("/bin/sh script language = %v", secondScript["language"])
+	}
+	importYAML, _ := imported["yaml"].(string)
+	if !strings.Contains(importYAML, "launch: sbatch") || !strings.Contains(importYAML, "worker-2") {
+		t.Fatalf("workflow import YAML/names: %s", importYAML)
+	}
+	importTasks, _ := imported["tasks"].([]any)
+	if len(importTasks) != 2 {
+		t.Fatalf("import task count: %v", imported["tasks"])
+	}
+	diagnosticCodes := map[string]bool{}
+	memPerCPUFieldScoped := false
+	for _, rawTask := range importTasks {
+		taskResult, _ := rawTask.(map[string]any)
+		for _, rawDiagnostic := range taskResult["diagnostics"].([]any) {
+			diagnostic, _ := rawDiagnostic.(map[string]any)
+			code := diagnostic["code"].(string)
+			diagnosticCodes[code] = true
+			if code == "CUSTOS202" && strings.Contains(diagnostic["field"].(string), "resources.memoryPerCpu") {
+				memPerCPUFieldScoped = true
+			}
+		}
+	}
+	if !diagnosticCodes["CUSTOS201"] || !diagnosticCodes["CUSTOS202"] || !memPerCPUFieldScoped {
+		t.Fatalf("unmappable directive/memory warnings missing or unscoped: codes=%v scoped=%v", diagnosticCodes, memPerCPUFieldScoped)
+	}
+	importSpecJSON, err := json.Marshal(importSpec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	importedDocument, err := workflowspec.Decode(importSpecJSON, "application/json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if errs := wfvalidate.Static(importedDocument); len(errs) != 0 {
+		t.Fatalf("imported spec fails static validation: %+v", errs)
+	}
+	code, afterImport := call(tokR, "GET", "/api/v1/tenants/w-tenant/workflows", nil)
+	if code != http.StatusOK {
+		t.Fatalf("list after import: %d %v", code, afterImport)
+	}
+	workflowsAfter, _ := afterImport["workflows"].([]any)
+	if len(workflowsAfter) != len(workflowsBefore) {
+		t.Fatalf("import created workflow records: before=%d after=%d", len(workflowsBefore), len(workflowsAfter))
+	}
+
+	importedMetadata, _ := importSpec["metadata"].(map[string]any)
+	code, importedWorkflow := call(tokR, "POST", "/api/v1/tenants/w-tenant/workflows",
+		map[string]any{"project": pid.String(), "name": importedMetadata["name"]})
+	workflowImportID, _ := importedWorkflow["id"].(string)
+	if code != http.StatusCreated || workflowImportID == "" {
+		t.Fatalf("create imported workflow: %d %v", code, importedWorkflow)
+	}
+	workflowImportBase := "/api/v1/tenants/w-tenant/workflows/" + workflowImportID
+	code, importedVersion := call(tokR, "POST", workflowImportBase+"/versions", importSpec)
+	if code != http.StatusCreated {
+		t.Fatalf("create imported workflow version: %d %v", code, importedVersion)
+	}
+	importedVersionID, _ := importedVersion["id"].(string)
+	exportPath := workflowImportBase + "/versions/" + importedVersionID + "/tasks/worker/sbatch"
+	exportReq, _ := http.NewRequest(http.MethodGet, srv.URL+exportPath, nil)
+	exportReq.Header.Set("Authorization", "Bearer "+tokR)
+	exportResp, err := http.DefaultClient.Do(exportReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	exportBody, _ := io.ReadAll(exportResp.Body)
+	_ = exportResp.Body.Close()
+	if exportResp.StatusCode != http.StatusOK || exportResp.Header.Get("Content-Type") != "text/x-shellscript; charset=utf-8" || exportResp.Header.Get("Content-Disposition") != `attachment; filename="worker.sbatch"` {
+		t.Fatalf("task sbatch export: status=%d headers=%v body=%s", exportResp.StatusCode, exportResp.Header, exportBody)
+	}
+	if !strings.Contains(string(exportBody), "#SBATCH --cpus-per-task=4") || !strings.Contains(string(exportBody), "./a.out") {
+		t.Fatalf("task sbatch export body: %s", exportBody)
+	}
+	if code, resp := call(tokR, "GET", workflowImportBase+"/versions/"+importedVersionID+"/tasks/missing/sbatch", nil); code != http.StatusNotFound {
+		t.Fatalf("unknown task export: %d %v", code, resp)
 	}
 
 	// Secret declarations are accepted in drafts; publish/contextual
@@ -405,6 +533,12 @@ func TestAPIWorkflows(t *testing.T) {
 	if code, resp := call(tokR, "POST",
 		wbase+"/versions/"+svid+"/publish", nil); code != 200 {
 		t.Fatalf("shell publish after allow: %d %v", code, resp)
+	}
+
+	// A stored policy can still turn the default-on workflow import off.
+	if code, disabled := call(tokR, "POST", "/api/v1/tenants/w-tenant/workflow-imports/sbatch",
+		map[string]any{"scripts": []any{map[string]any{"filename": "one.sbatch", "content": "#!/bin/bash\necho one\n"}}}); code != http.StatusForbidden {
+		t.Fatalf("workflow import should honor disabled policy: %d %v", code, disabled)
 	}
 
 	// Schema endpoint is unauthenticated and cacheable.

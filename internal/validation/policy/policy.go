@@ -47,6 +47,7 @@ func Default() Policy {
 	return Policy{
 		BlockAt:                   validation.SeverityError,
 		ShellcheckShell:           "bash",
+		AllowLegacySbatchImport:   true,
 		ForbiddenCommands:         []string{"sbatch", "salloc"},
 		ForbiddenCommandsSeverity: validation.SeverityWarning,
 	}

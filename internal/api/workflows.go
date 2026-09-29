@@ -25,6 +25,9 @@ import (
 // workflowBodyLimit bounds workflow documents (docs/workflows.md §API).
 const workflowBodyLimit = 4 << 20
 
+// WorkflowImportBodyLimit covers twenty 256 KiB scripts plus JSON escaping and metadata.
+const WorkflowImportBodyLimit int64 = 32 << 20
+
 // workflowHandlers serves the workflow authoring/version/publish
 // routes.
 type workflowHandlers struct {
@@ -421,6 +424,59 @@ func (h *workflowHandlers) taskValidate(w http.ResponseWriter,
 		"diagnostics":  sv.Diagnostics,
 		"toolVersions": sv.ToolVersions,
 	})
+}
+
+type workflowSbatchImportScriptRequest struct {
+	Filename string `json:"filename"`
+	Content  string `json:"content"`
+}
+
+type workflowSbatchImportRequest struct {
+	Name    string                              `json:"name,omitempty"`
+	Scripts []workflowSbatchImportScriptRequest `json:"scripts"`
+}
+
+func (h *workflowHandlers) importSbatch(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	p := authn.MustPrincipal(ctx)
+	tc := tenants.MustTenantContext(ctx)
+	var in workflowSbatchImportRequest
+	if !decodeDTO(w, r, &in) {
+		return
+	}
+	scripts := make([]wfsvc.SbatchImportFile, 0, len(in.Scripts))
+	for _, file := range in.Scripts {
+		scripts = append(scripts, wfsvc.SbatchImportFile{Filename: file.Filename, Content: file.Content})
+	}
+	result, err := h.svc.ImportWorkflowSbatch(ctx, p, tc, wfsvc.SbatchWorkflowImportInput{
+		Name: in.Name, Scripts: scripts,
+	})
+	if err != nil {
+		httpx.WriteError(ctx, w, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, result)
+}
+
+func (h *workflowHandlers) exportTaskSbatch(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	p := authn.MustPrincipal(ctx)
+	tc := tenants.MustTenantContext(ctx)
+	workflowID, versionID, err := h.ids(r)
+	if err != nil {
+		httpx.WriteError(ctx, w, err)
+		return
+	}
+	taskName := r.PathValue("task")
+	script, err := h.svc.ExportTaskSbatch(ctx, p, tc, workflowID, versionID, taskName)
+	if err != nil {
+		httpx.WriteError(ctx, w, err)
+		return
+	}
+	w.Header().Set("Content-Type", "text/x-shellscript; charset=utf-8")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s.sbatch"`, taskName))
+	w.WriteHeader(http.StatusOK)
+	_, _ = io.WriteString(w, script)
 }
 
 func (h *workflowHandlers) taskImportSbatch(w http.ResponseWriter,

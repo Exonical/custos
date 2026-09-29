@@ -109,6 +109,41 @@ func TestWrapperParsesClean(t *testing.T) {
 	}
 }
 
+func TestWrapperLaunchModel(t *testing.T) {
+	for _, tt := range []struct {
+		name       string
+		launch     string
+		tasks      int
+		wantSrun   bool
+		wantNtasks bool
+	}{
+		{name: "explicit sbatch ignores task count", launch: workflowspec.LaunchSbatch, tasks: 40},
+		{name: "explicit srun inherits allocation", launch: workflowspec.LaunchSrun, tasks: 0, wantSrun: true},
+		{name: "legacy empty launch retains task-count behavior", tasks: 4, wantSrun: true, wantNtasks: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			spec := mkSpec(nil)
+			spec.Payload = admission.PayloadRef{}
+			spec.Launch = tt.launch
+			spec.Resources.Tasks = tt.tasks
+			spec.Argv = []admission.ArgvElement{{Literal: "./program"}}
+			wrapper, err := submission.Wrapper(spec, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := strings.HasPrefix(lastLine(wrapper), "srun "); got != tt.wantSrun {
+				t.Fatalf("srun present = %v, want %v:\n%s", got, tt.wantSrun, wrapper)
+			}
+			if got := strings.Contains(wrapper, "--ntasks=4"); got != tt.wantNtasks {
+				t.Fatalf("--ntasks=4 present = %v, want %v:\n%s", got, tt.wantNtasks, wrapper)
+			}
+			if tt.launch == workflowspec.LaunchSrun && tt.tasks == 0 && strings.Contains(wrapper, "--ntasks=") {
+				t.Fatalf("inherited srun allocation must not set --ntasks:\n%s", wrapper)
+			}
+		})
+	}
+}
+
 func TestDigestMismatch(t *testing.T) {
 	if _, err := submission.Wrapper(mkSpec(payload), []byte("tampered")); err == nil {
 		t.Fatal("tampered payload accepted")
@@ -227,19 +262,13 @@ func TestArgvLiteralQuoting(t *testing.T) {
 			t.Fatalf("wrapper has %s: %s", d.Code, d.Message)
 		}
 	}
-	var execLine string
-	for _, l := range strings.Split(w, "\n") {
-		if strings.HasPrefix(l, "exec ") {
-			execLine = l
-		}
+	launchLine := lastLine(w)
+	if launchLine == "" {
+		t.Fatal("no launch line in wrapper")
 	}
-	if execLine == "" {
-		t.Fatal("no exec line in wrapper")
-	}
-	// Strip the exec/srun prefix, every single-quoted word and the
-	// runtime token — nothing but whitespace may remain.
-	rest := strings.TrimPrefix(execLine, "exec ")
-	rest = strings.TrimPrefix(rest, "srun --ntasks=4 ")
+	// Strip the srun prefix, every single-quoted word and the runtime
+	// token — nothing but whitespace may remain.
+	rest := strings.TrimPrefix(launchLine, "srun --ntasks=4 ")
 	rest = regexp.MustCompile(`'[^']*'(\\''[^']*')*`).ReplaceAllString(rest, "")
 	rest = strings.ReplaceAll(rest, `"$SLURM_ARRAY_TASK_ID"`, "")
 	if strings.TrimSpace(rest) != "" {
@@ -313,6 +342,7 @@ func TestWrapperLoadsResolvedModulesBeforeLaunch(t *testing.T) {
 	spec.Payload = admission.PayloadRef{}
 	spec.Argv = []admission.ArgvElement{{Literal: "./a.out"}}
 	spec.Resources.Tasks = 4
+	spec.Launch = workflowspec.LaunchSrun
 	spec.Software = []admission.ResolvedSoftware{
 		{Name: "gcc", Version: "default", ModuleSpec: []string{"gcc"}},
 		{Name: "openmpi", Version: "default", ModuleSpec: []string{"openmpi/5.0"}},
@@ -323,9 +353,34 @@ func TestWrapperLoadsResolvedModulesBeforeLaunch(t *testing.T) {
 	}
 	gcc := strings.Index(w, "module load 'gcc'\n")
 	mpi := strings.Index(w, "module load 'openmpi/5.0'\n")
-	launch := strings.Index(w, "exec srun --ntasks=4 ")
+	launch := strings.Index(w, "\nsrun --ntasks=4 ")
 	if gcc < 0 || mpi < 0 || launch < 0 || gcc > mpi || mpi > launch ||
 		!strings.Contains(w[launch:], "'./a.out'") {
 		t.Fatalf("modules must load in order before srun:\n%s", w)
+	}
+}
+
+// lastLine returns the wrapper's final non-empty line (the launch line).
+func lastLine(w string) string {
+	lines := strings.Split(strings.TrimRight(w, "\n"), "\n")
+	return lines[len(lines)-1]
+}
+
+// TestWrapperKeepsCleanupTrap: the launch line must not exec, or the EXIT
+// trap that removes $CUSTOS_JOB_DIR (and the payload copy) never runs.
+func TestWrapperKeepsCleanupTrap(t *testing.T) {
+	for _, launch := range []string{workflowspec.LaunchSbatch, workflowspec.LaunchSrun} {
+		spec := mkSpec(payload)
+		spec.Launch = launch
+		w, err := submission.Wrapper(spec, payload)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(w, `trap 'rm -rf "$CUSTOS_JOB_DIR"' EXIT`) {
+			t.Fatalf("%s: cleanup trap missing:\n%s", launch, w)
+		}
+		if line := lastLine(w); strings.HasPrefix(line, "exec") {
+			t.Fatalf("%s: launch line execs, skipping the cleanup trap: %q", launch, line)
+		}
 	}
 }

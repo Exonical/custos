@@ -249,7 +249,7 @@ func TestAPIExecutions(t *testing.T) {
 			"      resources: {cpu: 1, memory: 512Mi, walltime: 10m}\n" +
 			"      partition: " + partition + "\n" +
 			"      command: [\"/bin/true\"]\n" +
-			"    - name: b\n      type: batch\n" +
+			"    - name: b\n      type: mpi\n" +
 			"      dependsOn: [a]\n" +
 			"      resources: {cpu: 1, memory: 512Mi, walltime: 10m}\n" +
 			"      partition: " + partition + "\n" +
@@ -398,14 +398,22 @@ func TestAPIExecutions(t *testing.T) {
 	if len(items) != 2 {
 		t.Fatalf("%d task rows, want 2: %v", len(items), tl)
 	}
-	taskID, _ := items[0].(map[string]any)["id"].(string)
+	firstTask, _ := items[0].(map[string]any)
+	taskID, _ := firstTask["id"].(string)
 	code, es := call(tokR, "GET",
 		exBase+"/"+execID+"/tasks/"+taskID+"/execution-spec", nil, "")
 	if code != 200 {
 		t.Fatalf("execution-spec: %d %v", code, es)
 	}
-	if _, ok := es["argv"]; !ok {
-		t.Fatalf("no argv in execution spec: %v", es)
+	if _, ok := es["argv"]; !ok || es["launch"] != "sbatch" {
+		t.Fatalf("batch execution spec missing argv or sbatch launch: %v", es)
+	}
+	secondTask, _ := items[1].(map[string]any)
+	secondTaskID, _ := secondTask["id"].(string)
+	code, secondSpec := call(tokR, "GET",
+		exBase+"/"+execID+"/tasks/"+secondTaskID+"/execution-spec", nil, "")
+	if code != 200 || secondSpec["launch"] != "srun" {
+		t.Fatalf("legacy mpi task launch: %d %v", code, secondSpec)
 	}
 
 	// --- admission denial: policy tightened after materialize ----------

@@ -21,6 +21,8 @@ import (
 const (
 	APIVersionV1Alpha1 = "custos.io/v1alpha1"
 	KindWorkflow       = "Workflow"
+	LaunchSbatch       = "sbatch"
+	LaunchSrun         = "srun"
 )
 
 // Workflow is the top-level document.
@@ -128,6 +130,7 @@ type Output struct {
 type Task struct {
 	Name                string                `json:"name"`
 	Type                string                `json:"type,omitempty"`
+	Launch              string                `json:"launch,omitempty"`
 	DependsOn           []string              `json:"dependsOn,omitempty"`
 	OnDependencyFailure string                `json:"onDependencyFailure,omitempty"` // fail | run
 	When                string                `json:"when,omitempty"`
@@ -147,6 +150,18 @@ type Task struct {
 	WorkingDirectory    string                `json:"workingDirectory,omitempty"`
 	Stdout              string                `json:"stdout,omitempty"`
 	Stderr              string                `json:"stderr,omitempty"`
+}
+
+// EffectiveLaunch chooses the explicit launch mode, defaulting legacy mpi
+// tasks to srun and all other tasks to sbatch.
+func (t Task) EffectiveLaunch() string {
+	if t.Launch != "" {
+		return t.Launch
+	}
+	if t.Type == "mpi" {
+		return LaunchSrun
+	}
+	return LaunchSbatch
 }
 
 // TaskResources is the spec-facing resource block; Resolve converts it

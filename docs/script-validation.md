@@ -157,7 +157,7 @@ sources never collide:
 | --- | --- | --- |
 | `CUSTOS0xx` | `shsyntax` / general | `010` CRLF line endings, `011` directive-like text outside a comment, `012` foreign scheduler directive (`#PBS`, `#BSUB`), `013` byte-order mark (ERROR — bash executes it as a command), `014` suspicious directive-like comment (zero-width characters) |
 | `CUSTOS1xx` | `sbatchscan` — one code per canonical field family | `101` gres/gpus, `102` qos, `103` account, `104` partition, `105` reservation, `106` nodes/tasks/cpus, `107` memory, `108` walltime, `109` array, `110` dependencies, `111` priority, `112` node selection/topology/constraints/licenses, `113` identity/env/export, `114` naming, `115` io paths, `116` cluster, `117` mail, `118` behavioural/misc options, `199` unknown directive |
-| `CUSTOS2xx` | legacy import | `201` directive cannot be imported |
+| `CUSTOS2xx` | legacy import | `201` directive cannot be imported, `202` imported resource is not representable and was omitted with a warning |
 | `CUSTOS3xx` | `envcheck` | `301` controlled name, `302` generated name, `303` filtered name, `304` invalid name/value, `305` case variant of a filtered/controlled name (WARNING) |
 | `CUSTOS4xx` | `softwareenv` | `401` unknown/unauthorized software |
 | `CUSTOS5xx` | command scan (advisory) | `501` forbidden command |
@@ -182,7 +182,7 @@ validation:
   disabledCodes: [SC2034]            # only allowed for INFO/WARNING-origin codes
   shellcheckShell: bash
   allowShellTasks: false
-  allowLegacySbatchImport: false
+  allowLegacySbatchImport: true     # built-in default; tenant policy may set false
   forbiddenCommands: [sbatch, salloc]   # advisory scan → WARNING by default; see "Prohibited operations"
   forbiddenCommandsSeverity: WARNING     # admins may raise to ERROR
 ```
@@ -297,25 +297,39 @@ Environment).
 
 ## Legacy import mode
 
-Enabled per tenant by `allowLegacySbatchImport: true` **and** requested
-explicitly by the author (`POST .../tasks/{task}/import-sbatch`). Steps:
+Legacy sbatch import is enabled by the built-in policy default and is
+requested explicitly by the author. Tenant or cluster administrators may
+set the effective `allowLegacySbatchImport` policy to `false`; both import
+endpoints then return `403 IMPORT_DISABLED`.
 
-1. Run the scanner; convert `controlled` directives with a known mapping
-   into a `workflowspec.Resources` + placement fragment
-   (`--nodes=4 --gres=gpu:h100:4 --time=04:00:00` →
-   `resources: {nodes: 4, gpu: {type: h100, count: 4}, walltime: 4h}`).
-   Unmappable directives (`--uid`, `--nodelist`, `--export`, mail, ...)
-   are reported as `ERROR CUSTOS201 directive cannot be imported` and left
-   for the author to delete.
-2. Return the **proposed** resource request and a **rewritten payload** in
-   which each directive line is replaced by `# [custos] imported: <original>`
-   (same line count → diagnostics still align). Nothing is saved yet.
-3. The author reviews and saves; the rewritten payload becomes a new
-   script digest, the resources go into the task definition, and the
-   normal validate → policy → admission chain runs. Import output is a
-   *request*; policy may deny it exactly as if typed into the panel.
-4. Audit `workflow.script.import` with digests before/after and the list
-   of imported fields (not the script body).
+`POST /tenants/{tenant}/workflow-imports/sbatch` proposes a new workflow
+from 1-20 `{filename, content}` scripts (each content body is limited to
+256 KiB). Each file becomes an independent task with a deduplicated
+DNS-label name, `launch: sbatch`, a content-addressed rewritten script,
+and mapped resource/partition/QoS/I/O fields. The endpoint stores only the
+rewritten payloads and returns `{spec, yaml, tasks}`; it creates neither a
+Workflow nor a WorkflowVersion. The client reviews the proposal and then
+calls the ordinary workflow-create and version-create endpoints.
+
+The older `POST .../workflows/{workflow}/versions/{version}/tasks/{task}/import-sbatch`
+remains a proposal for one existing task. Both paths share the scanner and
+resource mapping:
+
+1. Mappable directives become structured task resources and placement
+   fields (`--nodes=4 --gres=gpu:h100:4 --time=04:00:00` becomes
+   `nodes: 4`, GPU `h100:4`, and a 4-hour walltime). `--mem-per-cpu` has no
+   equivalent in `TaskResources`, so it is omitted only with a field-scoped
+   `WARNING CUSTOS202`; it is never silently dropped.
+2. Unmappable directives (`--uid`, `--nodelist`, `--export`, mail, ...)
+   produce `ERROR CUSTOS201`. Their task is still included in the proposal
+   with its rewritten script and diagnostics so the author can edit it.
+3. Each directive line is replaced by `# [custos] imported: <original>`
+   (same line count so diagnostics still align). The assembled workflow
+   document must pass `validate.Static`; import output is still only a
+   proposal, and the ordinary validate → policy → admission chain remains
+   authoritative after the client creates a version.
+4. Audit `workflow.script.import` once per file with the filename, digests
+   before/after, task name, and imported fields (never script bytes).
 
 ## `ExecutionSpec` and admission
 
@@ -328,6 +342,7 @@ type ExecutionSpec struct {
     TenantID, ProjectID, PrincipalID uuid.UUID
     WorkflowVersionID uuid.UUID
     TaskName        string
+    Launch          string             // sbatch | srun; empty only in legacy frozen specs
     Attempt         int
 
     Cluster         ClusterRef         // id + name + api version used
@@ -377,9 +392,10 @@ the preview from this response and nothing else.
 `ExecutionSpec`. Envelope fields map to structured slurmrestd
 `JobDescMsg` fields; the `script` field is the wrapper below. The wrapper
 is generated from a Go `text/template` whose data struct contains only
-values already validated by admission; every value interpolated into a
-shell context goes through a single-quote escaper, and the payload itself
-is never interpolated as text.
+admission-validated values. User values are single-quoted, while launcher
+and optional container prefixes are composed from individually validated
+`SafeToken` words before the payload/argv; payload bytes are never
+interpolated as text.
 
 ```bash
 #!/bin/bash
@@ -402,9 +418,18 @@ CUSTOS_PAYLOAD_{{ .Nonce }}
 echo {{ q .PayloadDigest }}"  $CUSTOS_JOB_DIR/payload" | sha256sum -c --quiet
 chmod 0500 "$CUSTOS_JOB_DIR/payload"
 cd {{ q .WorkingDir }}
-{{ if .MPI }}exec srun --ntasks={{ .Tasks }} {{ q .Interpreter }} "$CUSTOS_JOB_DIR/payload" {{ range .Args }}{{ q . }} {{ end }}
-{{ else }}exec {{ q .Interpreter }} "$CUSTOS_JOB_DIR/payload" {{ range .Args }}{{ q . }} {{ end }}{{ end }}
+{{ range .LaunchWords }}{{ . }} {{ end }}{{ range .ContainerWords }}{{ . }} {{ end }}{{ if .HasPayload }}{{ q .Interpreter }} "$CUSTOS_JOB_DIR/payload"{{ end }}{{ range .Argv }} {{ . }}{{ end }}
 ```
+
+The launch line deliberately does not `exec`: the shell must survive the
+payload so the EXIT trap removes `$CUSTOS_JOB_DIR` (including the payload
+copy), and `set -e` propagates the payload's exit status.
+
+The launch line is assembled from `ExecutionSpec.Launch`: `srun` with
+`--ntasks=N` when a positive task count is set, or plain `srun` to inherit
+an allocation such as nodes × tasksPerNode. New specs and ad-hoc jobs persist
+`sbatch` or `srun`; only already-frozen legacy specs with an empty launch
+field retain the old `tasks > 1` srun fallback.
 
 Properties:
 

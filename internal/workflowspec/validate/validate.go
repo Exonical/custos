@@ -302,6 +302,13 @@ func checkShapes(w workflowspec.Workflow) []FieldError {
 		if ty == "" {
 			ty = TypeBatch
 		}
+		if t.Launch != "" && t.Launch != workflowspec.LaunchSbatch && t.Launch != workflowspec.LaunchSrun {
+			errs = append(errs, fe(base+".launch", "LAUNCH_INVALID",
+				"launch must be sbatch or srun"))
+		} else if ty == TypeCondition && t.Launch != "" {
+			errs = append(errs, fe(base+".launch", "LAUNCH_INVALID",
+				"condition tasks cannot select a Slurm launch mode"))
+		}
 		switch {
 		case !taskTypes[ty]:
 			errs = append(errs, fe(base+".type",
@@ -349,10 +356,10 @@ func checkShapes(w workflowspec.Workflow) []FieldError {
 				"FANOUT_FROM_UNSUPPORTED",
 				"dynamic fan-out from task outputs lands in a later milestone"))
 		}
-		if t.Array != nil && ty != TypeArray {
+		if t.Array != nil && !slurmBacked(t) {
 			errs = append(errs, fe(base+".array",
-				"ARRAY_ONLY_ON_ARRAY",
-				"array spec is only valid on type array"))
+				"ARRAY_ONLY_ON_SLURM_TASK",
+				"array spec is only valid on Slurm-backed tasks"))
 		}
 		if ty == TypeArray && t.Array == nil {
 			errs = append(errs, fe(base+".array",
@@ -635,9 +642,9 @@ func checkRef(r expr.Path, sc taskScope, path string) []FieldError {
 		if r[1] != "taskId" || len(r) != 2 {
 			return []FieldError{fe(path, "REF_ARRAY", "only array.taskId exists")}
 		}
-		if sc.task.Type != TypeArray {
+		if sc.task.Array == nil {
 			return []FieldError{fe(path, "REF_ARRAY_SCOPE",
-				"array.* is only valid in array tasks")}
+				"array.* is only valid on tasks with an array spec")}
 		}
 	case "secrets":
 		if len(r) != 2 {

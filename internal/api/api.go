@@ -240,6 +240,13 @@ func Mount(mux *http.ServeMux, deps Deps) {
 			wh := &workflowHandlers{svc: deps.Workflows}
 			tenantMW := tenants.Require(deps.TenantRepo, deps.Logger, deps.Audit)
 			tr := func(h http.Handler) http.Handler { return bearer(tenantMW(h)) }
+			importHandler := httpx.BodyLimit(WorkflowImportBodyLimit)(http.HandlerFunc(wh.importSbatch))
+			if deps.VLimiter != nil {
+				importHandler = deps.VLimiter.Middleware(func(r *http.Request) string {
+					return authn.MustPrincipal(r.Context()).UserID.String()
+				})(importHandler)
+			}
+			mux.Handle("POST /api/v1/tenants/{tenant}/workflow-imports/sbatch", tr(importHandler))
 			base := "/api/v1/tenants/{tenant}/workflows"
 			mux.Handle("POST "+base, tr(http.HandlerFunc(wh.create)))
 			mux.Handle("GET "+base, tr(http.HandlerFunc(wh.list)))
@@ -259,6 +266,7 @@ func Mount(mux *http.ServeMux, deps Deps) {
 			tb := vb + "/{version}/tasks/{task}"
 			mux.Handle("POST "+tb+"/validate", tr(http.HandlerFunc(wh.taskValidate)))
 			mux.Handle("POST "+tb+"/import-sbatch", tr(http.HandlerFunc(wh.taskImportSbatch)))
+			mux.Handle("GET "+tb+"/sbatch", tr(http.HandlerFunc(wh.exportTaskSbatch)))
 			mux.Handle("POST "+tb+"/preview-submission", tr(http.HandlerFunc(wh.preview)))
 		}
 

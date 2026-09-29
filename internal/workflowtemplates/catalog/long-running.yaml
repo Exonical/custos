@@ -25,7 +25,6 @@ workflow:
         default: ./a.out
     tasks:
       - name: run
-        type: batch
         resources:
           tasks: 2
           cpusPerTask: 1

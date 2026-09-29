@@ -36,6 +36,12 @@ func TestValidate(t *testing.T) {
 	}
 }
 
+func TestDefaultAllowsLegacySbatchImport(t *testing.T) {
+	if !Default().AllowLegacySbatchImport {
+		t.Fatal("legacy sbatch import must be enabled by default")
+	}
+}
+
 func TestMerge(t *testing.T) {
 	cluster := Policy{
 		BlockAt:           validation.SeverityError,

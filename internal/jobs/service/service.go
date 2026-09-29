@@ -349,6 +349,7 @@ func (s *Service) Submit(ctx context.Context, p authn.Principal,
 		ProjectID:   projectID,
 		PrincipalID: p.UserID,
 		TaskName:    "adhoc",
+		Launch:      workflowspec.LaunchSbatch,
 		Attempt:     1,
 		Cluster: admission.ClusterRef{
 			ID: cluster.ID, Name: cluster.Name, APIVersion: cluster.APIVersion,

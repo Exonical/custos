@@ -43,6 +43,23 @@ func TestStaticValid(t *testing.T) {
 	}
 }
 
+func TestArraySpecAndRuntimeReferenceAreNotLegacyTypeGated(t *testing.T) {
+	w := wf(t, `
+apiVersion: custos.io/v1alpha1
+kind: Workflow
+metadata: { name: x }
+spec:
+  tasks:
+    - name: a
+      launch: srun
+      array: { start: 0, end: 3 }
+      command: ["./run", "{{ array.taskId }}"]
+`)
+	if errs := validate.Static(w); len(errs) != 0 {
+		t.Fatalf("array spec should be valid without a legacy type: %v", errs)
+	}
+}
+
 func TestStaticErrorCodes(t *testing.T) {
 	cases := []struct {
 		name string
@@ -133,12 +150,24 @@ kind: Workflow
 metadata: { name: x }
 spec: { tasks: [{name: a, command: ["true"], retry: { attempts: 2, on: [BOGUS] }}] }`,
 			"RETRY_STATE"},
-		{"array on non-array", `
+		{"array on condition", `
 apiVersion: custos.io/v1alpha1
 kind: Workflow
 metadata: { name: x }
-spec: { tasks: [{name: a, command: ["true"], array: { start: 0, end: 3 }}] }`,
-			"ARRAY_ONLY_ON_ARRAY"},
+spec: { tasks: [{name: a, type: condition, when: "true", array: { start: 0, end: 3 }}] }`,
+			"ARRAY_ONLY_ON_SLURM_TASK"},
+		{"invalid launch", `
+apiVersion: custos.io/v1alpha1
+kind: Workflow
+metadata: { name: x }
+spec: { tasks: [{name: a, launch: mpirun, command: ["true"]}] }`,
+			"LAUNCH_INVALID"},
+		{"launch on condition", `
+apiVersion: custos.io/v1alpha1
+kind: Workflow
+metadata: { name: x }
+spec: { tasks: [{name: a, launch: srun, type: condition, when: "true"}] }`,
+			"LAUNCH_INVALID"},
 		{"array required", `
 apiVersion: custos.io/v1alpha1
 kind: Workflow

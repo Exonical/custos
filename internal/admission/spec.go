@@ -148,6 +148,7 @@ type ExecutionSpec struct {
 	PrincipalID       uuid.UUID `json:"principal_id"`
 	WorkflowVersionID uuid.UUID `json:"workflow_version_id"`
 	TaskName          string    `json:"task_name"`
+	Launch            string    `json:"launch,omitempty"`
 	Attempt           int       `json:"attempt"`
 
 	Cluster     ClusterRef `json:"cluster"`

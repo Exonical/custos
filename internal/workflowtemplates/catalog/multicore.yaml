@@ -1,11 +1,11 @@
 id: multicore
 order: 20
 title: Single-node multi-process
-summary: Many single-core processes on one node, started by the program itself.
+summary: One batch launch with a 20-task allocation.
 description: |
-  Allocates one node with 20 tasks of one CPU each. The executable is
-  started once and is expected to spawn its own worker processes, as in
-  the equivalent sbatch script.
+  Allocates one node with 20 tasks of one CPU each. The default sbatch
+  launch starts the executable once, matching the original script; the
+  executable is expected to spawn its own worker processes.
 workflow:
   apiVersion: custos.io/v1alpha1
   kind: Workflow
@@ -24,7 +24,6 @@ workflow:
         default: ./a.out
     tasks:
       - name: run
-        type: batch
         resources:
           nodes: 1
           tasksPerNode: 20

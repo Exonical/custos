@@ -24,6 +24,9 @@ func TestCatalogLoadsAndValidates(t *testing.T) {
 			t.Errorf("template %d is %q, want %q (catalog order)", i, tpl.ID, want[i])
 		}
 		for _, task := range tpl.Spec.Spec.Tasks {
+			if task.Type != "" {
+				t.Errorf("%s/%s: new template should omit deprecated task type %q", tpl.ID, task.Name, task.Type)
+			}
 			res, errs := task.Resources.Resolve("")
 			if len(errs) > 0 {
 				t.Errorf("%s/%s: %v", tpl.ID, task.Name, errs)
@@ -55,7 +58,7 @@ func TestTemplatesMatchTheirSbatchOrigins(t *testing.T) {
 		}
 		return res
 	}
-	if r := get("hybrid-mpi-openmp"); r.Nodes != 2 || r.TasksPerNode != 4 || r.Tasks != 8 || r.CPUsPerTask != 5 {
+	if r := get("hybrid-mpi-openmp"); r.Nodes != 2 || r.TasksPerNode != 4 || r.Tasks != 0 || r.CPUsPerTask != 5 {
 		t.Errorf("hybrid resources drifted: %+v", r)
 	}
 	if r := get("gpu"); r.GPU == nil || r.GPU.Count != 1 || r.CPUsPerTask != 8 {
@@ -71,6 +74,32 @@ func TestTemplatesMatchTheirSbatchOrigins(t *testing.T) {
 	}
 	if _, ok, _ := workflowtemplates.Get("nope"); ok {
 		t.Error("unknown id resolved")
+	}
+}
+
+func TestTemplateLaunchModel(t *testing.T) {
+	for _, tt := range []struct {
+		id     string
+		launch string
+		tasks  int
+	}{
+		{"mpi-tasks", workflowspec.LaunchSrun, 40},
+		{"mpi-nodes", workflowspec.LaunchSrun, 0},
+		{"hybrid-mpi-openmp", workflowspec.LaunchSrun, 0},
+		{"per-core", workflowspec.LaunchSbatch, 4},
+		{"multicore", workflowspec.LaunchSbatch, 0},
+	} {
+		tpl, ok, err := workflowtemplates.Get(tt.id)
+		if err != nil || !ok {
+			t.Fatalf("%s: ok=%v err=%v", tt.id, ok, err)
+		}
+		task := tpl.Spec.Spec.Tasks[0]
+		if got := task.EffectiveLaunch(); got != tt.launch {
+			t.Errorf("%s launch = %q, want %q", tt.id, got, tt.launch)
+		}
+		if task.Resources.Tasks != tt.tasks {
+			t.Errorf("%s tasks = %d, want %d", tt.id, task.Resources.Tasks, tt.tasks)
+		}
 	}
 }
 

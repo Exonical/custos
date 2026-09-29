@@ -184,7 +184,12 @@
       "additionalProperties": false,
       "properties": {
         "name": {"type": "string"},
-        "type": {"enum": ["batch", "mpi", "gpu", "array", "shell", "stageIn", "stageOut", "interactive", "condition"]},
+        "type": {
+          "enum": ["batch", "mpi", "gpu", "array", "shell", "stageIn", "stageOut", "interactive", "condition"],
+          "deprecated": true,
+          "description": "Deprecated compatibility aliases. New specs should omit type except for shell and condition; use launch to choose sbatch or srun."
+        },
+        "launch": {"type": "string", "enum": ["sbatch", "srun"], "description": "Slurm launch model; defaults to sbatch, except legacy type mpi defaults to srun."},
         "dependsOn": {"type": "array", "items": {"type": "string"}},
         "onDependencyFailure": {"enum": ["fail", "run"]},
         "when": {"type": "string"},

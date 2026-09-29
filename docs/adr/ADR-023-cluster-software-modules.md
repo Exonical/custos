@@ -9,10 +9,11 @@ Workflow tasks declare structured `software` requirements, and the job
 wrapper already emits `module load` lines from `ExecutionSpec.Software[].ModuleSpec`.
 Nothing populated `ModuleSpec`: the synced `software_catalog` described in
 `docs/script-validation.md` was never built, so requirements were accepted
-and silently ignored. MPI tasks are launched by the wrapper with
-`srun --ntasks=N`, so module environments cannot be set up inside a script
-payload (srun would run the payload N times); they must be loaded by the
-wrapper before launch.
+and silently ignored. Tasks with `launch: srun` (including the legacy
+`type: mpi` alias) run their payload inside an srun step; the wrapper loads
+site modules before launch rather than putting module names into the user
+payload. Positive `resources.tasks` adds `--ntasks=N`; otherwise srun
+inherits the allocation (see ADR-025).
 
 ## Decision
 
@@ -34,8 +35,8 @@ wrapper before launch.
 - **Synced catalog from Lmod/Spack exports** (the original plan): richer,
   but needs a site manifest format and sync worker. The admin-curated list
   is its first, manual source; a later sync can populate the same field.
-- **Module loads inside script payloads**: breaks for MPI tasks and puts
-  site module names into user documents.
+- **Module loads inside script payloads**: repeats setup inside each
+  srun-launched rank and puts site module names into user documents.
 - **Accept and ignore unknown software**: the prior behavior; jobs failed
   far from the cause.
 

@@ -30,6 +30,7 @@ decisions get a new ADR that references the old one.
 | [ADR-022](ADR-022-shadcn-base-ui-dark-theme.md) | shadcn `base-nova` on Base UI with a dark-only industrial design system | [frontend.md](../frontend.md) |
 | [ADR-023](ADR-023-cluster-software-modules.md) | Platform-curated per-cluster software→module map; admission resolves requirements fail-closed | [workflows.md](../workflows.md), [script-validation.md](../script-validation.md) |
 | [ADR-024](ADR-024-builtin-workflow-templates.md) | Embedded, validated workflow template catalog exposed read-only over the API | [workflows.md](../workflows.md), [api.md](../api.md) |
+| [ADR-025](ADR-025-slurm-launch-and-sbatch-interchange.md) | Explicit sbatch/srun launch semantics with proposal-based sbatch import and export | [workflows.md](../workflows.md), [script-validation.md](../script-validation.md), [api.md](../api.md) |
 
 ## Process
 

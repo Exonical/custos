@@ -170,8 +170,16 @@ func CORS(allowed []string) Middleware {
 // BodyLimit caps request bodies. Oversized Content-Length is rejected
 // before reading; streaming bodies are capped by MaxBytesReader.
 func BodyLimit(n int64) Middleware {
+	return BodyLimitFor(func(*http.Request) int64 { return n })
+}
+
+// BodyLimitFor selects a body limit from the request, allowing a small
+// number of upload endpoints to use a larger bounded payload without
+// raising the cap for every route.
+func BodyLimitFor(limit func(*http.Request) int64) Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			n := limit(r)
 			if r.ContentLength > n {
 				WriteError(r.Context(), w, apperr.New(
 					apperr.Invalid, "BODY_TOO_LARGE", "request body too large"))

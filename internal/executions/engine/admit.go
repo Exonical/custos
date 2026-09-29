@@ -303,6 +303,7 @@ func admitTask(ctx context.Context, d Deps,
 		PrincipalID:       e.RequestedBy,
 		WorkflowVersionID: e.WorkflowVersionID,
 		TaskName:          t.TaskName,
+		Launch:            st.EffectiveLaunch(),
 		Attempt:           t.Attempt,
 		Cluster: admission.ClusterRef{
 			ID: cluster.ID, Name: cluster.Name,
