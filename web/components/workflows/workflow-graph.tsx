@@ -70,6 +70,7 @@ function taskProperties(spec: NormalizedWorkflowSpec, task: WorkflowNode["data"]
     ["COMMAND", task.command],
     ["SCRIPT", task.script ? { ref: task.script.ref, language: task.script.language } : undefined],
     ["ARGS", task.args],
+    ["SOFTWARE", task.software?.length ? task.software.map((item) => `${item.name}@${item.version}`) : undefined],
     ["DEPENDS ON", task.dependsOn],
     ["WHEN", task.when],
     ["FAN OUT", task.fanOut],

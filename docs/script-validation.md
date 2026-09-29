@@ -455,11 +455,13 @@ wrapper sets what `ExecutionSpec.Environment` says.
 ## Software environments (`softwareenv`)
 
 Structured requirement in the task: `software: [{name: openmpi, version: "5.0.7"}, {name: hdf5, version: "1.14"}]`.
-Resolution against a per-cluster **catalog** (`software_catalog` rows
-synced by `cluster.sync` from a site-provided manifest or a future
-Lmod/Spack export): name+version constraint → `ModuleSpec` (exact module
-string, dependency modules, generated env). Unknown name/version →
-`CUSTOS401 unauthorized or unknown software`. Users never type module
+Resolution against a per-cluster **catalog**: today the platform-curated
+`clusters.software_modules` list (ADR-023), resolved at admission (exact
+`name@version` first, then a version-less entry) into `ModuleSpec`;
+unknown software is denied with `SOFTWARE_UNAVAILABLE`. A later
+`software_catalog` synced by `cluster.sync` from a site manifest or
+Lmod/Spack export can populate the same data, add generated env, and
+surface `CUSTOS401 unauthorized or unknown software` at validation time. Users never type module
 strings into a structured field; if a payload itself runs `module load
 $(…)`, that's payload code and is subject to the same runtime controls as
 any other command — the distinction is what Custos *vouches for*.

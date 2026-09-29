@@ -108,6 +108,10 @@ func Mount(mux *http.ServeMux, deps Deps) {
 		bearer := authn.RequireBearer(deps.Verifier, deps.Audit, deps.Logger,
 			authn.WithProvisioner(deps.Provisioner))
 		mux.Handle("GET /api/v1/me", bearer(meHandler(deps)))
+		mux.Handle("GET /api/v1/workflow-templates",
+			bearer(http.HandlerFunc(listWorkflowTemplates)))
+		mux.Handle("GET /api/v1/workflow-templates/{template}",
+			bearer(http.HandlerFunc(getWorkflowTemplate)))
 
 		if deps.Tenants != nil {
 			h := &tenantHandlers{svc: deps.Tenants}

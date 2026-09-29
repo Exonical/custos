@@ -11,6 +11,7 @@ RUN pnpm install --frozen-lockfile
 FROM deps AS dev
 COPY web/ ./
 COPY api/openapi/v1.yaml /app/api/openapi/v1.yaml
+COPY internal/workflowtemplates/catalog /app/internal/workflowtemplates/catalog
 EXPOSE 3000 4300
 CMD ["pnpm", "dev:mock", "--hostname", "0.0.0.0", "--port", "3000"]
 

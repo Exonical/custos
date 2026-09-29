@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { Workflow, WorkflowVersion } from "@/lib/api/client";
+import { detailText } from "@/lib/api/error-details";
 import { buildParameterSchema, parameterDefaults } from "@/lib/workflow/parameters";
 import type { WorkflowParameter } from "@/lib/workflow/normalize";
 
@@ -19,14 +20,8 @@ function errorText(value: unknown, status: number): string {
   const code = typeof error?.code === "string" ? error.code : `HTTP_${String(status)}`;
   if (status === 403) return "You do not have permission to run this workflow.";
   if (status === 409) return `Run rejected: ${code}`;
-  if (status === 422 && Array.isArray(error?.details)) {
-    const messages = error.details.flatMap((detail) => {
-      if (!detail || typeof detail !== "object") return [];
-      const message = (detail as { message?: unknown }).message;
-      return typeof message === "string" ? [message] : [];
-    });
-    if (messages.length) return messages.join(" · ");
-  }
+  const details = status === 422 && Array.isArray(error?.details) ? detailText(error.details) : "";
+  if (details) return details;
   return `Run rejected: ${code}`;
 }
 

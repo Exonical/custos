@@ -134,10 +134,47 @@ func CheckAdmission(req workflowspec.Resources, partition string,
 	return nil
 }
 
+// ResolveSoftware maps each requirement onto the cluster's module
+// catalog, preferring an exact version entry over a version-less one.
+// Unresolvable requirements fail closed: running without the requested
+// environment produces failures far from their cause.
+func ResolveSoftware(reqs []workflowspec.SoftwareRequirement,
+	catalog []validation.SoftwareModule) ([]ResolvedSoftware, *Denial) {
+	if len(reqs) == 0 {
+		return nil, nil
+	}
+	out := make([]ResolvedSoftware, 0, len(reqs))
+	for _, req := range reqs {
+		var match *validation.SoftwareModule
+		for i := range catalog {
+			entry := &catalog[i]
+			if entry.Name != req.Name {
+				continue
+			}
+			if entry.Version == req.Version {
+				match = entry
+				break
+			}
+			if entry.Version == "" && match == nil {
+				match = entry
+			}
+		}
+		if match == nil {
+			return nil, deny("SOFTWARE_UNAVAILABLE", "software",
+				fmt.Sprintf("software %s@%s has no module mapping on the cluster",
+					req.Name, req.Version))
+		}
+		out = append(out, ResolvedSoftware{Name: req.Name,
+			Version: req.Version, ModuleSpec: slices.Clone(match.Modules)})
+	}
+	return out, nil
+}
+
 // BuildInput carries everything Build needs (authn/authz already done
 // by the caller).
 type BuildInput struct {
 	Spec     ExecutionSpec // identity, placement, payload refs prefilled
+	Software []workflowspec.SoftwareRequirement
 	Request  workflowspec.Resources
 	Policy   ResourcePolicy
 	Binding  Binding
@@ -199,7 +236,12 @@ func Build(in BuildInput) (ExecutionSpec, *Denial) {
 	if d := CheckAdmission(in.Request, partition, in.Cluster); d != nil {
 		return ExecutionSpec{}, d
 	}
+	software, d := ResolveSoftware(in.Software, in.Cluster.Software)
+	if d != nil {
+		return ExecutionSpec{}, d
+	}
 	spec := in.Spec
+	spec.Software = software
 	spec.SchemaVersion = SchemaVersion
 	// Slurm requires a current working directory and the wrapper cd's to
 	// it — default to /tmp when the request leaves it unset.

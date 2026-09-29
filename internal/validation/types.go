@@ -84,6 +84,16 @@ type ClusterSnapshot struct {
 	GRESTypes   []string
 	QoS         []string
 	MaxWalltime map[string]time.Duration
+	Software    []SoftwareModule
+}
+
+// SoftwareModule maps a software requirement to the environment
+// modules a site loads for it. An empty Version matches any requested
+// version; an exact Version match takes precedence.
+type SoftwareModule struct {
+	Name    string   `json:"name"`
+	Version string   `json:"version,omitempty"`
+	Modules []string `json:"modules"`
 }
 
 // Override remaps the severity of one (source, code) pair.

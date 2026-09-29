@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -24,6 +25,7 @@ import (
 	"github.com/Exonical/custos/internal/slurm"
 	"github.com/Exonical/custos/internal/slurm/httpclient"
 	"github.com/Exonical/custos/internal/tenants"
+	"github.com/Exonical/custos/internal/validation"
 )
 
 // KindClusterSync is the workqueue kind for cluster sync items.
@@ -113,9 +115,54 @@ type CreateInput struct {
 	ServiceUser         string
 	PolicyManagement    string
 	PolicyParentAccount string
+	SoftwareModules     []validation.SoftwareModule
 	TokenRef            secrets.Reference
 	ClientCertRef       *secrets.Reference
 	Visibility          string
+}
+
+var (
+	softwareNameRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.+-]{0,63}$`)
+	moduleNameRe   = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.+/@-]{0,127}$`)
+)
+
+// normalizeSoftwareModules validates the site module catalog. Module
+// names reach the job wrapper (single-quoted), so they are held to a
+// conservative charset rather than relying on quoting alone.
+func normalizeSoftwareModules(in []validation.SoftwareModule) ([]validation.SoftwareModule, error) {
+	invalid := func(msg string) error {
+		return apperr.New(apperr.Validation, "SOFTWARE_MODULES_INVALID", msg)
+	}
+	if len(in) > 256 {
+		return nil, invalid("at most 256 software module entries")
+	}
+	seen := map[string]bool{}
+	out := make([]validation.SoftwareModule, 0, len(in))
+	for i, e := range in {
+		at := fmt.Sprintf("software_modules[%d]", i)
+		if !softwareNameRe.MatchString(e.Name) {
+			return nil, invalid(at + ".name must match " + softwareNameRe.String())
+		}
+		if e.Version != "" && !softwareNameRe.MatchString(e.Version) {
+			return nil, invalid(at + ".version must match " + softwareNameRe.String())
+		}
+		key := e.Name + "@" + e.Version
+		if seen[key] {
+			return nil, invalid(at + " duplicates " + key)
+		}
+		seen[key] = true
+		if len(e.Modules) == 0 || len(e.Modules) > 16 {
+			return nil, invalid(at + ".modules must list 1-16 modules")
+		}
+		for _, m := range e.Modules {
+			if !moduleNameRe.MatchString(m) {
+				return nil, invalid(at + ".modules entry must match " + moduleNameRe.String())
+			}
+		}
+		out = append(out, validation.SoftwareModule{Name: e.Name,
+			Version: e.Version, Modules: slices.Clone(e.Modules)})
+	}
+	return out, nil
 }
 
 // Create registers a cluster (platform cluster.manage).
@@ -135,7 +182,12 @@ func (s *Service) Create(ctx context.Context, p authn.Principal,
 	if err := s.validateTokenRef(ctx, in.TokenRef); err != nil {
 		return clusters.Cluster{}, err
 	}
+	software, err := normalizeSoftwareModules(in.SoftwareModules)
+	if err != nil {
+		return clusters.Cluster{}, err
+	}
 	c := clusters.Cluster{
+		SoftwareModules:     software,
 		ID:                  uuid.Must(uuid.NewV7()),
 		Name:                in.Name,
 		DisplayName:         in.DisplayName,
@@ -188,6 +240,7 @@ type UpdateInput struct {
 	Visibility          *string
 	PolicyManagement    *string
 	PolicyParentAccount *string
+	SoftwareModules     *[]validation.SoftwareModule
 	Version             int
 }
 
@@ -255,6 +308,13 @@ func (s *Service) Update(ctx context.Context, p authn.Principal, ref string,
 			c.PolicyParentAccount = parent
 			policySync = true
 		}
+	}
+	if in.SoftwareModules != nil {
+		software, err := normalizeSoftwareModules(*in.SoftwareModules)
+		if err != nil {
+			return clusters.Cluster{}, err
+		}
+		c.SoftwareModules = software
 	}
 	c.Version = in.Version
 	if err := s.repo.Update(ctx, c); err != nil {

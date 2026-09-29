@@ -28,6 +28,8 @@ decisions get a new ADR that references the old one.
 | [ADR-020](ADR-020-slurmdbd-policy-administration.md) | Reconcile binding accounts, service-user associations, and hard allocation limits into slurmdbd; report mode is the escape hatch | [workers.md](../workers.md), [slurm.md](../slurm.md) |
 | [ADR-021](ADR-021-authjs-stateless-sessions.md) | Auth.js v5 JWT sessions, no adapter/database, server-only bearer tokens, CSRF double-submit | [frontend.md](../frontend.md), [web.md](../web.md) |
 | [ADR-022](ADR-022-shadcn-base-ui-dark-theme.md) | shadcn `base-nova` on Base UI with a dark-only industrial design system | [frontend.md](../frontend.md) |
+| [ADR-023](ADR-023-cluster-software-modules.md) | Platform-curated per-cluster software→module map; admission resolves requirements fail-closed | [workflows.md](../workflows.md), [script-validation.md](../script-validation.md) |
+| [ADR-024](ADR-024-builtin-workflow-templates.md) | Embedded, validated workflow template catalog exposed read-only over the API | [workflows.md](../workflows.md), [api.md](../api.md) |
 
 ## Process
 

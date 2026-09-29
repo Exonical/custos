@@ -19,6 +19,7 @@ import (
 	"github.com/Exonical/custos/internal/secrets"
 	"github.com/Exonical/custos/internal/slurm"
 	"github.com/Exonical/custos/internal/tenants"
+	"github.com/Exonical/custos/internal/validation"
 )
 
 func TestMain(m *testing.M) { os.Exit(dbtest.Main(m)) }
@@ -74,6 +75,9 @@ func TestClusterCRUD(t *testing.T) {
 		byName.TokenRef.Path != "slurm/token" {
 		t.Fatalf("unexpected: %+v", byName)
 	}
+	if byName.SoftwareModules == nil || len(byName.SoftwareModules) != 0 {
+		t.Fatalf("new cluster software_modules = %#v, want empty", byName.SoftwareModules)
+	}
 	byID, err := repo.GetByNameOrID(ctx, c.ID.String())
 	if err != nil || byID.Name != "alpha" {
 		t.Fatalf("get by id: %v %+v", err, byID)
@@ -88,12 +92,19 @@ func TestClusterCRUD(t *testing.T) {
 	}
 
 	byName.DisplayName = "Alpha Cluster"
+	byName.SoftwareModules = []validation.SoftwareModule{
+		{Name: "openmpi", Version: "5.0", Modules: []string{"gcc/13.2.0", "openmpi/5.0.3"}},
+	}
 	if err := repo.Update(ctx, byName); err != nil {
 		t.Fatal(err)
 	}
 	got, _ := repo.GetByNameOrID(ctx, "alpha")
 	if got.DisplayName != "Alpha Cluster" || got.Version != 2 {
 		t.Fatalf("update: %+v", got)
+	}
+	if len(got.SoftwareModules) != 1 || got.SoftwareModules[0].Version != "5.0" ||
+		len(got.SoftwareModules[0].Modules) != 2 || got.SoftwareModules[0].Modules[1] != "openmpi/5.0.3" {
+		t.Fatalf("software_modules round-trip: %+v", got.SoftwareModules)
 	}
 	// stale version -> conflict
 	stale := got

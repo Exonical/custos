@@ -1680,6 +1680,53 @@ paths:
         "304":
           description: Cached schema unchanged.
 
+  /workflow-templates:
+    get:
+      summary: List built-in workflow templates (any authenticated principal)
+      operationId: listWorkflowTemplates
+      description: >
+        Platform-provided starter documents (ADR-024). Using one is an
+        ordinary createWorkflow followed by createWorkflowVersion with
+        the template's spec, under the caller's own permissions.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Template summaries in catalog order.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowTemplateList"
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+
+  /workflow-templates/{template}:
+    get:
+      summary: Get a built-in workflow template with its document
+      operationId: getWorkflowTemplate
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: template
+          in: path
+          required: true
+          description: Template id.
+          schema: {type: string, pattern: "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"}
+      responses:
+        "200":
+          description: The template, its canonical spec and a YAML rendering.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowTemplate"
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "404":
+          description: Unknown template.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+
   /tenants/{tenant}/workflows:
     post:
       summary: Create a workflow (workflow.create on the project)
@@ -3909,6 +3956,11 @@ components:
           enum: [inherit, enforce, report]
         policy_parent_account:
           type: string
+        software_modules:
+          type: array
+          description: Site map from workflow software requirements to environment modules (ADR-023).
+          items:
+            $ref: "#/components/schemas/SoftwareModule"
         token_ref:
           $ref: "#/components/schemas/SecretRef"
         client_cert_ref:
@@ -3966,6 +4018,11 @@ components:
           enum: [inherit, enforce, report]
         policy_parent_account:
           type: string
+        software_modules:
+          type: array
+          description: Site map from workflow software requirements to environment modules (ADR-023).
+          items:
+            $ref: "#/components/schemas/SoftwareModule"
         token_ref:
           $ref: "#/components/schemas/SecretRef"
         client_cert_ref:
@@ -3997,6 +4054,11 @@ components:
           enum: [inherit, enforce, report]
         policy_parent_account:
           type: string
+        software_modules:
+          type: array
+          description: Site map from workflow software requirements to environment modules (ADR-023).
+          items:
+            $ref: "#/components/schemas/SoftwareModule"
         token_ref:
           $ref: "#/components/schemas/SecretRef"
         client_cert_ref:
@@ -4373,6 +4435,56 @@ components:
             filteredEnvAllowed:
               type: array
               items: {type: string}
+
+    SoftwareModule:
+      type: object
+      required: [name, modules]
+      properties:
+        name: {type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9_.+-]{0,63}$"}
+        version:
+          type: string
+          pattern: "^[A-Za-z0-9][A-Za-z0-9_.+-]{0,63}$"
+          description: Omit to match any requested version; an exact match wins.
+        modules:
+          type: array
+          minItems: 1
+          maxItems: 16
+          items: {type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9_.+/@-]{0,127}$"}
+
+    WorkflowTemplateSummary:
+      type: object
+      required: [id, title, summary, description, tags]
+      properties:
+        id: {type: string}
+        title: {type: string}
+        summary: {type: string}
+        description: {type: string}
+        tags:
+          type: object
+          description: Free-form key/value metadata; empty when unset.
+          additionalProperties: {type: string}
+
+    WorkflowTemplateList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkflowTemplateSummary"
+
+    WorkflowTemplate:
+      allOf:
+        - $ref: "#/components/schemas/WorkflowTemplateSummary"
+        - type: object
+          required: [spec, yaml]
+          properties:
+            spec:
+              type: object
+              description: Canonical custos.io/v1alpha1 workflow document.
+            yaml:
+              type: string
+              description: The same document as YAML, in authored key order.
 
     Workflow:
       type: object

@@ -28,8 +28,9 @@ YAML is accepted at the API and converted to canonical JSON
 
 **v1 limitations (fail closed, all verified by validation):**
 `placement.requirements` and `fanOut.from` are rejected as reserved;
-`software` requirements are accepted
-but left unresolved until the software-environment catalog lands (M7);
+`software` requirements resolve at admission against the placement
+cluster's `software_modules` map and fail closed with
+`SOFTWARE_UNAVAILABLE` when no entry matches (ADR-023);
 `stageIn`/`stageOut`/`interactive` task types are reserved.
 
 ```yaml

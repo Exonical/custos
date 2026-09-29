@@ -1,0 +1,34 @@
+id: multicore
+order: 20
+title: Single-node multi-process
+summary: Many single-core processes on one node, started by the program itself.
+description: |
+  Allocates one node with 20 tasks of one CPU each. The executable is
+  started once and is expected to spawn its own worker processes, as in
+  the equivalent sbatch script.
+workflow:
+  apiVersion: custos.io/v1alpha1
+  kind: Workflow
+  metadata:
+    name: multicore
+    labels:
+      custos.io/template: multicore
+  spec:
+    parameters:
+      workdir:
+        type: string
+        required: true
+        pattern: "^/"
+      executable:
+        type: string
+        default: ./a.out
+    tasks:
+      - name: run
+        type: batch
+        resources:
+          nodes: 1
+          tasksPerNode: 20
+          cpusPerTask: 1
+          walltime: "00:00:30"
+        workingDirectory: "{{ parameters.workdir }}"
+        command: ["{{ parameters.executable }}"]

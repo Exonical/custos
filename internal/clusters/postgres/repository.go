@@ -19,13 +19,15 @@ import (
 	"github.com/Exonical/custos/internal/secrets"
 	"github.com/Exonical/custos/internal/slurm"
 	"github.com/Exonical/custos/internal/tenants"
+	"github.com/Exonical/custos/internal/validation"
 )
 
 const clusterCols = `id, name, display_name, base_url, api_version,
  ca_bundle_pem, identity_mode, service_user, token_ref, client_cert_ref,
  visibility, state, consecutive_failures, consecutive_successes,
  last_sync_at, last_error, capabilities, capabilities_at,
- policy_management, policy_parent_account, version, created_at, updated_at`
+ policy_management, policy_parent_account, software_modules, version,
+ created_at, updated_at`
 
 // clusterColsQualified is clusterCols with the c. table alias, for joins.
 var clusterColsQualified = "c." + strings.ReplaceAll(
@@ -44,13 +46,13 @@ func scanCluster(row pgx.Row, extra ...any) (clusters.Cluster, error) {
 	var c clusters.Cluster
 	var caBundle, lastErr *string
 	var tokenRef, certRef []byte
-	var capJSON []byte
+	var capJSON, softwareJSON []byte
 	dest := append([]any{&c.ID, &c.Name, &c.DisplayName, &c.BaseURL,
 		&c.APIVersion, &caBundle, &c.IdentityMode, &c.ServiceUser,
 		&tokenRef, &certRef, &c.Visibility, &c.State,
 		&c.ConsecFailures, &c.ConsecSuccesses,
 		&c.LastSyncAt, &lastErr, &capJSON, &c.CapabilitiesAt,
-		&c.PolicyManagement, &c.PolicyParentAccount,
+		&c.PolicyManagement, &c.PolicyParentAccount, &softwareJSON,
 		&c.Version, &c.CreatedAt, &c.UpdatedAt}, extra...)
 	err := row.Scan(dest...)
 	if err != nil {
@@ -71,6 +73,9 @@ func scanCluster(row pgx.Row, extra ...any) (clusters.Cluster, error) {
 			return c, err
 		}
 		c.ClientCertRef = &r
+	}
+	if err := json.Unmarshal(softwareJSON, &c.SoftwareModules); err != nil {
+		return c, err
 	}
 	if capJSON != nil {
 		var caps slurm.Capabilities
@@ -110,28 +115,38 @@ func (r *Repository) Create(ctx context.Context, c clusters.Cluster) error {
 	if c.ClientCertRef != nil {
 		cert, _ = json.Marshal(*c.ClientCertRef)
 	}
+	software := softwareJSON(c.SoftwareModules)
 	return db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
 		if err := db.SetPlatformScope(ctx, tx); err != nil {
 			return err
 		}
 		_, err := tx.Exec(ctx, `
 			INSERT INTO clusters (`+clusterColsNoTS+`)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
 			c.ID, c.Name, c.DisplayName, c.BaseURL, c.APIVersion,
 			nullStr(c.CABundlePEM), c.IdentityMode, c.ServiceUser,
 			tok, cert, c.Visibility, c.State,
 			c.ConsecFailures, c.ConsecSuccesses,
 			c.LastSyncAt, nullStr(c.LastError), nil, nil,
-			c.PolicyManagement, c.PolicyParentAccount, c.Version)
+			c.PolicyManagement, c.PolicyParentAccount, software, c.Version)
 		return db.MapError(err)
 	})
+}
+
+// softwareJSON encodes the module catalog; nil stores the empty array.
+func softwareJSON(m []validation.SoftwareModule) []byte {
+	if m == nil {
+		m = []validation.SoftwareModule{}
+	}
+	b, _ := json.Marshal(m)
+	return b
 }
 
 const clusterColsNoTS = `id, name, display_name, base_url, api_version,
  ca_bundle_pem, identity_mode, service_user, token_ref, client_cert_ref,
  visibility, state, consecutive_failures, consecutive_successes,
  last_sync_at, last_error, capabilities, capabilities_at,
- policy_management, policy_parent_account, version`
+ policy_management, policy_parent_account, software_modules, version`
 
 // GetByNameOrID implements clusters.Repository.
 func (r *Repository) GetByNameOrID(ctx context.Context, ref string) (clusters.Cluster, error) {
@@ -204,11 +219,13 @@ func (r *Repository) Update(ctx context.Context, c clusters.Cluster) error {
 			 display_name=$3, base_url=$4, api_version=$5, ca_bundle_pem=$6,
 			 identity_mode=$7, service_user=$8, token_ref=$9,
 			 client_cert_ref=$10, visibility=$11, policy_management=$12,
-			 policy_parent_account=$13, version=version+1, updated_at=now()
+			 policy_parent_account=$13, software_modules=$14,
+			 version=version+1, updated_at=now()
 			WHERE id=$1 AND version=$2`,
 			c.ID, c.Version, c.DisplayName, c.BaseURL, c.APIVersion,
 			nullStr(c.CABundlePEM), c.IdentityMode, c.ServiceUser,
-			tok, cert, c.Visibility, c.PolicyManagement, c.PolicyParentAccount)
+			tok, cert, c.Visibility, c.PolicyManagement, c.PolicyParentAccount,
+			softwareJSON(c.SoftwareModules))
 		if err != nil {
 			return db.MapError(err)
 		}

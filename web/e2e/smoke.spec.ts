@@ -181,6 +181,21 @@ test("login, workflows, executions, jobs, CSRF-protected mutations, and logout",
     await expect(page.getByRole("heading", { name: "Task executions · simulate" })).toBeVisible();
     await page.getByRole("button", { name: "Inspect" }).first().click();
     await expect(page.getByRole("region", { name: "Frozen execution specification" })).toBeVisible();
+    await page.goto("/t/acme/templates");
+    await expect(page.getByRole("heading", { name: "Templates", level: 1 })).toBeVisible();
+    await expect(page.getByRole("link", { name: /Hybrid MPI \+ OpenMP/ })).toBeVisible();
+    await page.getByRole("link", { name: /MPI \(by task count\)/ }).click();
+    await expect(page.getByRole("heading", { name: "MPI (by task count)", level: 1 })).toBeVisible();
+    await expect(page.getByText("run", { exact: true }).first()).toBeVisible();
+    await page.getByRole("tab", { name: "YAML" }).click();
+    await expect(page.locator(".monaco-editor .view-lines")).toContainText("openmpi");
+    await page.getByRole("button", { name: "Use template" }).click();
+    await expect(page.getByRole("dialog", { name: "Use MPI (by task count)" })).toBeVisible();
+    await page.getByLabel("Workflow name").fill("Smoke MPI template");
+    await page.getByRole("button", { name: "Create workflow" }).click();
+    await expect(page).toHaveURL(/\/t\/acme\/workflows\/[0-9a-f-]+$/);
+    await expect(page.getByRole("heading", { name: "Smoke MPI template", level: 1 })).toBeVisible();
+    await expect(page.getByRole("link", { name: "v1", exact: true })).toBeVisible();
     expect(workflowConsoleIssues).toEqual([]);
 
     await page.goto("/t/acme/secrets?tab=connectors");

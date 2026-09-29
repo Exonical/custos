@@ -1,0 +1,34 @@
+id: long-running
+order: 80
+title: Long-running (7 days)
+summary: Two single-core tasks with a 7-day wall-clock limit.
+description: |
+  Requests 2 tasks with one CPU each for up to 7 days. Most sites require
+  a dedicated long-job QoS and partition for runs over 3 days; allow them
+  in the project's binding and set qos/partition on the task if they are
+  not the binding defaults.
+workflow:
+  apiVersion: custos.io/v1alpha1
+  kind: Workflow
+  metadata:
+    name: long-running
+    labels:
+      custos.io/template: long-running
+  spec:
+    parameters:
+      workdir:
+        type: string
+        required: true
+        pattern: "^/"
+      executable:
+        type: string
+        default: ./a.out
+    tasks:
+      - name: run
+        type: batch
+        resources:
+          tasks: 2
+          cpusPerTask: 1
+          walltime: "7-00:00:00"
+        workingDirectory: "{{ parameters.workdir }}"
+        command: ["{{ parameters.executable }}"]

@@ -1,14 +1,18 @@
 package api_test
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/Exonical/custos/internal/api"
 	"github.com/Exonical/custos/internal/authn"
@@ -211,5 +215,80 @@ func TestNotFoundEnvelope(t *testing.T) {
 	}
 	if err := json.Unmarshal(b, &body); err != nil || body.Error.Code == "" {
 		t.Fatalf("bad envelope: %s", b)
+	}
+}
+
+type allowVerifier struct{}
+
+func (allowVerifier) Verify(context.Context, string) (authn.Principal, error) {
+	return authn.Principal{Subject: "tester", UserID: uuid.New()}, nil
+}
+
+func templateMux(v authn.Verifier) *http.ServeMux {
+	mux := http.NewServeMux()
+	api.Mount(mux, api.Deps{
+		Health:      health.NewRegistry(),
+		ReadyBudget: time.Second,
+		Logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Verifier:    v,
+	})
+	return mux
+}
+
+func TestWorkflowTemplatesRequireBearer(t *testing.T) {
+	srv := httptest.NewServer(templateMux(authn.DenyAll{}))
+	defer srv.Close()
+	for _, p := range []string{"/api/v1/workflow-templates", "/api/v1/workflow-templates/openmp"} {
+		resp, err := http.Get(srv.URL + p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusUnauthorized {
+			t.Fatalf("%s -> %d, want 401", p, resp.StatusCode)
+		}
+	}
+}
+
+func TestWorkflowTemplatesListAndGet(t *testing.T) {
+	srv := httptest.NewServer(templateMux(allowVerifier{}))
+	defer srv.Close()
+	get := func(p string, out any) int {
+		t.Helper()
+		req, _ := http.NewRequest(http.MethodGet, srv.URL+p, nil)
+		req.Header.Set("Authorization", "Bearer x")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = resp.Body.Close() }()
+		if out != nil {
+			if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return resp.StatusCode
+	}
+	var list struct {
+		Items []map[string]any `json:"items"`
+	}
+	if code := get("/api/v1/workflow-templates", &list); code != 200 || len(list.Items) != 8 {
+		t.Fatalf("list -> %d with %d items", code, len(list.Items))
+	}
+	if _, ok := list.Items[0]["spec"]; ok {
+		t.Fatal("list must not carry full specs")
+	}
+	var one struct {
+		ID   string         `json:"id"`
+		YAML string         `json:"yaml"`
+		Spec map[string]any `json:"spec"`
+	}
+	if code := get("/api/v1/workflow-templates/mpi-tasks", &one); code != 200 ||
+		one.ID != "mpi-tasks" || one.Spec["apiVersion"] != "custos.io/v1alpha1" ||
+		!strings.Contains(one.YAML, "name: openmpi") {
+		t.Fatalf("get -> %d %+v", code, one)
+	}
+	if code := get("/api/v1/workflow-templates/nope", nil); code != http.StatusNotFound {
+		t.Fatalf("unknown template -> %d", code)
 	}
 }

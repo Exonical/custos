@@ -1,0 +1,38 @@
+id: mpi-tasks
+order: 30
+title: MPI (by task count)
+summary: 40 MPI ranks placed wherever Slurm finds room.
+description: |
+  Requests 40 MPI tasks with one CPU each and lets Slurm choose the node
+  count. Custos loads the site modules for gcc and openmpi, then launches
+  the ranks with `srun --ntasks=40` instead of mpirun, so Open MPI must be
+  built with Slurm/PMIx support. The cluster needs software_modules
+  entries for gcc and openmpi.
+workflow:
+  apiVersion: custos.io/v1alpha1
+  kind: Workflow
+  metadata:
+    name: mpi-tasks
+    labels:
+      custos.io/template: mpi-tasks
+  spec:
+    parameters:
+      workdir:
+        type: string
+        required: true
+        pattern: "^/"
+      executable:
+        type: string
+        default: ./a.out
+    tasks:
+      - name: run
+        type: mpi
+        resources:
+          tasks: 40
+          cpusPerTask: 1
+          walltime: "00:00:30"
+        software:
+          - {name: gcc, version: default}
+          - {name: openmpi, version: default}
+        workingDirectory: "{{ parameters.workdir }}"
+        command: ["{{ parameters.executable }}"]

@@ -172,6 +172,8 @@ PATCH  /api/v1/tenants/{tenant}/secret-references/{reference}
 DELETE /api/v1/tenants/{tenant}/secret-references/{reference}
 POST   /api/v1/tenants/{tenant}/secret-references/{reference}/test returns `{ok,kind,version,resolved_at}` only
 GET    /api/v1/schemas/workflow/v1alpha1                       unauthenticated JSON Schema; ETag-cached
+GET    /api/v1/workflow-templates                              any authenticated principal; built-in catalog summaries (ADR-024)
+GET    /api/v1/workflow-templates/{template}                   summary + canonical `spec` + authored `yaml`
 POST   /api/v1/tenants/{tenant}/workflows                      workflow.create on the project
 GET    /api/v1/tenants/{tenant}/workflows                      workflow.read; `?project=<uuid>` filter
 GET    /api/v1/tenants/{tenant}/workflows/{workflow}
@@ -218,7 +220,7 @@ GET    /api/v1/tenants/{tenant}/audit-events
 GET    /api/v1/clusters                             platform registry list
 POST   /api/v1/clusters                             register cluster (SSRF-vetted base_url, token_ref)
 GET    /api/v1/clusters/{cluster}                   platform detail
-PATCH  /api/v1/clusters/{cluster}                   update (optimistic version; includes policy_management=inherit|enforce|report and policy_parent_account)
+PATCH  /api/v1/clusters/{cluster}                   update (optimistic version; includes policy_management=inherit|enforce|report, policy_parent_account and software_modules)
 POST   /api/v1/clusters/{cluster}/disable           disable (stops the sync chain)
 POST   /api/v1/clusters/{cluster}/test-connection   open + ping + capabilities (no state change)
 GET    /api/v1/clusters/{cluster}/accounting        watermark/error/unattributed collector status
@@ -242,3 +244,10 @@ and `policy_parent_account`. The global `slurm.policy_management` default is
 `enforce`; a cluster set to `inherit` uses that config value. `report` returns
 planned drift without writing slurmdbd. The policy summary includes the
 resolved mode, operation counts, last application time, and last error.
+
+Cluster `software_modules` maps workflow `software` requirements to
+environment modules, for example
+`[{"name":"openmpi","modules":["gcc/13.2.0","openmpi/5.0.3"]}]`. An entry
+without `version` matches any requested version; an exact `version` entry
+wins. Admission denies unmatched requirements with `SOFTWARE_UNAVAILABLE`
+(ADR-023).

@@ -833,7 +833,7 @@ func (s *Service) PreviewSubmission(ctx context.Context, p authn.Principal,
 		},
 	}
 	built, denial := admission.Build(admission.BuildInput{
-		Spec: espec, Request: in.Resources, Policy: pol,
+		Spec: espec, Software: in.Software, Request: in.Resources, Policy: pol,
 		Binding: binding, Cluster: *in.Cluster,
 	})
 	if denial != nil {

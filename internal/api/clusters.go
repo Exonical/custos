@@ -10,6 +10,7 @@ import (
 	"github.com/Exonical/custos/internal/platform/httpx"
 	"github.com/Exonical/custos/internal/secrets"
 	"github.com/Exonical/custos/internal/tenants"
+	"github.com/Exonical/custos/internal/validation"
 )
 
 // clusterHandlers serves the platform cluster-registry routes plus the
@@ -39,6 +40,7 @@ func clusterDTO(c clusters.Cluster) map[string]any {
 		"service_user":          c.ServiceUser,
 		"policy_management":     c.PolicyManagement,
 		"policy_parent_account": c.PolicyParentAccount,
+		"software_modules":      softwareModulesDTO(c.SoftwareModules),
 		"token_ref":             tok,
 		"visibility":            c.Visibility,
 		"state":                 c.State,
@@ -68,6 +70,13 @@ func clusterDTO(c clusters.Cluster) map[string]any {
 		out["capabilities_at"] = c.CapabilitiesAt.UTC().Format(time.RFC3339Nano)
 	}
 	return out
+}
+
+func softwareModulesDTO(m []validation.SoftwareModule) []validation.SoftwareModule {
+	if m == nil {
+		return []validation.SoftwareModule{}
+	}
+	return m
 }
 
 // summaryDTO is the tenant-facing view — never base_url, token_ref,
@@ -105,33 +114,35 @@ func (r secretRefDTO) ref() secrets.Reference {
 }
 
 type createClusterDTO struct {
-	Name                string        `json:"name"`
-	DisplayName         string        `json:"display_name"`
-	BaseURL             string        `json:"base_url"`
-	APIVersion          string        `json:"api_version"`
-	CABundlePEM         string        `json:"ca_bundle_pem,omitempty"`
-	IdentityMode        string        `json:"identity_mode"`
-	ServiceUser         string        `json:"service_user"`
-	PolicyManagement    string        `json:"policy_management,omitempty"`
-	PolicyParentAccount string        `json:"policy_parent_account,omitempty"`
-	TokenRef            secretRefDTO  `json:"token_ref"`
-	ClientCertRef       *secretRefDTO `json:"client_cert_ref,omitempty"`
-	Visibility          string        `json:"visibility"`
+	Name                string                      `json:"name"`
+	DisplayName         string                      `json:"display_name"`
+	BaseURL             string                      `json:"base_url"`
+	APIVersion          string                      `json:"api_version"`
+	CABundlePEM         string                      `json:"ca_bundle_pem,omitempty"`
+	IdentityMode        string                      `json:"identity_mode"`
+	ServiceUser         string                      `json:"service_user"`
+	PolicyManagement    string                      `json:"policy_management,omitempty"`
+	PolicyParentAccount string                      `json:"policy_parent_account,omitempty"`
+	SoftwareModules     []validation.SoftwareModule `json:"software_modules,omitempty"`
+	TokenRef            secretRefDTO                `json:"token_ref"`
+	ClientCertRef       *secretRefDTO               `json:"client_cert_ref,omitempty"`
+	Visibility          string                      `json:"visibility"`
 }
 
 type updateClusterDTO struct {
-	DisplayName         *string        `json:"display_name,omitempty"`
-	BaseURL             *string        `json:"base_url,omitempty"`
-	APIVersion          *string        `json:"api_version,omitempty"`
-	CABundlePEM         *string        `json:"ca_bundle_pem,omitempty"`
-	IdentityMode        *string        `json:"identity_mode,omitempty"`
-	ServiceUser         *string        `json:"service_user,omitempty"`
-	TokenRef            *secretRefDTO  `json:"token_ref,omitempty"`
-	ClientCertRef       **secretRefDTO `json:"client_cert_ref,omitempty"`
-	Visibility          *string        `json:"visibility,omitempty"`
-	PolicyManagement    *string        `json:"policy_management,omitempty"`
-	PolicyParentAccount *string        `json:"policy_parent_account,omitempty"`
-	Version             int            `json:"version"`
+	DisplayName         *string                      `json:"display_name,omitempty"`
+	BaseURL             *string                      `json:"base_url,omitempty"`
+	APIVersion          *string                      `json:"api_version,omitempty"`
+	CABundlePEM         *string                      `json:"ca_bundle_pem,omitempty"`
+	IdentityMode        *string                      `json:"identity_mode,omitempty"`
+	ServiceUser         *string                      `json:"service_user,omitempty"`
+	TokenRef            *secretRefDTO                `json:"token_ref,omitempty"`
+	ClientCertRef       **secretRefDTO               `json:"client_cert_ref,omitempty"`
+	Visibility          *string                      `json:"visibility,omitempty"`
+	PolicyManagement    *string                      `json:"policy_management,omitempty"`
+	PolicyParentAccount *string                      `json:"policy_parent_account,omitempty"`
+	SoftwareModules     *[]validation.SoftwareModule `json:"software_modules,omitempty"`
+	Version             int                          `json:"version"`
 }
 
 func (h *clusterHandlers) list(w http.ResponseWriter, r *http.Request) {
@@ -168,6 +179,7 @@ func (h *clusterHandlers) create(w http.ResponseWriter, r *http.Request) {
 			CABundlePEM: in.CABundlePEM, IdentityMode: in.IdentityMode,
 			ServiceUser: in.ServiceUser, PolicyManagement: in.PolicyManagement,
 			PolicyParentAccount: in.PolicyParentAccount,
+			SoftwareModules:     in.SoftwareModules,
 			TokenRef:            in.TokenRef.ref(), ClientCertRef: cert, Visibility: in.Visibility,
 		})
 	if err != nil {
@@ -200,6 +212,7 @@ func (h *clusterHandlers) update(w http.ResponseWriter, r *http.Request) {
 		IdentityMode: in.IdentityMode, ServiceUser: in.ServiceUser,
 		Visibility: in.Visibility, PolicyManagement: in.PolicyManagement,
 		PolicyParentAccount: in.PolicyParentAccount,
+		SoftwareModules:     in.SoftwareModules,
 		Version:             in.Version,
 	}
 	if in.TokenRef != nil {

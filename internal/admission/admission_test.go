@@ -106,3 +106,35 @@ func TestBuildFreezes(t *testing.T) {
 		t.Fatal("canonical form not deterministic")
 	}
 }
+
+func TestResolveSoftware(t *testing.T) {
+	catalog := []validation.SoftwareModule{
+		{Name: "gcc", Modules: []string{"gcc"}},
+		{Name: "gcc", Version: "13.2", Modules: []string{"gcc/13.2.0"}},
+		{Name: "openmpi", Modules: []string{"openmpi/5.0"}},
+	}
+	got, d := admission.ResolveSoftware([]workflowspec.SoftwareRequirement{
+		{Name: "gcc", Version: "13.2"}, {Name: "gcc", Version: "default"},
+		{Name: "openmpi", Version: "default"},
+	}, catalog)
+	if d != nil {
+		t.Fatalf("unexpected denial: %v", d)
+	}
+	want := [][]string{{"gcc/13.2.0"}, {"gcc"}, {"openmpi/5.0"}}
+	for i, w := range want {
+		if len(got[i].ModuleSpec) != 1 || got[i].ModuleSpec[0] != w[0] {
+			t.Fatalf("requirement %d resolved to %v, want %v", i, got[i].ModuleSpec, w)
+		}
+	}
+	got[0].ModuleSpec[0] = "mutated"
+	if catalog[1].Modules[0] != "gcc/13.2.0" {
+		t.Fatal("resolution aliases the cluster catalog")
+	}
+	if _, d := admission.ResolveSoftware([]workflowspec.SoftwareRequirement{
+		{Name: "cuda", Version: "12.8"}}, catalog); d == nil || d.Code != "SOFTWARE_UNAVAILABLE" {
+		t.Fatalf("want SOFTWARE_UNAVAILABLE, got %v", d)
+	}
+	if got, d := admission.ResolveSoftware(nil, nil); got != nil || d != nil {
+		t.Fatalf("empty requirements: got %v, %v", got, d)
+	}
+}

@@ -1,0 +1,36 @@
+id: openmp
+order: 10
+title: Threaded / OpenMP
+summary: One task on one node using several cores through OpenMP threads.
+description: |
+  Requests one node, one task and 4 CPUs for that task, and exports
+  OMP_NUM_THREADS from the task's CPU count. Account, partition and QoS
+  come from the project's cluster binding.
+workflow:
+  apiVersion: custos.io/v1alpha1
+  kind: Workflow
+  metadata:
+    name: openmp
+    labels:
+      custos.io/template: openmp
+  spec:
+    parameters:
+      workdir:
+        type: string
+        required: true
+        pattern: "^/"
+      executable:
+        type: string
+        default: ./a.out
+    tasks:
+      - name: run
+        type: batch
+        resources:
+          nodes: 1
+          tasksPerNode: 1
+          cpusPerTask: 4
+          walltime: "00:00:30"
+        workingDirectory: "{{ parameters.workdir }}"
+        env:
+          OMP_NUM_THREADS: "{{ task.resources.cpusPerTask }}"
+        command: ["{{ parameters.executable }}"]

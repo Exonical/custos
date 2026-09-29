@@ -337,7 +337,7 @@ func admitTask(ctx context.Context, d Deps,
 	}
 	alloc := allocations.NewEnforcement(d.Allocations, scope, bindingMeta.ID)
 	built, denial := admission.Build(admission.BuildInput{
-		Spec: espec, Request: res, Policy: pol,
+		Spec: espec, Software: st.Software, Request: res, Policy: pol,
 		Binding: binding, Cluster: workflows.ClusterSnapshot(cluster),
 		Allocate: alloc.Allocate(ctx),
 	})

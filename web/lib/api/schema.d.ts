@@ -723,6 +723,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/workflow-templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List built-in workflow templates (any authenticated principal)
+         * @description Platform-provided starter documents (ADR-024). Using one is an ordinary createWorkflow followed by createWorkflowVersion with the template's spec, under the caller's own permissions.
+         */
+        get: operations["listWorkflowTemplates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/workflow-templates/{template}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a built-in workflow template with its document */
+        get: operations["getWorkflowTemplate"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tenants/{tenant}/workflows": {
         parameters: {
             query?: never;
@@ -2061,6 +2098,8 @@ export interface components {
             /** @enum {string} */
             policy_management: "inherit" | "enforce" | "report";
             policy_parent_account: string;
+            /** @description Site map from workflow software requirements to environment modules (ADR-023). */
+            software_modules?: components["schemas"]["SoftwareModule"][];
             token_ref: components["schemas"]["SecretRef"];
             client_cert_ref?: components["schemas"]["SecretRef"];
             /** @enum {string} */
@@ -2093,6 +2132,8 @@ export interface components {
             /** @enum {string} */
             policy_management?: "inherit" | "enforce" | "report";
             policy_parent_account?: string;
+            /** @description Site map from workflow software requirements to environment modules (ADR-023). */
+            software_modules?: components["schemas"]["SoftwareModule"][];
             token_ref: components["schemas"]["SecretRef"];
             client_cert_ref?: components["schemas"]["SecretRef"];
             /** @enum {string} */
@@ -2110,6 +2151,8 @@ export interface components {
             /** @enum {string} */
             policy_management?: "inherit" | "enforce" | "report";
             policy_parent_account?: string;
+            /** @description Site map from workflow software requirements to environment modules (ADR-023). */
+            software_modules?: components["schemas"]["SoftwareModule"][];
             token_ref?: components["schemas"]["SecretRef"];
             client_cert_ref?: components["schemas"]["SecretRef"];
             /** @enum {string} */
@@ -2372,6 +2415,31 @@ export interface components {
                 allowLegacySbatchImport?: boolean;
                 filteredEnvAllowed?: string[];
             };
+        };
+        SoftwareModule: {
+            name: string;
+            /** @description Omit to match any requested version; an exact match wins. */
+            version?: string;
+            modules: string[];
+        };
+        WorkflowTemplateSummary: {
+            id: string;
+            title: string;
+            summary: string;
+            description: string;
+            /** @description Free-form key/value metadata; empty when unset. */
+            tags: {
+                [key: string]: string;
+            };
+        };
+        WorkflowTemplateList: {
+            items: components["schemas"]["WorkflowTemplateSummary"][];
+        };
+        WorkflowTemplate: components["schemas"]["WorkflowTemplateSummary"] & {
+            /** @description Canonical custos.io/v1alpha1 workflow document. */
+            spec: Record<string, never>;
+            /** @description The same document as YAML, in authored key order. */
+            yaml: string;
         };
         Workflow: {
             /** Format: uuid */
@@ -5780,6 +5848,76 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    listWorkflowTemplates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Template summaries in catalog order. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowTemplateList"];
+                };
+            };
+            /** @description Unauthenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getWorkflowTemplate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Template id. */
+                template: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The template, its canonical spec and a YAML rendering. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowTemplate"];
+                };
+            };
+            /** @description Unauthenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unknown template. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };

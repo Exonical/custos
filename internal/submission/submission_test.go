@@ -307,3 +307,25 @@ func TestSpecNoSecrets(t *testing.T) {
 		t.Fatalf("preview marker = %q", sub.Environment["TOKEN"])
 	}
 }
+
+func TestWrapperLoadsResolvedModulesBeforeLaunch(t *testing.T) {
+	spec := mkSpec(nil)
+	spec.Payload = admission.PayloadRef{}
+	spec.Argv = []admission.ArgvElement{{Literal: "./a.out"}}
+	spec.Resources.Tasks = 4
+	spec.Software = []admission.ResolvedSoftware{
+		{Name: "gcc", Version: "default", ModuleSpec: []string{"gcc"}},
+		{Name: "openmpi", Version: "default", ModuleSpec: []string{"openmpi/5.0"}},
+	}
+	w, err := submission.Wrapper(spec, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gcc := strings.Index(w, "module load 'gcc'\n")
+	mpi := strings.Index(w, "module load 'openmpi/5.0'\n")
+	launch := strings.Index(w, "exec srun --ntasks=4 ")
+	if gcc < 0 || mpi < 0 || launch < 0 || gcc > mpi || mpi > launch ||
+		!strings.Contains(w[launch:], "'./a.out'") {
+		t.Fatalf("modules must load in order before srun:\n%s", w)
+	}
+}

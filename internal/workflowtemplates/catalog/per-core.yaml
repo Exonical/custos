@@ -1,0 +1,34 @@
+id: per-core
+order: 60
+title: Per-core (shared node)
+summary: Four single-core tasks that share a node with other jobs.
+description: |
+  Requests 4 tasks with one CPU each and no node count, which suits
+  partitions that schedule per core. Because more than one task is
+  requested, Custos starts the executable once per task through srun.
+  Point the project's binding at your high-throughput partition.
+workflow:
+  apiVersion: custos.io/v1alpha1
+  kind: Workflow
+  metadata:
+    name: per-core
+    labels:
+      custos.io/template: per-core
+  spec:
+    parameters:
+      workdir:
+        type: string
+        required: true
+        pattern: "^/"
+      executable:
+        type: string
+        default: ./a.out
+    tasks:
+      - name: run
+        type: batch
+        resources:
+          tasks: 4
+          cpusPerTask: 1
+          walltime: "00:00:30"
+        workingDirectory: "{{ parameters.workdir }}"
+        command: ["{{ parameters.executable }}"]

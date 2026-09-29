@@ -1,0 +1,37 @@
+id: gpu
+order: 70
+title: GPU
+summary: One task with one GPU and 8 CPUs on a single node.
+description: |
+  Requests one node, one task, 8 CPUs and one GPU of any type. Set
+  resources.gpu.type (for example l40) if the cluster has several GPU
+  models; the type must appear in the cluster's GRES list. Partition and
+  QoS come from the project's binding.
+workflow:
+  apiVersion: custos.io/v1alpha1
+  kind: Workflow
+  metadata:
+    name: gpu
+    labels:
+      custos.io/template: gpu
+  spec:
+    parameters:
+      workdir:
+        type: string
+        required: true
+        pattern: "^/"
+      executable:
+        type: string
+        default: ./a.out
+    tasks:
+      - name: run
+        type: gpu
+        resources:
+          nodes: 1
+          tasks: 1
+          cpusPerTask: 8
+          gpu:
+            count: 1
+          walltime: "00:00:30"
+        workingDirectory: "{{ parameters.workdir }}"
+        command: ["{{ parameters.executable }}"]

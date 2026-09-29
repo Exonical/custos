@@ -39,6 +39,7 @@ export function TenantDisplayName({ fallback }: { fallback: string }) {
 const routeSections = {
   jobs: { label: "Jobs", icon: HardDrive },
   workflows: { label: "Workflows", icon: Layers3 },
+  templates: { label: "Templates", icon: Layers3 },
   executions: { label: "Executions", icon: ChartNoAxesColumn },
   projects: { label: "Projects", icon: FolderKanban },
   clusters: { label: "Clusters", icon: Server },
@@ -139,7 +140,7 @@ function WorkspaceNavigation({
         { label: "Jobs", href: `/t/${tenant.slug}/jobs`, icon: HardDrive },
         { label: "Workflows", href: `/t/${tenant.slug}/workflows`, icon: Layers3 },
         { label: "Executions", href: `/t/${tenant.slug}/executions`, icon: ChartNoAxesColumn },
-        { label: "Templates", icon: Layers3 },
+        { label: "Templates", href: `/t/${tenant.slug}/templates`, icon: Layers3 },
         { label: "Interactive", icon: Layers3 },
       ],
     },

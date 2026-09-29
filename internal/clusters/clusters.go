@@ -13,6 +13,7 @@ import (
 	"github.com/Exonical/custos/internal/secrets"
 	"github.com/Exonical/custos/internal/slurm"
 	"github.com/Exonical/custos/internal/tenants"
+	"github.com/Exonical/custos/internal/validation"
 )
 
 // State is the cluster health state driven by cluster.sync.
@@ -57,6 +58,7 @@ type Cluster struct {
 	ServiceUser         string
 	PolicyManagement    string
 	PolicyParentAccount string
+	SoftwareModules     []validation.SoftwareModule
 	TokenRef            secrets.Reference
 	ClientCertRef       *secrets.Reference
 	Visibility          Visibility

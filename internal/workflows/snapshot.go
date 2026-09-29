@@ -28,7 +28,11 @@ type ClusterSource interface {
 // snapshot (shared by the workflow service and the execution engine).
 func ClusterSnapshot(c *clusters.Cluster) validation.ClusterSnapshot {
 	var snap validation.ClusterSnapshot
-	if c == nil || c.Capabilities == nil {
+	if c == nil {
+		return snap
+	}
+	snap.Software = c.SoftwareModules
+	if c.Capabilities == nil {
 		return snap
 	}
 	snap.GRESTypes = c.Capabilities.GRESTypes

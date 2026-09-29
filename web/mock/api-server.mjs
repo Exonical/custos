@@ -2,6 +2,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import http from "node:http";
 import { createMockData, userNameFromAccessToken } from "./data.mjs";
+import { loadWorkflowTemplates, templateSummary } from "./templates.mjs";
 
 /** @typedef {import("../lib/api/schema").components["schemas"]["Me"]} Me */
 /** @typedef {import("../lib/api/schema").components["schemas"]["ProjectList"]} ProjectList */
@@ -28,6 +29,7 @@ import { createMockData, userNameFromAccessToken } from "./data.mjs";
 /** @typedef {import("../lib/api/schema").components["schemas"]["HealthStatus"]} HealthStatus */
 /** @typedef {import("../lib/api/schema").components["schemas"]["Error"]} ApiErrorBody */
 /** @typedef {import("../lib/api/schema").operations["getJobExecutionSpec"]["responses"][200]["content"]["application/json"]} ExecutionSpec */
+/** @typedef {import("../lib/api/schema").components["schemas"]["WorkflowTemplateList"]} WorkflowTemplateList */
 /** @typedef {"acme" | "globex"} TenantSlug */
 /** @typedef {{ tenant: string, project: string, state: string, cluster: string, created_at: string, id: string }} JobCursor */
 
@@ -35,6 +37,7 @@ const port = Number(process.env.MOCK_API_PORT ?? 4301);
 const issuer = process.env.MOCK_OIDC_ISSUER ?? "http://127.0.0.1:4300/realms/custos";
 const latencyMs = Math.max(0, Math.min(30_000, Number(process.env.MOCK_API_LATENCY_MS ?? 0) || 0));
 const data = createMockData(Date.now(), issuer, Number(process.env.MOCK_DATA_SEED ?? 20260927));
+const workflowTemplates = loadWorkflowTemplates();
 
 /** @param {http.ServerResponse} response @param {number} status @param {unknown} body */
 function send(response, status, body) {
@@ -250,6 +253,16 @@ const server = http.createServer(async (request, response) => {
     const me = user.me;
     return send(response, 200, me);
   }
+  if (url.pathname === "/api/v1/workflow-templates" && request.method === "GET") {
+    /** @type {WorkflowTemplateList} */
+    const templateList = { items: workflowTemplates.map(templateSummary) };
+    return send(response, 200, templateList);
+  }
+  const templateDetail = url.pathname.match(/^\/api\/v1\/workflow-templates\/([^/]+)$/);
+  if (templateDetail && request.method === "GET") {
+    const template = workflowTemplates.find((item) => item.id === templateDetail[1]);
+    return template ? send(response, 200, template) : sendError(response, 404, "NOT_FOUND", "workflow template not found", id);
+  }
 
   const tenantProjects = url.pathname.match(/^\/api\/v1\/tenants\/([^/]+)\/projects$/);
   const projectDetail = url.pathname.match(/^\/api\/v1\/tenants\/([^/]+)\/projects\/([^/]+)$/);
@@ -281,6 +294,69 @@ const server = http.createServer(async (request, response) => {
     return sendError(response, 404, "NOT_FOUND", "Tenant not found", id);
   }
 
+  if (tenantWorkflows && request.method === "POST" && tenant) {
+    let input;
+    try {
+      input = objectRecord((await readJsonBody(request)).value);
+    } catch {
+      return sendError(response, 400, "MALFORMED", "invalid JSON body", id);
+    }
+    const project = data.projects[tenant].find((item) => item.id === input?.project);
+    const name = typeof input?.name === "string" ? input.name.trim() : "";
+    if (!project || !name || name.length > 128) {
+      return sendError(response, 422, "VALIDATION", "project and name are required", id);
+    }
+    if (data.workflows[tenant].some((item) => item.projectId === project.id && item.name === name && item.state === "active")) {
+      return sendError(response, 409, "WORKFLOW_NAME_TAKEN", "A workflow with this name already exists in the project", id);
+    }
+    const tenantId = user.me.memberships.find((membership) => membership.slug === tenant)?.tenant_id ?? "";
+    const now = new Date().toISOString();
+    /** @type {Workflow} */
+    const workflow = {
+      id: randomUUID(), tenantId, projectId: project.id, name,
+      description: typeof input?.description === "string" ? input.description : "",
+      state: "active", latestPublishedVersionId: null, version: 1, createdAt: now, updatedAt: now,
+    };
+    data.workflows[tenant].unshift(workflow);
+    data.workflowVersions[workflow.id] = [];
+    return send(response, 201, workflow);
+  }
+  if (workflowVersions && request.method === "POST" && tenant) {
+    const workflowId = workflowVersions[2];
+    if (!data.workflows[tenant].some((item) => item.id === workflowId)) return sendError(response, 404, "WORKFLOW_UNKNOWN", "Workflow not found", id);
+    if (!String(request.headers["content-type"] ?? "").startsWith("application/json")) {
+      return sendError(response, 415, "UNSUPPORTED_MEDIA_TYPE", "mock accepts application/json documents", id);
+    }
+    let raw;
+    let spec;
+    try {
+      ({ raw, value: spec } = await readJsonBody(request));
+    } catch {
+      return sendError(response, 400, "MALFORMED", "invalid JSON body", id);
+    }
+    const document = objectRecord(spec);
+    const tasks = objectRecord(document?.spec)?.tasks;
+    const details = [];
+    if (document?.apiVersion !== "custos.io/v1alpha1") details.push({ field: "apiVersion", reason: "apiVersion must be custos.io/v1alpha1" });
+    if (document?.kind !== "Workflow") details.push({ field: "kind", reason: "kind must be Workflow" });
+    if (!Array.isArray(tasks) || tasks.length === 0) details.push({ field: "spec.tasks", reason: "at least one task is required" });
+    if (details.length) {
+      /** @type {ApiErrorBody} */
+      const body = { error: { code: "SPEC_INVALID", message: "Workflow spec is invalid", request_id: id, details } };
+      return send(response, 422, body);
+    }
+    const versions = data.workflowVersions[workflowId] ?? [];
+    const now = new Date().toISOString();
+    const created = {
+      id: randomUUID(), workflowId, number: versions.reduce((max, item) => Math.max(max, item.number), 0) + 1,
+      state: /** @type {const} */ ("draft"), schemaVersion: "custos.io/v1alpha1",
+      specHash: `sha256:${createHash("sha256").update(raw).digest("hex")}`,
+      layout: {}, spec: /** @type {import("../lib/workflow/spec").CustosWorkflow} */ (/** @type {unknown} */ (document)),
+      version: 1, createdAt: now, publishedAt: null,
+    };
+    data.workflowVersions[workflowId] = [created, ...versions];
+    return send(response, 201, created);
+  }
   if (tenantWorkflows && request.method === "GET" && tenant) {
     const project = url.searchParams.get("project");
     if (project && !data.projects[tenant].some((item) => item.id === project)) {
