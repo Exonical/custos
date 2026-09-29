@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"text/template"
@@ -41,9 +42,9 @@ func q(v any) string {
 	return "'" + strings.ReplaceAll(fmt.Sprint(v), "'", `'\''`) + "'"
 }
 
-// wrapperTemplate is the documented v1 wrapper, verbatim. Argv
-// elements and runtime env values arrive pre-quoted ('literal' or
-// "$VAR"); launch/container prefixes are SafeToken words, never raw user text.
+// wrapperTemplate is the generated v1 wrapper. User values are either
+// single-quoted with q or carried as allow-listed runtime references;
+// ContainerWords are pre-quoted strings built by Custos.
 const wrapperTemplate = `#!/bin/bash
 # custos wrapper v1 — generated; do not edit
 # execution: {{ .ExecutionID }} digest: {{ .SpecDigest }}
@@ -55,17 +56,35 @@ export CUSTOS_JOB_DIR="${SLURM_TMPDIR:-${TMPDIR:-/tmp}}/custos-${SLURM_JOB_ID}"
 mkdir -p "$CUSTOS_JOB_DIR"
 trap 'rm -rf "$CUSTOS_JOB_DIR"' EXIT
 {{ range .Modules }}module load {{ q . }}
-{{ end }}{{ range .Env }}{{ if .Runtime }}export {{ .Name }}={{ .Quoted }}
+{{ end }}{{ if .GenericMultinode }}
+CUSTOS_HOSTS=$(scontrol show hostnames "$SLURM_JOB_NODELIST")
+export MULTINODE_HOSTLIST_NOSLOTS=$(printf '%s\n' $CUSTOS_HOSTS | paste -sd, -)
+export MULTINODE_HOSTLIST=$(printf '%s:{{ .SlotsPerNode }}\n' $CUSTOS_HOSTS | paste -sd, -)
+export MULTINODE_TOTAL_SLOTS={{ .TotalSlots }}
+export MULTINODE_NODE_IP=$( { getent hosts "$(hostname)" || true; } | awk '{print $1; exit}')
+cat > "$CUSTOS_JOB_DIR/rsh" <<'CUSTOS_RSH_{{ .Nonce }}'
+#!/bin/sh
+while [ $# -gt 0 ]; do case "$1" in -*) shift ;; *) break ;; esac; done
+host=$1; shift
+exec srun --overlap --nodes=1 --ntasks=1 --nodelist="$host" {{ range .RshContainerWords }}{{ . }} {{ end }}{{ range .RshEnvPrefix }}{{ . }} {{ end }}/bin/sh -c "$*"
+CUSTOS_RSH_{{ .Nonce }}
+chmod 0500 "$CUSTOS_JOB_DIR/rsh"
+export MULTINODE_SSH_WRAPPER="$CUSTOS_JOB_DIR/rsh" MULTINODE_RSH_WRAPPER="$CUSTOS_JOB_DIR/rsh"{{ end }}
+{{ range .Env }}{{ if .Runtime }}export {{ .Name }}={{ .Quoted }}
 {{ else }}export {{ .Name }}={{ q .Value }}
-{{ end }}{{ end }}{{ if .HasPayload }}
+{{ end }}{{ end }}{{ if .SlurmCPUBind }}export SLURM_CPU_BIND={{ q .SlurmCPUBind }}
+{{ end }}{{ if .HasPayload }}
 # --- payload (base64, verified) ---
-base64 -d > "$CUSTOS_JOB_DIR/payload" <<'CUSTOS_PAYLOAD_{{ .Nonce }}'
+base64 -d > "$CUSTOS_JOB_DIR/payload.in" <<'CUSTOS_PAYLOAD_{{ .Nonce }}'
 {{ .PayloadBase64 }}
 CUSTOS_PAYLOAD_{{ .Nonce }}
-echo {{ q .PayloadDigest }}"  $CUSTOS_JOB_DIR/payload" | sha256sum -c --quiet
-chmod 0500 "$CUSTOS_JOB_DIR/payload"{{ end }}
+echo {{ q .PayloadDigest }}"  $CUSTOS_JOB_DIR/payload.in" | sha256sum -c --quiet
+{{ if .SrunLaunch }}chmod 0500 "$CUSTOS_JOB_DIR/payload.in"
+srun --ntasks="$SLURM_JOB_NUM_NODES" --ntasks-per-node=1 mkdir -p -m 0700 "$CUSTOS_JOB_DIR"
+sbcast --force --preserve "$CUSTOS_JOB_DIR/payload.in" "$CUSTOS_JOB_DIR/payload"{{ else }}mv "$CUSTOS_JOB_DIR/payload.in" "$CUSTOS_JOB_DIR/payload"
+chmod 0500 "$CUSTOS_JOB_DIR/payload"{{ end }}{{ end }}
 cd {{ q .WorkingDir }}
-{{ range .LaunchWords }}{{ . }} {{ end }}{{ range .ContainerWords }}{{ . }} {{ end }}{{ if .HasPayload }}{{ q .Interpreter }} "$CUSTOS_JOB_DIR/payload"{{ end }}{{ range $i, $a := .Argv }}{{ if or $i $.HasPayload }} {{ end }}{{ $a }}{{ end }}
+{{ range .LaunchWords }}{{ . }} {{ end }}{{ range .ContainerWords }}{{ . }} {{ end }}{{ range .EnvPrefix }}{{ . }} {{ end }}{{ if .HasPayload }}{{ q .Interpreter }} "$CUSTOS_JOB_DIR/payload"{{ end }}{{ range $i, $a := .Argv }}{{ if or $i $.HasPayload }} {{ end }}{{ $a }}{{ end }}
 `
 
 type envKV struct {
@@ -76,20 +95,28 @@ type envKV struct {
 }
 
 type wrapperData struct {
-	ExecutionID    SafeToken
-	SpecDigest     SafeToken
-	TaskName       string
-	Modules        []string
-	Env            []envKV
-	Nonce          SafeToken
-	HasPayload     bool
-	PayloadBase64  string
-	PayloadDigest  SafeToken
-	WorkingDir     string
-	LaunchWords    []SafeToken
-	ContainerWords []SafeToken
-	Interpreter    string
-	Argv           []string // pre-quoted: 'literal' or "$VAR"
+	ExecutionID       SafeToken
+	SpecDigest        SafeToken
+	TaskName          string
+	Modules           []string
+	Env               []envKV
+	Nonce             SafeToken
+	HasPayload        bool
+	PayloadBase64     string
+	PayloadDigest     SafeToken
+	WorkingDir        string
+	LaunchWords       []SafeToken
+	ContainerWords    []string // pre-quoted shell words built by Custos
+	EnvPrefix         []string
+	RshContainerWords []string
+	RshEnvPrefix      []string
+	SlotsPerNode      SafeToken
+	TotalSlots        SafeToken
+	SrunLaunch        bool
+	GenericMultinode  bool
+	SlurmCPUBind      string
+	Interpreter       string
+	Argv              []string // pre-quoted: 'literal' or "$VAR"
 }
 
 var tmpl = template.Must(template.New("wrapper").
@@ -103,7 +130,8 @@ func newNonce(body string) (string, error) {
 			return "", err
 		}
 		n := hex.EncodeToString(b)
-		if !strings.Contains(body, "CUSTOS_PAYLOAD_"+n) {
+		if !strings.Contains(body, "CUSTOS_PAYLOAD_"+n) &&
+			!strings.Contains(body, "CUSTOS_RSH_"+n) {
 			return n, nil
 		}
 	}
@@ -118,7 +146,7 @@ func renderArgv(spec admission.ExecutionSpec) ([]string, error) {
 	for _, e := range spec.Argv {
 		switch {
 		case e.Runtime != "" && e.Literal == "":
-			if !admission.ValidRuntime(e.Runtime) {
+			if !admission.ValidRuntimeFor(e.Runtime, spec.Multinode != nil && spec.Multinode.Implementation == "generic") {
 				return nil, apperr.New(apperr.Internal, "INTERNAL",
 					"submission: unlisted runtime "+e.Runtime)
 			}
@@ -133,9 +161,9 @@ func renderArgv(spec admission.ExecutionSpec) ([]string, error) {
 	return out, nil
 }
 
-// launchWords composes the trusted launcher prefix. An empty Launch is
-// reserved for older frozen ExecutionSpecs and keeps their prior behavior.
-func launchWords(spec admission.ExecutionSpec) ([]SafeToken, error) {
+// launchWords composes the trusted srun prefix. Empty Launch is reserved
+// for older frozen specs; pyxis requires an srun even for sbatch payloads.
+func launchWords(spec admission.ExecutionSpec) ([]SafeToken, bool, error) {
 	useSrun := false
 	switch spec.Launch {
 	case workflowspec.LaunchSbatch:
@@ -144,24 +172,148 @@ func launchWords(spec admission.ExecutionSpec) ([]SafeToken, error) {
 	case "":
 		useSrun = spec.Resources.Tasks > 1
 	default:
-		return nil, apperr.New(apperr.Internal, "INTERNAL", "submission: invalid frozen launch mode")
+		return nil, false, apperr.New(apperr.Internal, "INTERNAL", "submission: invalid frozen launch mode")
+	}
+	pyxisSingle := spec.Container != nil && spec.Container.Runtime == "pyxis" && !useSrun
+	if pyxisSingle {
+		useSrun = true
 	}
 	if !useSrun {
-		return nil, nil
+		return nil, false, nil
 	}
 	words := []string{"srun"}
-	if spec.Resources.Tasks > 0 {
+	if pyxisSingle {
+		words = append(words, "--nodes=1", "--ntasks=1")
+	}
+	if spec.Multinode != nil &&
+		(spec.Multinode.Implementation == "openmpi" || spec.Multinode.Implementation == "mpich") &&
+		spec.Multinode.MPIPlugin != "" {
+		words = append(words, "--mpi="+spec.Multinode.MPIPlugin)
+	}
+	if spec.CPUBind != "" && spec.CPUBind != "none" {
+		words = append(words, "--cpu-bind="+spec.CPUBind)
+	}
+	if spec.Multinode == nil && !pyxisSingle && spec.Resources.Tasks > 0 {
 		words = append(words, fmt.Sprintf("--ntasks=%d", spec.Resources.Tasks))
 	}
 	out := make([]SafeToken, 0, len(words))
 	for _, word := range words {
 		safe, err := safeToken(word)
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		out = append(out, safe)
 	}
+	return out, useSrun, nil
+}
+
+func containerEnvValues(spec admission.ExecutionSpec) map[string]string {
+	if spec.ContainerEnv != nil {
+		return spec.ContainerEnv
+	}
+	return spec.Environment.User
+}
+
+func containerEnvNames(spec admission.ExecutionSpec) ([]string, error) {
+	set := map[string]bool{}
+	for name := range spec.Environment.Runtime {
+		if _, err := safeToken(name); err != nil {
+			return nil, err
+		}
+		set[name] = true
+	}
+	for _, ref := range spec.Environment.SecretRefs {
+		if _, err := safeToken(ref.Name); err != nil {
+			return nil, err
+		}
+		set[ref.Name] = true
+	}
+	if spec.Multinode != nil && spec.Multinode.Implementation == "generic" {
+		for _, name := range []string{
+			admission.RuntimeMultinodeHostlist,
+			admission.RuntimeMultinodeHostlistNoSlots,
+			admission.RuntimeMultinodeTotalSlots,
+			admission.RuntimeMultinodeNodeIP,
+			admission.RuntimeMultinodeSSHWrapper,
+			admission.RuntimeMultinodeRSHWrapper,
+		} {
+			set[name] = true
+		}
+	}
+	out := make([]string, 0, len(set))
+	for name := range set {
+		out = append(out, name)
+	}
+	sort.Strings(out)
 	return out, nil
+}
+
+func apptainerWords(container *admission.ContainerSpec) []string {
+	binary := container.Binary
+	if binary == "" {
+		binary = "apptainer"
+	}
+	return []string{q(binary), q("exec"), q("--no-eval"), q("--bind"), `"$CUSTOS_JOB_DIR"`, q(container.Image)}
+}
+
+func pyxisWords(spec admission.ExecutionSpec) ([]string, error) {
+	words := []string{"--container-image=" + q(spec.Container.Image),
+		`--container-mounts="$CUSTOS_JOB_DIR:$CUSTOS_JOB_DIR"`}
+	names, err := containerEnvNames(spec)
+	if err != nil {
+		return nil, err
+	}
+	if len(names) > 0 {
+		words = append(words, "--container-env="+q(strings.Join(names, ",")))
+	}
+	return words, nil
+}
+
+func containerEnvPrefix(spec admission.ExecutionSpec) ([]string, error) {
+	values := containerEnvValues(spec)
+	if len(values) == 0 {
+		return nil, nil
+	}
+	names := make([]string, 0, len(values))
+	for name := range values {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	out := []string{q("/usr/bin/env")}
+	for _, name := range names {
+		if _, err := safeToken(name); err != nil {
+			return nil, err
+		}
+		out = append(out, q(name+"="+values[name]))
+	}
+	return out, nil
+}
+
+func containerWords(spec admission.ExecutionSpec) (words, envPrefix, rshWords, rshEnvPrefix []string, err error) {
+	if spec.Container == nil {
+		return nil, nil, nil, nil, nil
+	}
+	switch spec.Container.Runtime {
+	case "apptainer":
+		words = apptainerWords(spec.Container)
+		rshWords = append([]string(nil), words...)
+		envPrefix, err = containerEnvPrefix(spec)
+		if err == nil {
+			rshEnvPrefix = append([]string(nil), envPrefix...)
+		}
+	case "pyxis":
+		words, err = pyxisWords(spec)
+		if err == nil {
+			rshWords = append([]string(nil), words...)
+			envPrefix, err = containerEnvPrefix(spec)
+			if err == nil {
+				rshEnvPrefix = append([]string(nil), envPrefix...)
+			}
+		}
+	default:
+		err = apperr.New(apperr.Internal, "INTERNAL", "submission: unsupported container runtime")
+	}
+	return words, envPrefix, rshWords, rshEnvPrefix, err
 }
 
 // Wrapper renders the wrapper script for spec. Script tasks embed the
@@ -187,15 +339,21 @@ func Wrapper(spec admission.ExecutionSpec, payload []byte) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	launcherWords, err := launchWords(spec)
+	launcherWords, useSrun, err := launchWords(spec)
 	if err != nil {
 		return "", err
 	}
+	containerPrefix, envPrefix, rshPrefix, rshEnvPrefix, err := containerWords(spec)
+	if err != nil {
+		return "", err
+	}
+	varsToExport := []map[string]string{spec.Environment.Controlled}
+	if spec.Container == nil {
+		varsToExport = append(varsToExport, spec.Environment.User)
+	}
 	env := make([]envKV, 0, len(spec.Environment.Controlled)+
 		len(spec.Environment.User)+len(spec.Environment.Runtime))
-	for _, vars := range []map[string]string{
-		spec.Environment.Controlled, spec.Environment.User,
-	} {
+	for _, vars := range varsToExport {
 		for n, v := range vars {
 			name, err := safeToken(n)
 			if err != nil {
@@ -205,7 +363,7 @@ func Wrapper(spec admission.ExecutionSpec, payload []byte) (string, error) {
 		}
 	}
 	for n, rt := range spec.Environment.Runtime {
-		if !admission.ValidRuntime(rt) {
+		if !admission.ValidRuntimeFor(rt, spec.Multinode != nil && spec.Multinode.Implementation == "generic") {
 			return "", apperr.New(apperr.Internal, "INTERNAL",
 				"submission: unlisted runtime env "+n)
 		}
@@ -220,18 +378,54 @@ func Wrapper(spec admission.ExecutionSpec, payload []byte) (string, error) {
 	for _, s := range spec.Software {
 		modules = append(modules, s.ModuleSpec...)
 	}
+	genericMultinode := spec.Multinode != nil && spec.Multinode.Implementation == "generic"
+	var slotsPerNode, totalSlots SafeToken
+	if genericMultinode {
+		if spec.Multinode.Nodes < 1 || spec.Multinode.SlotsPerNode < 1 {
+			return "", apperr.New(apperr.Internal, "INTERNAL",
+				"submission: invalid frozen multinode dimensions")
+		}
+		maxInt := int(^uint(0) >> 1)
+		if spec.Multinode.Nodes > maxInt/spec.Multinode.SlotsPerNode {
+			return "", apperr.New(apperr.Internal, "INTERNAL",
+				"submission: frozen multinode slot count overflows")
+		}
+		slotsPerNode, err = safeToken(strconv.Itoa(spec.Multinode.SlotsPerNode))
+		if err != nil {
+			return "", err
+		}
+		totalSlots, err = safeToken(strconv.Itoa(spec.Multinode.Nodes * spec.Multinode.SlotsPerNode))
+		if err != nil {
+			return "", err
+		}
+	}
+	cpuBind := ""
+	if !useSrun && spec.CPUBind != "" && spec.CPUBind != "none" {
+		if spec.CPUBind != "cores" && spec.CPUBind != "sockets" && spec.CPUBind != "ldoms" {
+			return "", apperr.New(apperr.Internal, "INTERNAL", "submission: invalid frozen cpu bind")
+		}
+		cpuBind = spec.CPUBind
+	}
 	d := wrapperData{
-		TaskName:       spec.TaskName,
-		Modules:        modules,
-		Env:            env,
-		Nonce:          SafeToken(nonce),
-		HasPayload:     hasPayload,
-		PayloadBase64:  body,
-		WorkingDir:     spec.WorkingDir,
-		LaunchWords:    launcherWords,
-		ContainerWords: nil,
-		Interpreter:    string(spec.Payload.Interpreter),
-		Argv:           argv,
+		TaskName:          spec.TaskName,
+		Modules:           modules,
+		Env:               env,
+		Nonce:             SafeToken(nonce),
+		HasPayload:        hasPayload,
+		PayloadBase64:     body,
+		WorkingDir:        spec.WorkingDir,
+		LaunchWords:       launcherWords,
+		ContainerWords:    containerPrefix,
+		EnvPrefix:         envPrefix,
+		RshContainerWords: rshPrefix,
+		RshEnvPrefix:      rshEnvPrefix,
+		SlotsPerNode:      slotsPerNode,
+		TotalSlots:        totalSlots,
+		SrunLaunch:        useSrun,
+		GenericMultinode:  genericMultinode,
+		SlurmCPUBind:      cpuBind,
+		Interpreter:       string(spec.Payload.Interpreter),
+		Argv:              argv,
 	}
 	for _, t := range []struct {
 		dst *SafeToken
@@ -262,8 +456,10 @@ func JobSubmission(spec admission.ExecutionSpec, wrapper string) slurm.JobSubmis
 	for n, v := range spec.Environment.Controlled {
 		env[n] = v
 	}
-	for n, v := range spec.Environment.User {
-		env[n] = v
+	if spec.Container == nil {
+		for n, v := range spec.Environment.User {
+			env[n] = v
+		}
 	}
 	for _, ref := range spec.Environment.SecretRefs {
 		env[ref.Name] = "[SECRET]"

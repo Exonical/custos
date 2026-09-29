@@ -204,6 +204,7 @@ func TestTemplateNoUnsafeInterpolation(t *testing.T) {
 	allowedRaw := map[string]bool{
 		"ExecutionID": true, "SpecDigest": true, "Nonce": true,
 		"Tasks": true, "PayloadBase64": true, "Name": true,
+		"SlotsPerNode": true, "TotalSlots": true,
 		// Quoted is SafeToken: runtime env values arrive pre-quoted
 		// ("$VAR") from an allow-listed variable name.
 		"Quoted": true,
@@ -228,7 +229,7 @@ func TestTemplateNoUnsafeInterpolation(t *testing.T) {
 }
 
 // TestArgvLiteralQuoting: an argv literal with hostile shell text
-// appears only single-quoted in the exec line — the wrapper contains
+// appears only single-quoted in the launch line — the wrapper contains
 // no unquoted user text.
 func TestArgvLiteralQuoting(t *testing.T) {
 	spec := mkSpec(nil)
@@ -272,7 +273,7 @@ func TestArgvLiteralQuoting(t *testing.T) {
 	rest = regexp.MustCompile(`'[^']*'(\\''[^']*')*`).ReplaceAllString(rest, "")
 	rest = strings.ReplaceAll(rest, `"$SLURM_ARRAY_TASK_ID"`, "")
 	if strings.TrimSpace(rest) != "" {
-		t.Fatalf("unquoted text on exec line: %q", rest)
+		t.Fatalf("unquoted text on launch line: %q", rest)
 	}
 }
 
@@ -383,4 +384,171 @@ func TestWrapperKeepsCleanupTrap(t *testing.T) {
 			t.Fatalf("%s: launch line execs, skipping the cleanup trap: %q", launch, line)
 		}
 	}
+}
+
+func TestContainerMultinodeWrapperComposition(t *testing.T) {
+	validate := func(t *testing.T, wrapper string) {
+		t.Helper()
+		res, err := shsyntax.Validator{}.Validate(context.Background(), validation.Input{
+			Language: workflowspec.LanguageBash, Script: []byte(wrapper),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, diagnostic := range res.Diagnostics {
+			if diagnostic.Severity.AtLeast(validation.SeverityError) {
+				t.Fatalf("wrapper has %s: %s\n%s", diagnostic.Code, diagnostic.Message, wrapper)
+			}
+		}
+	}
+
+	t.Run("apptainer openmpi ranks", func(t *testing.T) {
+		spec := mkSpec(payload)
+		spec.Launch = workflowspec.LaunchSrun
+		spec.Multinode = &admission.MultinodeSpec{Implementation: "openmpi", Nodes: 2, SlotsPerNode: 4, MPIPlugin: "pmix"}
+		spec.Container = &admission.ContainerSpec{Runtime: "apptainer", Image: "oras://docker.io/example/mpi.sif", Binary: "apptainer"}
+		spec.CPUBind = "ldoms"
+		spec.ContainerEnv = map[string]string{"PATH": "/usr/bin", "QUOTE": "a'b; rm -rf /"}
+		spec.Environment.User = map[string]string{"PATH": "/usr/bin", "QUOTE": "a'b; rm -rf /"}
+		wrapper, err := submission.Wrapper(spec, payload)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, want := range []string{
+			"srun --mpi=pmix --cpu-bind=ldoms",
+			"'apptainer' 'exec' '--no-eval' '--bind' \"$CUSTOS_JOB_DIR\" 'oras://docker.io/example/mpi.sif'",
+			"'/usr/bin/env' 'PATH=/usr/bin' 'QUOTE=a'\\''b; rm -rf /'",
+			"sbcast --force --preserve \"$CUSTOS_JOB_DIR/payload.in\" \"$CUSTOS_JOB_DIR/payload\"",
+		} {
+			if !strings.Contains(wrapper, want) {
+				t.Errorf("missing %q in wrapper:\n%s", want, wrapper)
+			}
+		}
+		if strings.Contains(wrapper, "export PATH=") || strings.Contains(wrapper, "export QUOTE=") || strings.Contains(wrapper, "--ntasks=4") {
+			t.Fatalf("apptainer user env exported on host or MPI step forced to one rank:\n%s", wrapper)
+		}
+		submissionEnv := submission.JobSubmission(spec, wrapper).Environment
+		for _, name := range []string{"PATH", "QUOTE"} {
+			if _, ok := submissionEnv[name]; ok {
+				t.Fatalf("container %s leaked into JobSubmission.Environment", name)
+			}
+		}
+		validate(t, wrapper)
+	})
+
+	t.Run("pyxis mpich ranks", func(t *testing.T) {
+		spec := mkSpec(payload)
+		spec.Launch = workflowspec.LaunchSrun
+		spec.Multinode = &admission.MultinodeSpec{Implementation: "mpich", Nodes: 2, SlotsPerNode: 4, MPIPlugin: "pmi2"}
+		spec.Container = &admission.ContainerSpec{Runtime: "pyxis", Image: "docker.io#anderbubble/mpich:latest"}
+		spec.CPUBind = "cores"
+		spec.ContainerEnv = map[string]string{"PATH": "/usr/lib64/mpich/bin"}
+		spec.Environment.User = map[string]string{"PATH": "/usr/lib64/mpich/bin"}
+		spec.Environment.SecretRefs = []admission.SecretEnvRef{{Name: "API_TOKEN", ReferenceID: uuid.New(), Mode: "env"}}
+		wrapper, err := submission.Wrapper(spec, payload)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, want := range []string{
+			"srun --mpi=pmi2 --cpu-bind=cores",
+			"--container-image='docker.io#anderbubble/mpich:latest'",
+			"--container-mounts=\"$CUSTOS_JOB_DIR:$CUSTOS_JOB_DIR\"",
+			"--container-env='API_TOKEN'",
+			"'/usr/bin/env' 'PATH=/usr/lib64/mpich/bin'",
+		} {
+			if !strings.Contains(wrapper, want) {
+				t.Errorf("missing %q in wrapper:\n%s", want, wrapper)
+			}
+		}
+		if strings.Contains(wrapper, "export PATH=") {
+			t.Fatalf("pyxis user PATH was exported on the host:\n%s", wrapper)
+		}
+		if _, ok := submission.JobSubmission(spec, wrapper).Environment["PATH"]; ok {
+			t.Fatal("container PATH leaked into JobSubmission.Environment")
+		}
+		validate(t, wrapper)
+	})
+
+	t.Run("apptainer generic multinode", func(t *testing.T) {
+		spec := mkSpec(payload)
+		spec.Launch = workflowspec.LaunchSbatch
+		spec.Multinode = &admission.MultinodeSpec{Implementation: "generic", Nodes: 2, SlotsPerNode: 2}
+		spec.Container = &admission.ContainerSpec{Runtime: "apptainer", Image: "oras://docker.io/example/generic.sif", Binary: "apptainer"}
+		spec.CPUBind = "ldoms"
+		spec.ContainerEnv = map[string]string{"PATH": "/usr/bin"}
+		spec.Environment.User = map[string]string{"PATH": "/usr/bin"}
+		spec.Argv = []admission.ArgvElement{
+			{Literal: "mpirun"},
+			{Runtime: admission.RuntimeMultinodeHostlist},
+			{Runtime: admission.RuntimeMultinodeTotalSlots},
+			{Runtime: admission.RuntimeMultinodeSSHWrapper},
+		}
+		wrapper, err := submission.Wrapper(spec, payload)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, want := range []string{
+			"export MULTINODE_HOSTLIST_NOSLOTS=",
+			"export MULTINODE_HOSTLIST=",
+			"export MULTINODE_TOTAL_SLOTS=4",
+			"export MULTINODE_NODE_IP=",
+			`getent hosts "$(hostname)" || true`,
+			"export SLURM_CPU_BIND='ldoms'",
+			"exec srun --overlap --nodes=1 --ntasks=1 --nodelist=\"$host\"",
+			"export MULTINODE_SSH_WRAPPER=\"$CUSTOS_JOB_DIR/rsh\"",
+		} {
+			if !strings.Contains(wrapper, want) {
+				t.Errorf("missing %q in wrapper:\n%s", want, wrapper)
+			}
+		}
+		if strings.Contains(wrapper, "export PATH=") || strings.HasPrefix(lastLine(wrapper), "srun ") {
+			t.Fatalf("apptainer generic env/launch composition incorrect:\n%s", wrapper)
+		}
+		validate(t, wrapper)
+	})
+
+	t.Run("pyxis sbatch uses single-rank step", func(t *testing.T) {
+		spec := mkSpec(payload)
+		spec.Launch = workflowspec.LaunchSbatch
+		spec.Container = &admission.ContainerSpec{Runtime: "pyxis", Image: "ubuntu:22.04"}
+		wrapper, err := submission.Wrapper(spec, payload)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(wrapper, "srun --nodes=1 --ntasks=1") ||
+			!strings.Contains(wrapper, "--container-image='ubuntu:22.04'") ||
+			!strings.Contains(wrapper, "sbcast --force --preserve") {
+			t.Fatalf("pyxis sbatch launch did not use the single-rank srun path:\n%s", wrapper)
+		}
+		validate(t, wrapper)
+	})
+
+	t.Run("host srun cpu bind", func(t *testing.T) {
+		spec := mkSpec(payload)
+		spec.Launch = workflowspec.LaunchSrun
+		spec.CPUBind = "sockets"
+		wrapper, err := submission.Wrapper(spec, payload)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(wrapper, "srun --cpu-bind=sockets --ntasks=4") ||
+			strings.Contains(wrapper, "export SLURM_CPU_BIND=") {
+			t.Fatalf("srun CPU binding should be a launcher flag:\n%s", wrapper)
+		}
+		validate(t, wrapper)
+	})
+
+	t.Run("sbatch cpu bind exports controlled variable", func(t *testing.T) {
+		spec := mkSpec(payload)
+		spec.Launch = workflowspec.LaunchSbatch
+		spec.CPUBind = "sockets"
+		wrapper, err := submission.Wrapper(spec, payload)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(wrapper, "export SLURM_CPU_BIND='sockets'") || strings.HasPrefix(lastLine(wrapper), "srun ") {
+			t.Fatalf("sbatch CPU binding did not remain controlled:\n%s", wrapper)
+		}
+		validate(t, wrapper)
+	})
 }

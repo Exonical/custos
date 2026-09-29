@@ -80,11 +80,22 @@ type Diagnostic struct {
 
 // ClusterSnapshot is the validator-facing view of cluster capabilities.
 type ClusterSnapshot struct {
-	Partitions  []string
-	GRESTypes   []string
-	QoS         []string
-	MaxWalltime map[string]time.Duration
-	Software    []SoftwareModule
+	Partitions       []string
+	GRESTypes        []string
+	QoS              []string
+	MaxWalltime      map[string]time.Duration
+	Software         []SoftwareModule
+	ContainerRuntime *ContainerRuntime `json:"container_runtime,omitempty"`
+}
+
+// ContainerRuntime describes the site's container and MPI launch support.
+type ContainerRuntime struct {
+	Type                 string   `json:"type"`
+	Binary               string   `json:"binary,omitempty"`
+	AllowedImagePrefixes []string `json:"allowed_image_prefixes,omitempty"`
+	RequireDigest        bool     `json:"require_digest,omitempty"`
+	SlurmInContainer     bool     `json:"slurm_in_container,omitempty"`
+	MPIPlugin            string   `json:"mpi_plugin,omitempty"`
 }
 
 // SoftwareModule maps a software requirement to the environment
@@ -127,6 +138,7 @@ type Input struct {
 	Environment map[string]string
 	Software    []workflowspec.SoftwareRequirement
 	Cluster     *ClusterSnapshot
+	Container   bool // true when this input runs inside a workflow image
 	Policy      EffectivePolicy
 }
 

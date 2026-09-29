@@ -72,7 +72,12 @@
         "partition": {"type": "string"},
         "qos": {"type": "string"},
         "workingDirectory": {"type": "string"},
-        "env": {"type": "object", "additionalProperties": {"type": "string"}}
+        "env": {
+          "oneOf": [
+            {"type": "object", "additionalProperties": {"type": "string"}},
+            {"type": "array", "items": {"type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*="}}
+          ]
+        }
       }
     },
     "secretUse": {
@@ -127,6 +132,7 @@
       "additionalProperties": false,
       "properties": {
         "cpu": {"type": "integer", "minimum": 0},
+        "cpuAffinity": {"enum": ["none", "core", "socket", "numa"]},
         "memory": {"type": "string"},
         "walltime": {"type": "string"},
         "gpu": {"$ref": "#/$defs/gpuRequest"},
@@ -161,12 +167,44 @@
       }
     },
     "scriptRef": {
+      "oneOf": [
+        {"type": "string"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "ref": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+            "language": {"enum": ["bash", "sh", "python", "yaml", "json"]},
+            "inline": {"type": "string", "minLength": 1, "maxLength": 262144}
+          },
+          "oneOf": [
+            {"required": ["ref", "language"], "not": {"required": ["inline"]}},
+            {"required": ["inline"], "not": {"required": ["ref"]}}
+          ]
+        }
+      ]
+    },
+    "image": {
       "type": "object",
-      "required": ["ref", "language"],
+      "required": ["uri"],
       "additionalProperties": false,
       "properties": {
-        "ref": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
-        "language": {"enum": ["bash", "sh", "python", "yaml", "json"]}
+        "uri": {
+          "type": "string",
+          "maxLength": 512,
+          "pattern": "^(docker|oras)://[A-Za-z0-9._/:@+-]+$|^/[A-Za-z0-9._/+-]+$",
+          "not": {"pattern": "(^|/)\\.\\.(?:/|$)"}
+        }
+      }
+    },
+    "multinode": {
+      "type": "object",
+      "required": ["nodes", "implementation"],
+      "additionalProperties": false,
+      "properties": {
+        "nodes": {"type": "integer", "minimum": 1, "maximum": 10000},
+        "implementation": {"enum": ["openmpi", "mpich", "generic"]},
+        "procsPerNode": {"type": "integer", "minimum": 1}
       }
     },
     "softwareRequirement": {
@@ -196,10 +234,17 @@
         "fanOut": {"$ref": "#/$defs/fanOut"},
         "resources": {"$ref": "#/$defs/taskResources"},
         "placement": {"$ref": "#/$defs/placement"},
+        "image": {"$ref": "#/$defs/image"},
+        "multinode": {"$ref": "#/$defs/multinode"},
         "command": {"type": "array", "items": {"type": "string"}},
         "script": {"$ref": "#/$defs/scriptRef"},
         "args": {"type": "array", "items": {"type": "string"}},
-        "env": {"type": "object", "additionalProperties": {"type": "string"}},
+        "env": {
+          "oneOf": [
+            {"type": "object", "additionalProperties": {"type": "string"}},
+            {"type": "array", "items": {"type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*="}}
+          ]
+        },
         "software": {"type": "array", "items": {"$ref": "#/$defs/softwareRequirement"}},
         "outputs": {"type": "object", "additionalProperties": {"$ref": "#/$defs/output"}},
         "retry": {"$ref": "#/$defs/retry"},

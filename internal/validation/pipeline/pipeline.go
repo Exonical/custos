@@ -119,12 +119,13 @@ func InputHash(in validation.Input) uint64 {
 func configHash(in validation.Input) uint64 {
 	// Canonical JSON: encoding/json sorts map keys.
 	b, _ := json.Marshal(struct {
-		L string            `json:"l"`
-		R any               `json:"r"`
-		E map[string]string `json:"e"`
-		S any               `json:"s"`
-		C any               `json:"c"`
-	}{string(in.Language), in.Resources, in.Environment, in.Software, in.Cluster})
+		L         string            `json:"l"`
+		R         any               `json:"r"`
+		E         map[string]string `json:"e"`
+		S         any               `json:"s"`
+		C         any               `json:"c"`
+		Container bool              `json:"container,omitempty"`
+	}{string(in.Language), in.Resources, in.Environment, in.Software, in.Cluster, in.Container})
 	h := fnv.New64a()
 	_, _ = h.Write(b)
 	return h.Sum64()

@@ -36,9 +36,26 @@ var shellNameRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 var envNameRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 var directiveSafeRE = regexp.MustCompile(`^[A-Za-z0-9_./%:+,-]+$`)
 
+// RenderOptions carries version context required by run.version references.
+type RenderOptions struct {
+	WorkflowVersion *int
+}
+
 // Render creates a standalone script for one task. Expressions that depend
 // on the execution DAG or secret values are rejected rather than omitted.
 func Render(w workflowspec.Workflow, task workflowspec.Task, script []byte) (string, error) {
+	return RenderWithOptions(w, task, script, RenderOptions{})
+}
+
+// RenderWithOptions creates a standalone script using caller-supplied context.
+func RenderWithOptions(w workflowspec.Workflow, task workflowspec.Task, script []byte,
+	options RenderOptions) (string, error) {
+	if task.Image != nil {
+		return "", unsupported("spec.tasks."+task.Name+".image", "container images require a cluster-selected runtime and cannot be exported portably")
+	}
+	if task.Multinode != nil {
+		return "", unsupported("spec.tasks."+task.Name+".multinode", "multinode launch configuration is not supported by sbatch export")
+	}
 	if task.Type == "condition" {
 		return "", unsupported("spec.tasks."+task.Name+".type", "condition tasks do not map to Slurm")
 	}
@@ -52,6 +69,9 @@ func Render(w workflowspec.Workflow, task workflowspec.Task, script []byte) (str
 	if (len(task.Command) > 0) == (task.Script != nil) {
 		return "", unsupported("spec.tasks."+task.Name, "exactly one of command or script is required")
 	}
+	if task.Script != nil && task.Script.HasInline() {
+		script = []byte(task.Script.Inline)
+	}
 	if task.Script != nil && len(script) == 0 {
 		return "", unsupported("spec.tasks."+task.Name+".script", "script payload is unavailable")
 	}
@@ -60,9 +80,16 @@ func Render(w workflowspec.Workflow, task workflowspec.Task, script []byte) (str
 	if err != nil {
 		return "", err
 	}
-	pythonScript := task.Script != nil && task.Script.Language == workflowspec.LanguagePython
-	if task.Script != nil && task.Script.Language != workflowspec.LanguageBash &&
-		task.Script.Language != workflowspec.LanguageSh && !pythonScript {
+	language := workflowspec.LanguageBash
+	if task.Script != nil {
+		language = task.Script.EffectiveLanguage()
+	}
+	if affinity := task.Resources.CPUAffinity; affinity != "" && affinity != "none" && launch != workflowspec.LaunchSrun {
+		return "", unsupported("spec.tasks."+task.Name+".resources.cpuAffinity", "CPU affinity export requires srun")
+	}
+	pythonScript := task.Script != nil && language == workflowspec.LanguagePython
+	if task.Script != nil && language != workflowspec.LanguageBash &&
+		language != workflowspec.LanguageSh && !pythonScript {
 		return "", unsupported("spec.tasks."+task.Name+".script.language", "only bash, sh, and python payloads can be exported")
 	}
 
@@ -74,7 +101,7 @@ func Render(w workflowspec.Workflow, task workflowspec.Task, script []byte) (str
 
 	lines := make([]string, 0, 40)
 	shebang := "#!/bin/bash"
-	if task.Script != nil && task.Script.Language == workflowspec.LanguageSh {
+	if task.Script != nil && language == workflowspec.LanguageSh {
 		shebang = "#!/bin/sh"
 	}
 	if pythonScript {
@@ -195,13 +222,13 @@ func Render(w workflowspec.Workflow, task workflowspec.Task, script []byte) (str
 	for name, value := range task.Env {
 		environment[name] = value
 	}
-	envLines, err := renderEnvironment(w, task, resources, environment, parameterVars, pythonScript)
+	envLines, err := renderEnvironment(w, task, resources, environment, parameterVars, pythonScript, options)
 	if err != nil {
 		return "", err
 	}
 	lines = append(lines, envLines...)
 	if workingDirectoryTemplated {
-		cd, err := renderValue(w, task, resources, parameterVars, workingDirectory, "spec.tasks."+task.Name+".workingDirectory", pythonScript)
+		cd, err := renderValue(w, task, resources, parameterVars, workingDirectory, "spec.tasks."+task.Name+".workingDirectory", pythonScript, options)
 		if err != nil {
 			return "", err
 		}
@@ -211,7 +238,7 @@ func Render(w workflowspec.Workflow, task workflowspec.Task, script []byte) (str
 			lines = append(lines, "cd "+cd)
 		}
 	}
-	body, err := renderBody(w, task, resources, parameterVars, script, pythonScript)
+	body, err := renderBody(w, task, resources, parameterVars, script, pythonScript, options)
 	if err != nil {
 		return "", err
 	}
@@ -220,10 +247,10 @@ func Render(w workflowspec.Workflow, task workflowspec.Task, script []byte) (str
 }
 
 func resolveResources(task workflowspec.Task) (workflowspec.Resources, error) {
-	if task.Resources.Empty() {
+	if task.Resources.Empty() && task.Multinode == nil {
 		return workflowspec.Resources{}, nil
 	}
-	resources, errs := task.Resources.Resolve("spec.tasks." + task.Name + ".resources")
+	resources, errs := task.ResolveResources("spec.tasks." + task.Name + ".resources")
 	if len(errs) > 0 {
 		return workflowspec.Resources{}, unsupported(errs[0].Path, errs[0].Message)
 	}
@@ -283,7 +310,8 @@ func renderParameters(w workflowspec.Workflow, python bool) ([]string, map[strin
 }
 
 func renderEnvironment(w workflowspec.Workflow, task workflowspec.Task, resources workflowspec.Resources,
-	environment map[string]string, parameterVars map[string]string, python bool) ([]string, error) {
+	environment map[string]string, parameterVars map[string]string, python bool,
+	options RenderOptions) ([]string, error) {
 	names := make([]string, 0, len(environment))
 	for name := range environment {
 		names = append(names, name)
@@ -294,7 +322,7 @@ func renderEnvironment(w workflowspec.Workflow, task workflowspec.Task, resource
 		if !envNameRE.MatchString(name) {
 			return nil, unsupported("spec.tasks."+task.Name+".env."+name, "environment name is not portable")
 		}
-		value, err := renderValue(w, task, resources, parameterVars, environment[name], "spec.tasks."+task.Name+".env."+name, python)
+		value, err := renderValue(w, task, resources, parameterVars, environment[name], "spec.tasks."+task.Name+".env."+name, python, options)
 		if err != nil {
 			return nil, err
 		}
@@ -308,12 +336,13 @@ func renderEnvironment(w workflowspec.Workflow, task workflowspec.Task, resource
 }
 
 func renderBody(w workflowspec.Workflow, task workflowspec.Task, resources workflowspec.Resources,
-	parameterVars map[string]string, script []byte, python bool) ([]string, error) {
+	parameterVars map[string]string, script []byte, python bool,
+	options RenderOptions) ([]string, error) {
 	field := "spec.tasks." + task.Name
 	args := make([]string, 0, len(task.Command)+len(task.Args))
 	for i, value := range task.Command {
 		rendered, err := renderValue(w, task, resources, parameterVars, value,
-			fmt.Sprintf("%s.command[%d]", field, i), python)
+			fmt.Sprintf("%s.command[%d]", field, i), python, options)
 		if err != nil {
 			return nil, err
 		}
@@ -321,13 +350,13 @@ func renderBody(w workflowspec.Workflow, task workflowspec.Task, resources workf
 	}
 	for i, value := range task.Args {
 		rendered, err := renderValue(w, task, resources, parameterVars, value,
-			fmt.Sprintf("%s.args[%d]", field, i), python)
+			fmt.Sprintf("%s.args[%d]", field, i), python, options)
 		if err != nil {
 			return nil, err
 		}
 		args = append(args, rendered)
 	}
-	launchPrefix := srunPrefix(task.EffectiveLaunch(), resources.Tasks)
+	launchPrefix := srunPrefix(task.EffectiveLaunch(), resources.Tasks, task.Resources.CPUAffinity)
 	if python {
 		return renderPythonBody(task, script, launchPrefix, args)
 	}
@@ -342,7 +371,7 @@ func renderBody(w workflowspec.Workflow, task workflowspec.Task, resources workf
 		return []string{"exec " + command}, nil
 	}
 	body := stripShebang(script)
-	interpreter, err := shellInterpreter(task.Script.Language)
+	interpreter, err := shellInterpreter(task.Script.EffectiveLanguage())
 	if err != nil {
 		return nil, unsupported(field+".script.language", err.Error())
 	}
@@ -369,7 +398,7 @@ func renderBody(w workflowspec.Workflow, task workflowspec.Task, resources workf
 }
 
 func renderPythonBody(task workflowspec.Task, script []byte, launcher string, args []string) ([]string, error) {
-	if task.Script == nil || task.Script.Language != workflowspec.LanguagePython {
+	if task.Script == nil || task.Script.EffectiveLanguage() != workflowspec.LanguagePython {
 		return nil, unsupported("spec.tasks."+task.Name+".script.language", "Python export requires a python script payload")
 	}
 	body := stripShebang(script)
@@ -399,7 +428,8 @@ func renderPythonBody(task workflowspec.Task, script []byte, launcher string, ar
 }
 
 func renderValue(w workflowspec.Workflow, task workflowspec.Task, resources workflowspec.Resources,
-	parameterVars map[string]string, source, field string, python bool) (string, error) {
+	parameterVars map[string]string, source, field string, python bool,
+	options RenderOptions) (string, error) {
 	var parts []string
 	addLiteral := func(value string) {
 		if value == "" {
@@ -432,7 +462,7 @@ func renderValue(w workflowspec.Workflow, task workflowspec.Task, resources work
 		if !ok {
 			return "", unsupported(field, "only direct references can be exported; arithmetic and compound expressions are unsupported")
 		}
-		reference, err := renderReference(w, task, resources, parameterVars, path, field, python)
+		reference, err := renderReference(w, task, resources, parameterVars, path, field, python, options)
 		if err != nil {
 			return "", err
 		}
@@ -452,7 +482,8 @@ func renderValue(w workflowspec.Workflow, task workflowspec.Task, resources work
 }
 
 func renderReference(w workflowspec.Workflow, task workflowspec.Task, resources workflowspec.Resources,
-	parameterVars map[string]string, ref expr.Path, field string, python bool) (string, error) {
+	parameterVars map[string]string, ref expr.Path, field string, python bool,
+	options RenderOptions) (string, error) {
 	switch {
 	case len(ref) == 2 && ref[0] == "parameters":
 		name, ok := parameterVars[ref[1]]
@@ -488,12 +519,10 @@ func renderReference(w workflowspec.Workflow, task workflowspec.Task, resources 
 		}
 		return shellQuote(w.Metadata.Name), nil
 	case len(ref) == 2 && ref[0] == "run" && ref[1] == "version":
-		// Render has no WorkflowVersion argument; preserve the documented
-		// run.version token as a literal rather than inventing a revision.
-		if python {
-			return strconv.Quote("run.version"), nil
+		if options.WorkflowVersion == nil {
+			return "", unsupported(field, "run.version requires a workflow version number")
 		}
-		return shellQuote("run.version"), nil
+		return strconv.Itoa(*options.WorkflowVersion), nil
 	default:
 		return "", unsupported(field, "reference "+ref.String()+" is not representable in a standalone sbatch script")
 	}
@@ -587,14 +616,19 @@ var pythonKeyword = map[string]bool{
 	"raise": true, "return": true, "try": true, "while": true, "with": true, "yield": true,
 }
 
-func srunPrefix(launch string, tasks int) string {
+func srunPrefix(launch string, tasks int, affinity string) string {
 	if launch != workflowspec.LaunchSrun {
 		return ""
 	}
-	if tasks > 0 {
-		return fmt.Sprintf("srun --ntasks=%d", tasks)
+	words := []string{"srun"}
+	bind := map[string]string{"core": "cores", "socket": "sockets", "numa": "ldoms"}[affinity]
+	if bind != "" {
+		words = append(words, "--cpu-bind="+bind)
 	}
-	return "srun"
+	if tasks > 0 {
+		words = append(words, fmt.Sprintf("--ntasks=%d", tasks))
+	}
+	return strings.Join(words, " ")
 }
 
 func formatSlurmTime(duration time.Duration) string {

@@ -1,0 +1,33 @@
+id: mpi-hello-openmpi
+order: 90
+title: MPI Hello World (OpenMPI)
+summary: Runs an OpenMPI hello-world program inside a per-cluster container runtime.
+description: |
+  Requests one node with four OpenMPI ranks and launches the inline shell
+  script through srun. Configure a container runtime on the target cluster;
+  the image runs as the job's Unix user.
+tags: {}
+workflow:
+  apiVersion: custos.io/v1alpha1
+  kind: Workflow
+  metadata:
+    name: mpi-hello-openmpi
+  spec:
+    tasks:
+      - name: mpi-hello-world
+        env:
+          PATH: /usr/lib64/openmpi/bin:/usr/local/bin:/usr/bin:/bin
+        image:
+          uri: oras://docker.io/anderbubble/openmpi-hello-world.sif
+        script:
+          inline: |
+            #!/bin/sh
+            mpi_hello_world
+        resources:
+          cpu: 4
+          cpuAffinity: numa
+          memory: 1GB
+          walltime: "00:05:00"
+        multinode:
+          nodes: 1
+          implementation: openmpi

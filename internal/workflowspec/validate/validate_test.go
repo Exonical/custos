@@ -1,6 +1,7 @@
 package validate_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/Exonical/custos/internal/admission"
@@ -296,5 +297,135 @@ spec:
 	})
 	if !codes(errs)["PLACEMENT_CLUSTER_UNBOUND"] {
 		t.Fatalf("unbound cluster not flagged: %v", errs)
+	}
+}
+
+func TestContainerMultinodeAndAffinityValidation(t *testing.T) {
+	valid := wf(t, `
+apiVersion: custos.io/v1alpha1
+kind: Workflow
+metadata: {name: mpi}
+spec:
+  tasks:
+    - name: run
+      image: {uri: "oras://docker.io/example/mpi.sif@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
+      script: |
+        #!/bin/sh
+        mpi_hello_world
+      resources: {cpu: 4, cpuAffinity: numa, memory: 1GB, walltime: "00:05:00"}
+      multinode: {nodes: 1, implementation: openmpi}
+`)
+	if errs := validate.Static(valid); len(errs) != 0 {
+		t.Fatalf("valid container MPI spec rejected: %v", errs)
+	}
+
+	cases := []struct {
+		name, yaml, code string
+	}{
+		{"bad image URI", `
+apiVersion: custos.io/v1alpha1
+kind: Workflow
+metadata: {name: bad-image}
+spec: {tasks: [{name: run, image: {uri: "oras://host/a/../b"}, command: ["true"]}]}
+`, "IMAGE_URI_INVALID"},
+		{"image on condition", `
+apiVersion: custos.io/v1alpha1
+kind: Workflow
+metadata: {name: bad-image-kind}
+spec: {tasks: [{name: gate, type: condition, when: "true", image: {uri: "oras://host/a"}}]}
+`, "IMAGE_TASK_KIND"},
+		{"empty inline script", `
+apiVersion: custos.io/v1alpha1
+kind: Workflow
+metadata: {name: empty-inline}
+spec: {tasks: [{name: run, script: ""}]}
+`, "SCRIPT_SOURCE"},
+		{"script has both sources", `
+apiVersion: custos.io/v1alpha1
+kind: Workflow
+metadata: {name: both-sources}
+spec: {tasks: [{name: run, script: {ref: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", language: bash, inline: "echo hi"}}]}
+`, "SCRIPT_SOURCE"},
+		{"invalid CPU affinity enum", `
+apiVersion: custos.io/v1alpha1
+kind: Workflow
+metadata: {name: affinity-enum}
+spec: {tasks: [{name: run, launch: srun, resources: {cpuAffinity: NUMA, walltime: 5m}, command: ["true"]}]}
+`, "CPU_AFFINITY_INVALID"},
+		{"CPU affinity on condition", `
+apiVersion: custos.io/v1alpha1
+kind: Workflow
+metadata: {name: affinity-kind}
+spec: {tasks: [{name: gate, type: condition, when: "true", resources: {cpuAffinity: numa}}]}
+`, "CPU_AFFINITY_TASK_KIND"},
+		{"array conflicts with multinode", `
+apiVersion: custos.io/v1alpha1
+kind: Workflow
+metadata: {name: bad-array}
+spec: {tasks: [{name: run, array: {start: 1, end: 2}, multinode: {nodes: 2, implementation: openmpi}, resources: {walltime: 5m}, command: ["true"]}]}
+`, "MULTINODE_CONFLICT"},
+		{"zero procs per node", `
+apiVersion: custos.io/v1alpha1
+kind: Workflow
+metadata: {name: bad-procs}
+spec: {tasks: [{name: run, multinode: {nodes: 2, implementation: generic, procsPerNode: 0}, resources: {walltime: 5m}, command: ["true"]}]}
+`, "MULTINODE_INVALID"},
+		{"launch conflicts with implementation", `
+apiVersion: custos.io/v1alpha1
+kind: Workflow
+metadata: {name: bad-launch}
+spec: {tasks: [{name: run, launch: srun, multinode: {nodes: 2, implementation: generic}, resources: {walltime: 5m}, command: ["true"]}]}
+`, "MULTINODE_LAUNCH"},
+		{"CPU not divisible", `
+apiVersion: custos.io/v1alpha1
+kind: Workflow
+metadata: {name: bad-cpu}
+spec: {tasks: [{name: run, multinode: {nodes: 2, implementation: openmpi, procsPerNode: 3}, resources: {cpu: 4, walltime: 5m}, command: ["true"]}]}
+`, "MULTINODE_CPU_DIVISIBLE"},
+		{"affinity on condition", `
+apiVersion: custos.io/v1alpha1
+kind: Workflow
+metadata: {name: bad-affinity-kind}
+spec: {tasks: [{name: gate, type: condition, when: "true", resources: {cpuAffinity: numa}}]}
+`, "CPU_AFFINITY_TASK_KIND"},
+		{"multinode ref out of scope", `
+apiVersion: custos.io/v1alpha1
+kind: Workflow
+metadata: {name: bad-ref}
+spec: {tasks: [{name: run, command: ["mpirun", "$MULTINODE_HOSTLIST"]}]}
+`, "MULTINODE_REF"},
+		{"multinode template in env", `
+apiVersion: custos.io/v1alpha1
+kind: Workflow
+metadata: {name: bad-env-ref}
+spec: {tasks: [{name: run, multinode: {nodes: 2, implementation: generic}, env: {HOSTS: "{{ multinode.hostlist }}"}, resources: {walltime: 5m}, command: ["true"]}]}
+`, "MULTINODE_REF"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if errs := validate.Static(wf(t, tc.yaml)); !codes(errs)[tc.code] {
+				t.Fatalf("want %s, got %v", tc.code, errs)
+			}
+		})
+	}
+
+	generic := wf(t, `
+apiVersion: custos.io/v1alpha1
+kind: Workflow
+metadata: {name: generic}
+spec: {tasks: [{name: run, multinode: {nodes: 2, implementation: generic}, resources: {cpu: 2, cpuAffinity: numa, walltime: 5m}, command: ["mpirun", "{{ multinode.hostlist }}", "$MULTINODE_TOTAL_SLOTS", "--host=$MULTINODE_HOSTLIST"]}]}
+`)
+	if errs := validate.Static(generic); len(errs) != 0 {
+		t.Fatalf("generic runtime references rejected: %v", errs)
+	}
+
+	tooLarge := workflowspec.Workflow{
+		APIVersion: workflowspec.APIVersionV1Alpha1, Kind: workflowspec.KindWorkflow,
+		Metadata: workflowspec.Metadata{Name: "large-inline"},
+		Spec: workflowspec.Spec{Tasks: []workflowspec.Task{{Name: "run",
+			Script: &workflowspec.ScriptRef{Inline: strings.Repeat("x", validation.DefaultLimits.MaxScriptBytes+1)}}}},
+	}
+	if errs := validate.Static(tooLarge); !codes(errs)["SCRIPT_INLINE_TOO_LARGE"] {
+		t.Fatalf("oversized inline script error = %v", errs)
 	}
 }

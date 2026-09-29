@@ -79,19 +79,46 @@ type SecretEnvRef struct {
 type EnvSet struct {
 	Controlled map[string]string `json:"controlled,omitempty"`
 	User       map[string]string `json:"user,omitempty"`
-	// Runtime maps an env name to an allow-listed Slurm runtime
-	// variable (RuntimeSlurmArrayTaskID); the wrapper exports
-	// NAME="$VAR" — Custos-authored text, never user text.
+	// Runtime maps an env name to an allow-listed Slurm runtime variable.
 	Runtime    map[string]string `json:"runtime,omitempty"`
 	SecretRefs []SecretEnvRef    `json:"secret_refs,omitempty"`
 }
 
-// RuntimeSlurmArrayTaskID is the only runtime value an argv element or
-// env value may reference (what {{ array.taskId }} renders to).
-const RuntimeSlurmArrayTaskID = "SLURM_ARRAY_TASK_ID"
+const (
+	// RuntimeSlurmArrayTaskID references the current Slurm array index.
+	RuntimeSlurmArrayTaskID = "SLURM_ARRAY_TASK_ID"
+	// RuntimeMultinodeHostlist references the slot-qualified host list.
+	RuntimeMultinodeHostlist = "MULTINODE_HOSTLIST"
+	// RuntimeMultinodeHostlistNoSlots references the host list without slots.
+	RuntimeMultinodeHostlistNoSlots = "MULTINODE_HOSTLIST_NOSLOTS"
+	// RuntimeMultinodeTotalSlots references the total generic multinode slots.
+	RuntimeMultinodeTotalSlots = "MULTINODE_TOTAL_SLOTS"
+	// RuntimeMultinodeNodeIP references the current node's first IP address.
+	RuntimeMultinodeNodeIP = "MULTINODE_NODE_IP"
+	// RuntimeMultinodeSSHWrapper references the generated remote launcher.
+	RuntimeMultinodeSSHWrapper = "MULTINODE_SSH_WRAPPER"
+	// RuntimeMultinodeRSHWrapper aliases the generated remote launcher.
+	RuntimeMultinodeRSHWrapper = "MULTINODE_RSH_WRAPPER"
+)
+
+var multinodeRuntimeNames = map[string]bool{
+	RuntimeMultinodeHostlist: true, RuntimeMultinodeHostlistNoSlots: true,
+	RuntimeMultinodeTotalSlots: true, RuntimeMultinodeNodeIP: true,
+	RuntimeMultinodeSSHWrapper: true, RuntimeMultinodeRSHWrapper: true,
+}
 
 // ValidRuntime reports whether s is an allow-listed runtime variable.
-func ValidRuntime(s string) bool { return s == RuntimeSlurmArrayTaskID }
+func ValidRuntime(s string) bool {
+	return s == RuntimeSlurmArrayTaskID || multinodeRuntimeNames[s]
+}
+
+// ValidRuntimeFor rejects multinode references outside generic tasks.
+func ValidRuntimeFor(s string, genericMultinode bool) bool {
+	if multinodeRuntimeNames[s] {
+		return genericMultinode
+	}
+	return s == RuntimeSlurmArrayTaskID
+}
 
 // ArgvElement is one rendered argv word: either a literal (emitted
 // single-quoted) or a runtime variable reference (emitted as "$VAR",
@@ -138,18 +165,36 @@ type Result struct {
 	Warnings      []Warning          `json:"warnings,omitempty"`
 }
 
+// ContainerSpec freezes the cluster-selected image runtime.
+type ContainerSpec struct {
+	Runtime string `json:"runtime"`
+	Image   string `json:"image"`
+	Binary  string `json:"binary,omitempty"`
+}
+
+// MultinodeSpec freezes the distributed launcher shape.
+type MultinodeSpec struct {
+	Implementation string `json:"implementation"`
+	Nodes          int    `json:"nodes"`
+	SlotsPerNode   int    `json:"slots_per_node"`
+	MPIPlugin      string `json:"mpi_plugin,omitempty"`
+}
+
 // ExecutionSpec is the immutable canonical record persisted on
 // task_executions.execution_spec.
 type ExecutionSpec struct {
-	SchemaVersion     int       `json:"schema_version"`
-	ID                uuid.UUID `json:"id"`
-	TenantID          uuid.UUID `json:"tenant_id"`
-	ProjectID         uuid.UUID `json:"project_id"`
-	PrincipalID       uuid.UUID `json:"principal_id"`
-	WorkflowVersionID uuid.UUID `json:"workflow_version_id"`
-	TaskName          string    `json:"task_name"`
-	Launch            string    `json:"launch,omitempty"`
-	Attempt           int       `json:"attempt"`
+	SchemaVersion     int            `json:"schema_version"`
+	ID                uuid.UUID      `json:"id"`
+	TenantID          uuid.UUID      `json:"tenant_id"`
+	ProjectID         uuid.UUID      `json:"project_id"`
+	PrincipalID       uuid.UUID      `json:"principal_id"`
+	WorkflowVersionID uuid.UUID      `json:"workflow_version_id"`
+	TaskName          string         `json:"task_name"`
+	Launch            string         `json:"launch,omitempty"`
+	Container         *ContainerSpec `json:"container,omitempty"`
+	Multinode         *MultinodeSpec `json:"multinode,omitempty"`
+	CPUBind           string         `json:"cpu_bind,omitempty"`
+	Attempt           int            `json:"attempt"`
 
 	Cluster     ClusterRef `json:"cluster"`
 	Account     string     `json:"account,omitempty"`
@@ -157,10 +202,11 @@ type ExecutionSpec struct {
 	QoS         string     `json:"qos,omitempty"`
 	Reservation string     `json:"reservation,omitempty"`
 
-	Resources   ResolvedResources  `json:"resources"`
-	Placement   PlacementDecision  `json:"placement"`
-	Software    []ResolvedSoftware `json:"software,omitempty"`
-	Environment EnvSet             `json:"environment"`
+	Resources    ResolvedResources  `json:"resources"`
+	Placement    PlacementDecision  `json:"placement"`
+	Software     []ResolvedSoftware `json:"software,omitempty"`
+	Environment  EnvSet             `json:"environment"`
+	ContainerEnv map[string]string  `json:"container_env,omitempty"`
 
 	// Payload is the script payload; zero Digest means a command task —
 	// Argv then carries the program with Argv[0] a literal. Script tasks

@@ -234,8 +234,10 @@ func (s *Service) Archive(ctx context.Context, p authn.Principal,
 
 // --- versions ----------------------------------------------------------------
 
-// decodeSpec strict-decodes a submission and runs steps 1-4.
-func decodeSpec(body []byte, contentType string) (workflowspec.Workflow,
+// decodeSpec strict-decodes a submission, validates steps 1-4, and
+// content-addresses inline payloads without replacing their inline source.
+func (s *Service) decodeSpec(ctx context.Context, p authn.Principal,
+	tc tenants.TenantContext, body []byte, contentType string) (workflowspec.Workflow,
 	[]byte, [32]byte, error) {
 	w, err := workflowspec.Decode(body, contentType)
 	if err != nil {
@@ -244,6 +246,22 @@ func decodeSpec(body []byte, contentType string) (workflowspec.Workflow,
 	}
 	if err := fieldErrs(wfvalidate.Static(w)); err != nil {
 		return workflowspec.Workflow{}, nil, [32]byte{}, err
+	}
+	scope := tenants.ScopeFor(&tc)
+	for _, task := range w.Spec.Tasks {
+		if task.Script == nil || !task.Script.HasInline() {
+			continue
+		}
+		payload := []byte(task.Script.Inline)
+		digest, err := s.d.Scripts.Put(ctx, scope, tc.Tenant.ID,
+			task.Script.EffectiveLanguage(), payload, p.UserID)
+		if err != nil {
+			return workflowspec.Workflow{}, nil, [32]byte{}, err
+		}
+		if digest != validation.DigestOf(payload) {
+			return workflowspec.Workflow{}, nil, [32]byte{}, apperr.New(
+				apperr.Internal, "INTERNAL", "inline script store returned a mismatched digest")
+		}
 	}
 	canon, err := workflowspec.Canonical(w)
 	if err != nil {
@@ -272,7 +290,7 @@ func (s *Service) CreateVersion(ctx context.Context, p authn.Principal,
 		return workflows.Version{}, apperr.New(apperr.Conflict,
 			"WORKFLOW_ARCHIVED", "workflow is archived")
 	}
-	_, canon, hash, err := decodeSpec(body, contentType)
+	_, canon, hash, err := s.decodeSpec(ctx, p, tc, body, contentType)
 	if err != nil {
 		return workflows.Version{}, err
 	}
@@ -339,7 +357,7 @@ func (s *Service) UpdateDraft(ctx context.Context, p authn.Principal,
 		return workflows.Version{}, apperr.New(apperr.Conflict,
 			"VERSION_IMMUTABLE", "only draft versions may be edited")
 	}
-	_, canon, hash, err := decodeSpec(body, contentType)
+	_, canon, hash, err := s.decodeSpec(ctx, p, tc, body, contentType)
 	if err != nil {
 		return workflows.Version{}, err
 	}
@@ -949,33 +967,47 @@ func (s *Service) ImportWorkflowSbatch(ctx context.Context, p authn.Principal,
 	return out, nil
 }
 
+func mapExportError(err error) error {
+	var unsupported *sbatchexport.UnsupportedError
+	if !errors.As(err, &unsupported) {
+		return err
+	}
+	apiErr := apperr.New(apperr.Validation, "EXPORT_UNSUPPORTED", unsupported.Error())
+	apiErr.Details = append(apiErr.Details,
+		apperr.Detail{Field: unsupported.Field, Reason: unsupported.Reason})
+	return apiErr
+}
+
 // ExportTaskSbatch renders a workflow task without mutating the version.
 func (s *Service) ExportTaskSbatch(ctx context.Context, p authn.Principal,
 	tc tenants.TenantContext, workflowID, versionID uuid.UUID, taskName string) (string, error) {
-	w, _, spec, task, err := s.taskContext(ctx, p, tc, workflowID, versionID, taskName)
+	w, version, spec, task, err := s.taskContext(ctx, p, tc, workflowID, versionID, taskName)
 	if err != nil {
 		return "", err
+	}
+	if task.Image != nil || task.Multinode != nil {
+		_, err := sbatchexport.Render(spec, task, nil)
+		return "", mapExportError(err)
 	}
 	var payload []byte
 	if task.Script != nil {
-		digest, err := validation.ParseDigest(task.Script.Digest)
-		if err != nil {
-			return "", apperr.New(apperr.NotFound, "SCRIPT_UNKNOWN", "script payload not found")
-		}
-		payload, err = s.d.Scripts.Get(ctx, tenants.ScopeFor(&tc), w.TenantID, digest)
-		if err != nil {
-			return "", err
+		if task.Script.HasInline() {
+			payload = []byte(task.Script.Inline)
+		} else {
+			digest, err := validation.ParseDigest(task.Script.Digest)
+			if err != nil {
+				return "", apperr.New(apperr.NotFound, "SCRIPT_UNKNOWN", "script payload not found")
+			}
+			payload, err = s.d.Scripts.Get(ctx, tenants.ScopeFor(&tc), w.TenantID, digest)
+			if err != nil {
+				return "", err
+			}
 		}
 	}
-	rendered, err := sbatchexport.Render(spec, task, payload)
+	rendered, err := sbatchexport.RenderWithOptions(spec, task, payload,
+		sbatchexport.RenderOptions{WorkflowVersion: &version.Number})
 	if err != nil {
-		var unsupported *sbatchexport.UnsupportedError
-		if errors.As(err, &unsupported) {
-			apiErr := apperr.New(apperr.Validation, "EXPORT_UNSUPPORTED", unsupported.Error())
-			apiErr.Details = append(apiErr.Details, apperr.Detail{Field: unsupported.Field, Reason: unsupported.Reason})
-			return "", apiErr
-		}
-		return "", err
+		return "", mapExportError(err)
 	}
 	return rendered, nil
 }
@@ -1114,9 +1146,18 @@ func (s *Service) PreviewSubmission(ctx context.Context, p authn.Principal,
 			WrappedTokenRefs:  wrapped,
 		},
 	}
+	var multinode *workflowspec.Multinode
+	if task.Multinode != nil {
+		resolved := *task.Multinode
+		resolved.Implementation = resolved.EffectiveImplementation()
+		resolved.ProcsPerNode = task.EffectiveProcsPerNode()
+		multinode = &resolved
+	}
 	built, denial := admission.Build(admission.BuildInput{
-		Spec: espec, Software: in.Software, Request: in.Resources, Policy: pol,
-		Binding: binding, Cluster: *in.Cluster,
+		Spec: espec, Software: in.Software, Request: in.Resources,
+		Image: task.Image, Multinode: multinode,
+		CPUAffinity: task.Resources.CPUAffinity, ContainerEnv: env,
+		Policy: pol, Binding: binding, Cluster: *in.Cluster,
 	})
 	if denial != nil {
 		return Preview{}, apperr.New(apperr.Validation, "POLICY_VIOLATION",
@@ -1183,6 +1224,8 @@ func interpreterFor(l workflowspec.Language) (admission.Interpreter, error) {
 		return admission.InterpreterBash, nil
 	case workflowspec.LanguageSh:
 		return admission.InterpreterSh, nil
+	case workflowspec.LanguagePython:
+		return admission.InterpreterPython, nil
 	default:
 		return "", apperr.New(apperr.Validation, "LANGUAGE_UNSUPPORTED",
 			"script language "+string(l)+" is not supported for jobs")

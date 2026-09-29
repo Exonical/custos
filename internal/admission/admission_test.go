@@ -107,6 +107,111 @@ func TestBuildFreezes(t *testing.T) {
 	}
 }
 
+func TestBuildContainerAndMultinode(t *testing.T) {
+	base := admission.BuildInput{
+		Spec: admission.ExecutionSpec{
+			ID: uuid.New(), TenantID: uuid.New(), TaskName: "container-task",
+			Payload: admission.PayloadRef{
+				ScriptID: uuid.New(), Digest: validation.DigestOf([]byte("x")),
+				Language: workflowspec.LanguageBash, Interpreter: admission.InterpreterBash,
+			},
+		},
+		Request: req(), Policy: admission.ResourcePolicy{MaxNodes: 4},
+		Binding: admission.Binding{Account: "a", DefaultPartition: "main"},
+		Cluster: validation.ClusterSnapshot{Partitions: []string{"main"}},
+	}
+	image := &workflowspec.Image{URI: "oras://docker.io/example/image.sif"}
+	in := base
+	in.Image = image
+	if _, denial := admission.Build(in); denial == nil || denial.Code != "CONTAINER_RUNTIME_UNAVAILABLE" {
+		t.Fatalf("missing container runtime denial = %v", denial)
+	}
+	in.CPUAffinity = "numa"
+	in.ContainerEnv = map[string]string{"PATH": "/usr/bin", "QUOTE": "a'b; rm -rf /"}
+	in.Cluster.ContainerRuntime = &validation.ContainerRuntime{Type: "apptainer"}
+	blocked := in
+	blocked.Cluster.ContainerRuntime = &validation.ContainerRuntime{
+		Type: "apptainer", AllowedImagePrefixes: []string{"docker://trusted.example/"},
+	}
+	if _, denial := admission.Build(blocked); denial == nil || denial.Code != "IMAGE_NOT_ALLOWED" {
+		t.Fatalf("image allow-list denial = %v", denial)
+	}
+	out, denial := admission.Build(in)
+	if denial != nil {
+		t.Fatalf("apptainer image denied: %v", denial)
+	}
+	if out.Container == nil || out.Container.Runtime != "apptainer" ||
+		out.Container.Image != image.URI || out.Container.Binary != "apptainer" ||
+		out.CPUBind != "ldoms" || out.ContainerEnv["QUOTE"] != "a'b; rm -rf /" {
+		t.Fatalf("apptainer execution context not frozen: %+v", out)
+	}
+
+	in = base
+	in.Image = &workflowspec.Image{URI: "docker://docker.io/anderbubble/image:tag"}
+	in.Cluster.ContainerRuntime = &validation.ContainerRuntime{Type: "pyxis"}
+	out, denial = admission.Build(in)
+	if denial != nil || out.Container == nil || out.Container.Image != "docker.io#anderbubble/image:tag" {
+		t.Fatalf("pyxis URI conversion: spec=%+v denial=%v", out.Container, denial)
+	}
+
+	in.Cluster.ContainerRuntime.RequireDigest = true
+	if _, denial = admission.Build(in); denial == nil || denial.Code != "IMAGE_DIGEST_REQUIRED" {
+		t.Fatalf("required image digest denial = %v", denial)
+	}
+
+	genericTask := workflowspec.Task{
+		Image: image, Multinode: &workflowspec.Multinode{Nodes: 2, Implementation: "generic"},
+		Resources: workflowspec.TaskResources{CPU: 2, CPUAffinity: "numa", Memory: "1GB", Walltime: "5m"},
+	}
+	genericRequest, resourceErrors := genericTask.ResolveResources("resources")
+	if len(resourceErrors) != 0 {
+		t.Fatalf("generic resource resolution: %+v", resourceErrors)
+	}
+	in = base
+	in.Image = genericTask.Image
+	in.Multinode = &workflowspec.Multinode{Nodes: 2, ProcsPerNode: genericTask.EffectiveProcsPerNode(), Implementation: "generic"}
+	in.Request = genericRequest
+	in.CPUAffinity = genericTask.Resources.CPUAffinity
+	in.Cluster.ContainerRuntime = &validation.ContainerRuntime{Type: "apptainer"}
+	if _, denial = admission.Build(in); denial == nil || denial.Code != "MULTINODE_CONTAINER_UNSUPPORTED" {
+		t.Fatalf("generic image without slurm_in_container denial = %v", denial)
+	}
+	in.Cluster.ContainerRuntime.SlurmInContainer = true
+	out, denial = admission.Build(in)
+	if denial != nil || out.Multinode == nil || out.Multinode.Nodes != 2 ||
+		out.Multinode.SlotsPerNode != 2 || out.Multinode.Implementation != "generic" || out.CPUBind != "ldoms" {
+		t.Fatalf("generic multinode spec: %+v denial=%v", out.Multinode, denial)
+	}
+
+	mpi := base
+	mpi.Multinode = &workflowspec.Multinode{Nodes: 2, ProcsPerNode: 4, Implementation: "openmpi"}
+	mpi.Request = workflowspec.Resources{Nodes: 2, Tasks: 8, TasksPerNode: 4,
+		CPUsPerTask: 1, Walltime: workflowspec.Duration(time.Hour)}
+	mpi.Cluster.ContainerRuntime = &validation.ContainerRuntime{Type: "apptainer", MPIPlugin: "pmix_v5"}
+	out, denial = admission.Build(mpi)
+	if denial != nil || out.Multinode == nil || out.Multinode.MPIPlugin != "pmix_v5" {
+		t.Fatalf("OpenMPI plugin was not frozen: %+v denial=%v", out.Multinode, denial)
+	}
+}
+
+func TestMultinodeRuntimeReferencesAreGenericOnly(t *testing.T) {
+	spec := admission.ExecutionSpec{
+		Payload:   admission.PayloadRef{Digest: validation.DigestOf([]byte("x"))},
+		Multinode: &admission.MultinodeSpec{Implementation: "generic"},
+		Argv:      []admission.ArgvElement{{Runtime: admission.RuntimeMultinodeHostlist}},
+		Environment: admission.EnvSet{Runtime: map[string]string{
+			"HOSTS": admission.RuntimeMultinodeHostlistNoSlots,
+		}},
+	}
+	if denial := admission.CheckArgv(spec); denial != nil {
+		t.Fatalf("generic multinode runtime references denied: %v", denial)
+	}
+	spec.Multinode.Implementation = "openmpi"
+	if denial := admission.CheckArgv(spec); denial == nil || denial.Code != "ARGV_RUNTIME" {
+		t.Fatalf("non-generic multinode runtime accepted: %v", denial)
+	}
+}
+
 func TestResolveSoftware(t *testing.T) {
 	catalog := []validation.SoftwareModule{
 		{Name: "gcc", Modules: []string{"gcc"}},

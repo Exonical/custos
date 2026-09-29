@@ -26,13 +26,14 @@ const (
 type EnvPolicy struct {
 	AllowFiltered  []string // filtered names a tenant explicitly allows
 	GeneratedNames []string // names produced by ResolvedSoftware
+	Container      bool     // PATH and LD_LIBRARY_PATH are user-configurable in images
 }
 
 var (
 	controlledExact = map[string]bool{
 		"PATH": true, "HOME": true, "USER": true, "TMPDIR": true,
 	}
-	controlledGlobs = []string{"CUSTOS_", "SLURM_", "SBATCH_", "SRUN_", "SALLOC_"}
+	controlledGlobs = []string{"CUSTOS_", "SLURM_", "SBATCH_", "SRUN_", "SALLOC_", "MULTINODE_", "APPTAINER", "SINGULARITY", "PYXIS_", "ENROOT_"}
 
 	filteredExact = map[string]bool{
 		"LD_PRELOAD": true, "LD_AUDIT": true, "LD_LIBRARY_PATH": true,
@@ -47,13 +48,26 @@ var (
 
 var nameRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
-// Classify returns the class of an environment variable name.
+// Classify returns the class of a non-container environment variable name.
 func Classify(name string, generated []string) Class {
+	return ClassifyForTask(name, generated, false)
+}
+
+// ClassifyForTask applies the image-specific PATH allow-list when requested.
+func ClassifyForTask(name string, generated []string, container bool) Class {
 	upper := strings.ToUpper(name)
 	for _, g := range controlledGlobs {
 		if strings.HasPrefix(upper, g) {
 			return ClassControlled
 		}
+	}
+	if container && (name == "PATH" || name == "LD_LIBRARY_PATH") {
+		for _, g := range generated {
+			if name == g {
+				return ClassGenerated
+			}
+		}
+		return ClassUser
 	}
 	if controlledExact[name] {
 		return ClassControlled
@@ -81,12 +95,12 @@ func Classify(name string, generated []string) Class {
 // caseVariantOfFiltered reports whether name is a case variant of a
 // filtered or controlled name (env names are case-sensitive on Linux,
 // but a lowercase LD_PRELOAD is almost certainly a mistake).
-func caseVariantOfFiltered(name string) bool {
+func caseVariantOfFiltered(name string, container bool) bool {
 	upper := strings.ToUpper(name)
 	if upper == name {
 		return false
 	}
-	return Classify(upper, nil) != ClassUser
+	return ClassifyForTask(upper, nil, container) != ClassUser
 }
 
 // Validate checks user-requested environment variables. Codes:
@@ -101,7 +115,7 @@ func Validate(env map[string]string, pol EnvPolicy) []validation.Diagnostic {
 	total := 0
 	for name, val := range env {
 		d := validation.Diagnostic{Source: "envcheck"}
-		class := Classify(name, pol.GeneratedNames)
+		class := ClassifyForTask(name, pol.GeneratedNames, pol.Container)
 		switch {
 		case !nameRe.MatchString(name) || len(name) > 128:
 			out = append(out, diag(d, "CUSTOS304", validation.SeverityError,
@@ -127,7 +141,7 @@ func Validate(env map[string]string, pol EnvPolicy) []validation.Diagnostic {
 					name+" is filtered by policy"))
 			}
 		case ClassUser:
-			if caseVariantOfFiltered(name) {
+			if caseVariantOfFiltered(name, pol.Container) {
 				out = append(out, diag(d, "CUSTOS305", validation.SeverityWarning,
 					name+" is a case variant of a filtered variable"))
 			}
@@ -169,6 +183,6 @@ func (v Validator) Validate(ctx context.Context, in validation.Input) (validatio
 		return res, err
 	}
 	res.Diagnostics = Validate(in.Environment,
-		EnvPolicy{AllowFiltered: in.Policy.FilteredEnvAllowed})
+		EnvPolicy{AllowFiltered: in.Policy.FilteredEnvAllowed, Container: in.Container})
 	return res, nil
 }

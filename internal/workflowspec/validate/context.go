@@ -113,10 +113,10 @@ func Contextual(w workflowspec.Workflow, ctx Context) []FieldError {
 		}
 		// Step 6: resources. A task declaring none inherits the
 		// submission-time defaults; nothing to check here.
-		if emptyResources(t.Resources) {
+		if emptyResources(t.Resources) && t.Multinode == nil {
 			continue
 		}
-		res, resErrs := t.Resources.Resolve(base + ".resources")
+		res, resErrs := t.ResolveResources(base + ".resources")
 		errs = append(errs, resErrs...)
 		if len(resErrs) == 0 {
 			if d := admission.CheckResourcePolicy(res, ctx.ResourcePolicy); d != nil {

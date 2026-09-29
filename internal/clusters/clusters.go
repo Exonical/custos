@@ -59,6 +59,7 @@ type Cluster struct {
 	PolicyManagement    string
 	PolicyParentAccount string
 	SoftwareModules     []validation.SoftwareModule
+	ContainerRuntime    *validation.ContainerRuntime
 	TokenRef            secrets.Reference
 	ClientCertRef       *secrets.Reference
 	Visibility          Visibility

@@ -4,8 +4,11 @@
 package workflowspec
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"path"
+	"strings"
 	"time"
 )
 
@@ -116,9 +119,108 @@ type SoftwareRequirement struct {
 	Version string `json:"version"`
 }
 
-// ScriptRef points at a stored script by digest; the spec hash covers
-// every script digest so payload bytes never reach scheduler fields.
+// ScriptRef references a stored script or carries inline script text.
 type ScriptRef struct {
-	Digest   string   `json:"ref"` // "sha256:<hex>"
-	Language Language `json:"language"`
+	Digest    string   `json:"ref,omitempty"` // "sha256:<hex>"
+	Language  Language `json:"language"`
+	Inline    string   `json:"inline,omitempty"`
+	inlineSet bool
+}
+
+// HasInline reports whether inline source was present in the input.
+func (s ScriptRef) HasInline() bool { return s.inlineSet || s.Inline != "" }
+
+// EffectiveLanguage returns the explicit language or infers an inline
+// script's interpreter from its shebang without modifying the spec.
+func (s ScriptRef) EffectiveLanguage() Language {
+	if s.Language != "" {
+		return s.Language
+	}
+	if !s.HasInline() {
+		return LanguageBash
+	}
+	line, _, _ := strings.Cut(s.Inline, "\n")
+	fields := strings.Fields(strings.TrimSuffix(line, "\r"))
+	if len(fields) == 0 || !strings.HasPrefix(fields[0], "#!") {
+		return LanguageBash
+	}
+	interpreter := strings.TrimPrefix(fields[0], "#!")
+	name := path.Base(interpreter)
+	if name == "env" {
+		for _, field := range fields[1:] {
+			if field == "-S" || strings.HasPrefix(field, "-") || strings.Contains(field, "=") {
+				continue
+			}
+			name = path.Base(field)
+			break
+		}
+	}
+	switch {
+	case name == "sh":
+		return LanguageSh
+	case name == "bash":
+		return LanguageBash
+	case strings.HasPrefix(name, "python"):
+		return LanguagePython
+	default:
+		return LanguageBash
+	}
+}
+
+// UnmarshalJSON accepts the compact inline string form and strictly
+// decodes the object form without relying on the outer decoder's policy.
+func (s *ScriptRef) UnmarshalJSON(data []byte) error {
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) == 0 {
+		return fmt.Errorf("script: empty value")
+	}
+	if trimmed[0] == '"' {
+		var inline string
+		if err := json.Unmarshal(trimmed, &inline); err != nil {
+			return err
+		}
+		*s = ScriptRef{Inline: inline, inlineSet: true}
+		return nil
+	}
+	type scriptRefWire struct {
+		Ref      string          `json:"ref,omitempty"`
+		Language Language        `json:"language"`
+		Inline   json.RawMessage `json:"inline,omitempty"`
+	}
+	dec := json.NewDecoder(bytes.NewReader(trimmed))
+	dec.DisallowUnknownFields()
+	var wire scriptRefWire
+	if err := dec.Decode(&wire); err != nil {
+		return err
+	}
+	*s = ScriptRef{Digest: wire.Ref, Language: wire.Language}
+	if wire.Inline != nil {
+		if err := json.Unmarshal(wire.Inline, &s.Inline); err != nil {
+			return fmt.Errorf("script.inline: %w", err)
+		}
+		s.inlineSet = true
+	}
+	return nil
+}
+
+// MarshalJSON preserves the legacy ref object bytes and writes inline-only
+// source as an object without mutating the spec with an inferred language.
+func (s ScriptRef) MarshalJSON() ([]byte, error) {
+	if s.HasInline() {
+		type inlineWire struct {
+			Ref      string    `json:"ref,omitempty"`
+			Inline   string    `json:"inline"`
+			Language *Language `json:"language,omitempty"`
+		}
+		wire := inlineWire{Ref: s.Digest, Inline: s.Inline}
+		if s.Language != "" {
+			wire.Language = &s.Language
+		}
+		return json.Marshal(wire)
+	}
+	type refWire struct {
+		Ref      string   `json:"ref,omitempty"`
+		Language Language `json:"language"`
+	}
+	return json.Marshal(refWire{Ref: s.Digest, Language: s.Language})
 }

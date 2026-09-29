@@ -15,7 +15,8 @@ func TestCatalogLoadsAndValidates(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []string{"openmp", "multicore", "mpi-tasks", "mpi-nodes",
-		"hybrid-mpi-openmp", "per-core", "gpu", "long-running"}
+		"hybrid-mpi-openmp", "per-core", "gpu", "long-running",
+		"mpi-hello-openmpi", "mpi-hello-mpich", "generic-multinode"}
 	if len(all) != len(want) {
 		t.Fatalf("got %d templates, want %d", len(all), len(want))
 	}
@@ -27,7 +28,7 @@ func TestCatalogLoadsAndValidates(t *testing.T) {
 			if task.Type != "" {
 				t.Errorf("%s/%s: new template should omit deprecated task type %q", tpl.ID, task.Name, task.Type)
 			}
-			res, errs := task.Resources.Resolve("")
+			res, errs := task.ResolveResources("")
 			if len(errs) > 0 {
 				t.Errorf("%s/%s: %v", tpl.ID, task.Name, errs)
 				continue
@@ -52,7 +53,7 @@ func TestTemplatesMatchTheirSbatchOrigins(t *testing.T) {
 		if err != nil || !ok {
 			t.Fatalf("%s: ok=%v err=%v", id, ok, err)
 		}
-		res, errs := tpl.Spec.Spec.Tasks[0].Resources.Resolve("")
+		res, errs := tpl.Spec.Spec.Tasks[0].ResolveResources("")
 		if len(errs) > 0 {
 			t.Fatalf("%s: %v", id, errs)
 		}
@@ -88,6 +89,9 @@ func TestTemplateLaunchModel(t *testing.T) {
 		{"hybrid-mpi-openmp", workflowspec.LaunchSrun, 0},
 		{"per-core", workflowspec.LaunchSbatch, 4},
 		{"multicore", workflowspec.LaunchSbatch, 0},
+		{"mpi-hello-openmpi", workflowspec.LaunchSrun, 0},
+		{"mpi-hello-mpich", workflowspec.LaunchSrun, 0},
+		{"generic-multinode", workflowspec.LaunchSbatch, 0},
 	} {
 		tpl, ok, err := workflowtemplates.Get(tt.id)
 		if err != nil || !ok {

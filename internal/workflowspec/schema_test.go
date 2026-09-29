@@ -61,12 +61,24 @@ func TestSchemaCoversSpec(t *testing.T) {
 		"gpuRequest":          reflect.TypeOf(workflowspec.GPURequest{}),
 		"arraySpec":           reflect.TypeOf(workflowspec.ArraySpecYAML{}),
 		"scriptRef":           reflect.TypeOf(workflowspec.ScriptRef{}),
+		"image":               reflect.TypeOf(workflowspec.Image{}),
+		"multinode":           reflect.TypeOf(workflowspec.Multinode{}),
 		"softwareRequirement": reflect.TypeOf(workflowspec.SoftwareRequirement{}),
 		"task":                reflect.TypeOf(workflowspec.Task{}),
 	} {
 		sch, ok := defs[name].(map[string]any)
 		if !ok {
 			t.Fatalf("$defs.%s missing", name)
+		}
+		if name == "scriptRef" {
+			variants, _ := sch["oneOf"].([]any)
+			if len(variants) != 2 {
+				t.Fatalf("$defs.scriptRef must include string and object forms")
+			}
+			sch, ok = variants[1].(map[string]any)
+			if !ok {
+				t.Fatalf("$defs.scriptRef object form missing")
+			}
 		}
 		mustCover(st, sch, name)
 	}

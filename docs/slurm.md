@@ -273,6 +273,53 @@ standard_output, standard_error, environment (explicit, no inheritance),
 dependency, array, nice, name, comment. Mail is never set. Anything the
 spec cannot express cannot reach Slurm.
 
+## Per-cluster container runtime
+
+The platform cluster API stores nullable `container_runtime` JSONB. `null`
+means the cluster accepts no image tasks. A configured object selects
+`type: apptainer|pyxis`, an optional `allowed_image_prefixes` list, optional
+`require_digest`, `slurm_in_container`, and `mpi_plugin` (default `pmix`);
+`binary` is Apptainer-only and defaults to `apptainer`. An omitted or empty
+prefix list permits any otherwise-valid image URI; a nonempty list is matched
+against the original URI before runtime conversion. Digest pinning is
+recommended for production images.
+
+```json
+{
+  "type": "apptainer",
+  "binary": "apptainer",
+  "allowed_image_prefixes": ["oras://docker.io/anderbubble/"],
+  "require_digest": true,
+  "slurm_in_container": true,
+  "mpi_plugin": "pmix"
+}
+```
+
+Apptainer receives the URI unchanged and uses `exec --no-eval`, which
+requires Apptainer 1.1 or later. Pyxis accepts `docker://` references and
+absolute paths (not `oras://`); the scheme is stripped, and
+`docker://registry.host/path:tag` becomes `registry.host#path:tag` when the
+first component looks like a registry host (`docker://ubuntu:22.04` becomes
+`ubuntu:22.04`). Both runtimes mount only `$CUSTOS_JOB_DIR`; site bind paths
+are not part of the cluster configuration. User `KEY=VALUE` settings are
+passed through `/usr/bin/env` inside either image, so images must contain
+`/usr/bin/env`. Pyxis `--container-env` carries only runtime, secret, and
+`MULTINODE_*` names whose host-provided values must override image defaults;
+user env is never exported on the host. Image tasks are denied when no
+runtime is configured or a cluster's prefix/digest policy is not met.
+
+OpenMPI/MPICH multinode tasks use `srun --mpi=<mpi_plugin>` and the resolved
+per-rank task shape. Generic multinode tasks run the command once, export the
+Fuzzball-compatible `MULTINODE_*` variables, and use a generated
+`srun --overlap` remote-launch wrapper. A generic image requires
+`slurm_in_container: true` and a compatible Slurm client in the image. The
+wrapper distributes payloads with `sbcast` for srun-launched tasks because
+`$CUSTOS_JOB_DIR` may be node-local. CPU affinity maps to `--cpu-bind`; for
+batch scripts without a final srun, the wrapper exports `SLURM_CPU_BIND` so
+nested steps inherit it. Multinode `resources.cpu` and memory are per node.
+Portable sbatch export rejects image and multinode tasks because runtime
+configuration is cluster-specific.
+
 ## Cluster synchronization
 
 Work item `cluster.sync` is a **self-rescheduling chain** per cluster: each

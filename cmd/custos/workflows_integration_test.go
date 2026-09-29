@@ -246,6 +246,41 @@ func TestAPIWorkflows(t *testing.T) {
 	wid, _ := wresp["id"].(string)
 	wbase := "/api/v1/tenants/w-tenant/workflows/" + wid
 
+	inlineBody := "#!/bin/sh\necho inline\n"
+	inlineSpec := "apiVersion: custos.io/v1alpha1\nkind: Workflow\n" +
+		"metadata: {name: pipe}\nspec:\n  tasks:\n    - name: inline\n" +
+		"      resources: {cpu: 1, memory: 1Gi, walltime: 5m}\n" +
+		"      script: |\n        #!/bin/sh\n        echo inline\n"
+	code, inlineVersion := call(tokR, "POST", wbase+"/versions", inlineSpec)
+	if code != 201 {
+		t.Fatalf("inline version: %d %v", code, inlineVersion)
+	}
+	inlineVersionID, _ := inlineVersion["id"].(string)
+	inlineDigest := validation.DigestOf([]byte(inlineBody))
+	storedInline, err := scripts.Get(context.Background(), tenants.TenantScope(tid), tid, inlineDigest)
+	if err != nil || string(storedInline) != inlineBody {
+		t.Fatalf("inline script was not persisted content-addressed: %q %v", storedInline, err)
+	}
+	code, inlineVersionDoc := call(tokR, "GET", wbase+"/versions/"+inlineVersionID, nil)
+	if code != 200 {
+		t.Fatalf("get inline version: %d %v", code, inlineVersionDoc)
+	}
+	inlineStoredSpec, _ := inlineVersionDoc["spec"].(map[string]any)
+	inlineWorkflowSpec, _ := inlineStoredSpec["spec"].(map[string]any)
+	inlineTasks, _ := inlineWorkflowSpec["tasks"].([]any)
+	inlineTask, _ := inlineTasks[0].(map[string]any)
+	inlineScript, _ := inlineTask["script"].(map[string]any)
+	if inlineScript["inline"] != inlineBody || inlineScript["ref"] != nil {
+		t.Fatalf("inline source was normalized out of the version spec: %#v", inlineTask["script"])
+	}
+	code, inlineValidation := call(tokR, "POST", wbase+"/versions/"+inlineVersionID+"/tasks/inline/validate", nil)
+	if code != 200 || inlineValidation["valid"] != true {
+		t.Fatalf("inline task validation: %d %v", code, inlineValidation)
+	}
+	if code, updated := call(tokR, "PUT", wbase+"/versions/"+inlineVersionID, inlineSpec); code != 200 {
+		t.Fatalf("update inline draft: %d %v", code, updated)
+	}
+
 	specYAML := func(digest string) string {
 		return "apiVersion: custos.io/v1alpha1\nkind: Workflow\n" +
 			"metadata: {name: pipe}\nspec:\n  placement: {cluster: wc1}\n" +

@@ -25,6 +25,7 @@ import (
 	"github.com/Exonical/custos/internal/tenants"
 	tenantpg "github.com/Exonical/custos/internal/tenants/postgres"
 	userpg "github.com/Exonical/custos/internal/users/postgres"
+	"github.com/Exonical/custos/internal/validation"
 )
 
 func TestMain(m *testing.M) { os.Exit(dbtest.Main(m)) }
@@ -502,5 +503,36 @@ func TestAuthorizationMatrix(t *testing.T) {
 					c.name, i, allowed, c.want[i], err)
 			}
 		}
+	}
+}
+
+func TestUpdateContainerRuntimeCanClearWithNull(t *testing.T) {
+	f := newFixture(t, nil)
+	cluster := f.mkCluster(t, "runtime-clear", clusters.VisibilityAssigned)
+	p := admin()
+
+	runtime, err := f.svc.Update(f.ctx, p, cluster.Name, clustersvc.UpdateInput{
+		ContainerRuntimeSet: true,
+		ContainerRuntime:    &validation.ContainerRuntime{Type: "apptainer"},
+		Version:             cluster.Version,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runtime.ContainerRuntime == nil || runtime.ContainerRuntime.Type != "apptainer" ||
+		runtime.ContainerRuntime.Binary != "apptainer" || runtime.ContainerRuntime.MPIPlugin != "pmix" {
+		t.Fatalf("runtime defaults not stored: %+v", runtime.ContainerRuntime)
+	}
+
+	cleared, err := f.svc.Update(f.ctx, p, cluster.Name, clustersvc.UpdateInput{
+		ContainerRuntimeSet: true,
+		ContainerRuntime:    nil,
+		Version:             runtime.Version,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cleared.ContainerRuntime != nil {
+		t.Fatalf("null runtime patch did not clear configuration: %+v", cleared.ContainerRuntime)
 	}
 }

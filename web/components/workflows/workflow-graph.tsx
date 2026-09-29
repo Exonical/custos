@@ -32,6 +32,7 @@ function TaskNodeView({ data }: NodeProps<WorkflowNode>) {
   const tags = [
     task.fanOut?.count !== undefined ? `FAN-OUT ${String(task.fanOut.count)}` : undefined,
     task.array ? `ARRAY ${String(task.array.start)}–${String(task.array.end)}` : undefined,
+    task.multinode ? `MULTINODE ${task.multinode.implementation.toUpperCase()}` : undefined,
     task.retry ? `RETRY ${String(task.retry.attempts)}` : undefined,
   ].filter((tag): tag is string => tag !== undefined);
   return (
@@ -56,6 +57,19 @@ function display(value: unknown): string {
   return JSON.stringify(value);
 }
 
+function scriptSummary(script: WorkflowNode["data"]["task"]["script"]): unknown {
+  if (typeof script === "string") {
+    const lines = script.split(/\r\n|\r|\n/).length - (script.endsWith("\n") ? 1 : 0);
+    return `inline (${String(lines)} lines)`;
+  }
+  if (!script) return undefined;
+  if (typeof script.inline === "string") {
+    const lines = script.inline.split(/\r\n|\r|\n/).length - (script.inline.endsWith("\n") ? 1 : 0);
+    return `inline (${String(lines)} lines)`;
+  }
+  return script.ref ? { ref: script.ref, language: script.language } : undefined;
+}
+
 function taskProperties(spec: NormalizedWorkflowSpec, task: WorkflowNode["data"]["task"]): Array<[string, unknown]> {
   const placement = task.placement?.cluster ?? spec.spec.placement?.cluster;
   const partition = task.partition ?? spec.spec.defaults?.partition;
@@ -65,11 +79,14 @@ function taskProperties(spec: NormalizedWorkflowSpec, task: WorkflowNode["data"]
     ["KIND", taskKind(task)],
     ["LAUNCH", taskKind(task) === "condition" ? undefined : task.launch],
     ["RESOURCES", task.resources],
+    ["IMAGE", task.image?.uri],
+    ["MULTINODE", task.multinode ? `${task.multinode.implementation} × ${String(task.multinode.nodes)} ${task.multinode.nodes === 1 ? "node" : "nodes"}` : undefined],
+    ["AFFINITY", task.resources?.cpuAffinity],
     ["CLUSTER", placement],
     ["PARTITION", partition],
     ["QOS", qos],
     ["COMMAND", task.command],
-    ["SCRIPT", task.script ? { ref: task.script.ref, language: task.script.language } : undefined],
+    ["SCRIPT", scriptSummary(task.script)],
     ["ARGS", task.args],
     ["SOFTWARE", task.software?.length ? task.software.map((item) => `${item.name}@${item.version}`) : undefined],
     ["DEPENDS ON", task.dependsOn],

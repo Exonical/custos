@@ -90,7 +90,7 @@ func TestRenderHybridAndRoundTripSbatchDirectives(t *testing.T) {
 	if len(proposal.Diagnostics) != 0 {
 		t.Fatalf("round-trip diagnostics: %+v", proposal.Diagnostics)
 	}
-	want, resourceErrors := task.Resources.Resolve("resources")
+	want, resourceErrors := task.ResolveResources("resources")
 	if len(resourceErrors) != 0 {
 		t.Fatalf("test resource request invalid: %+v", resourceErrors)
 	}
@@ -171,6 +171,50 @@ func TestRenderPythonShebangAndScript(t *testing.T) {
 	}
 	if !strings.HasPrefix(exported, "#!/usr/bin/env python3\n") || !strings.Contains(exported, "print('ok')") {
 		t.Fatalf("Python export missing language shebang or body:\n%s", exported)
+	}
+}
+
+func TestRenderVersionRequiresContext(t *testing.T) {
+	workflow := workflowspec.Workflow{Metadata: workflowspec.Metadata{Name: "versioned"}}
+	task := workflowspec.Task{Name: "run", Command: []string{"./run", "{{ run.version }}"}}
+	if _, err := sbatchexport.Render(workflow, task, nil); err == nil {
+		t.Fatal("run.version without context must be rejected")
+	}
+	version := 7
+	rendered, err := sbatchexport.RenderWithOptions(workflow, task, nil,
+		sbatchexport.RenderOptions{WorkflowVersion: &version})
+	if err != nil || !strings.Contains(rendered, " 7") {
+		t.Fatalf("run.version = %s, err=%v", rendered, err)
+	}
+	validateBash(t, rendered)
+}
+
+func TestRenderInlineScriptAffinityAndUnsupportedExecutionContext(t *testing.T) {
+	workflow := workflowspec.Workflow{Metadata: workflowspec.Metadata{Name: "inline"}}
+	task := workflowspec.Task{
+		Name: "run", Launch: workflowspec.LaunchSrun,
+		Resources: workflowspec.TaskResources{CPUAffinity: "numa", Walltime: "5m"},
+		Script:    &workflowspec.ScriptRef{Inline: "#!/bin/sh\necho inline\n"},
+	}
+	exported, err := sbatchexport.Render(workflow, task, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(exported, "#!/bin/sh\n") || !strings.Contains(exported, "echo inline") ||
+		!strings.Contains(exported, "srun --cpu-bind=ldoms") {
+		t.Fatalf("inline script or CPU affinity export missing:\n%s", exported)
+	}
+	validateBash(t, exported)
+
+	for _, unsupportedTask := range []workflowspec.Task{
+		{Name: "image", Image: &workflowspec.Image{URI: "oras://registry/image.sif"}, Command: []string{"true"}},
+		{Name: "multi", Multinode: &workflowspec.Multinode{Nodes: 2, Implementation: "generic"}, Command: []string{"true"}},
+	} {
+		_, err := sbatchexport.Render(workflow, unsupportedTask, nil)
+		var unsupported *sbatchexport.UnsupportedError
+		if !errors.As(err, &unsupported) || unsupported.Field == "" {
+			t.Errorf("%s: export error = %v, want field-scoped EXPORT_UNSUPPORTED", unsupportedTask.Name, err)
+		}
 	}
 }
 

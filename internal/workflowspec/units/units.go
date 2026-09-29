@@ -37,9 +37,18 @@ func ParseMemoryMiB(v string) (int64, error) {
 	for i < len(s) && (s[i] >= '0' && s[i] <= '9' || s[i] == '.') {
 		i++
 	}
-	num, suffix := s[:i], strings.ToUpper(s[i:])
+	num, rawSuffix := s[:i], strings.ToUpper(s[i:])
 	if num == "" {
 		return 0, fmt.Errorf("invalid memory value %q", v)
+	}
+	suffix := rawSuffix
+	if strings.HasSuffix(suffix, "IB") {
+		suffix = strings.TrimSuffix(suffix, "B")
+	} else if strings.HasSuffix(suffix, "B") {
+		suffix = strings.TrimSuffix(suffix, "B")
+		if suffix == "" {
+			return 0, fmt.Errorf("invalid memory suffix in %q", v)
+		}
 	}
 	f, err := strconv.ParseFloat(num, 64)
 	if err != nil || f < 0 {

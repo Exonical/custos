@@ -777,7 +777,7 @@ paths:
           description: Cluster name already exists.
           content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
         "422":
-          description: Invalid endpoint (SSRF denied) or unresolvable token_ref.
+          description: Invalid endpoint (SSRF denied), unresolvable token_ref, or invalid container_runtime.
           content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
 
   /clusters/{cluster}:
@@ -837,7 +837,7 @@ paths:
           description: Version conflict.
           content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
         "422":
-          description: Invalid endpoint or unresolvable token_ref.
+          description: Invalid endpoint, unresolvable token_ref, or invalid container_runtime.
           content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
 
   /clusters/{cluster}/disable:
@@ -4009,11 +4009,40 @@ components:
           items:
             type: string
 
+    ContainerRuntime:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [apptainer, pyxis]
+        binary:
+          type: string
+          default: apptainer
+          maxLength: 128
+          pattern: '^[A-Za-z0-9_.:@/=-]+$'
+          description: Apptainer executable; defaults to apptainer and is unused by pyxis.
+        allowed_image_prefixes:
+          type: array
+          items:
+            type: string
+            maxLength: 512
+            pattern: '^(docker|oras)://[A-Za-z0-9._/:@+-]+$|^/[A-Za-z0-9._/+-]+$'
+        require_digest:
+          type: boolean
+        slurm_in_container:
+          type: boolean
+          description: Required for generic multinode tasks whose remote launcher runs from inside the image.
+        mpi_plugin:
+          type: string
+          default: pmix
+          pattern: '^[a-z0-9_]+$'
+
     Cluster:
       type: object
       required: [id, name, display_name, base_url, api_version, identity_mode,
                  service_user, policy_management, policy_parent_account, token_ref,
-                 visibility, state, version, created_at, updated_at]
+                 container_runtime, visibility, state, version, created_at, updated_at]
       properties:
         id:
           type: string
@@ -4044,6 +4073,11 @@ components:
           description: Site map from workflow software requirements to environment modules (ADR-023).
           items:
             $ref: "#/components/schemas/SoftwareModule"
+        container_runtime:
+          allOf:
+            - $ref: "#/components/schemas/ContainerRuntime"
+          nullable: true
+          description: Null means image execution is unavailable on this cluster.
         token_ref:
           $ref: "#/components/schemas/SecretRef"
         client_cert_ref:
@@ -4106,6 +4140,11 @@ components:
           description: Site map from workflow software requirements to environment modules (ADR-023).
           items:
             $ref: "#/components/schemas/SoftwareModule"
+        container_runtime:
+          allOf:
+            - $ref: "#/components/schemas/ContainerRuntime"
+          nullable: true
+          description: Null means image execution is unavailable on this cluster.
         token_ref:
           $ref: "#/components/schemas/SecretRef"
         client_cert_ref:
@@ -4142,6 +4181,11 @@ components:
           description: Site map from workflow software requirements to environment modules (ADR-023).
           items:
             $ref: "#/components/schemas/SoftwareModule"
+        container_runtime:
+          allOf:
+            - $ref: "#/components/schemas/ContainerRuntime"
+          nullable: true
+          description: Null means image execution is unavailable on this cluster.
         token_ref:
           $ref: "#/components/schemas/SecretRef"
         client_cert_ref:
@@ -4202,9 +4246,8 @@ components:
 
     ClusterSummary:
       type: object
-      description: Tenant-facing view; contains no platform configuration
-        (base_url, token_ref, ca_bundle are never returned to tenants).
-      required: [id, name, display_name, state, partitions, defaults]
+      description: Tenant-facing view; exposes only the container runtime type and never returns base_url, token_ref, ca_bundle, or the full runtime configuration.
+      required: [id, name, display_name, state, partitions, defaults, container_runtime]
       properties:
         id:
           type: string
@@ -4232,6 +4275,19 @@ components:
             type: integer
         defaults:
           $ref: "#/components/schemas/AssignmentDefaults"
+        container_runtime:
+          allOf:
+            - $ref: "#/components/schemas/ContainerRuntimeSummary"
+          nullable: true
+          description: Exposes only the runtime type to tenant users.
+
+    ContainerRuntimeSummary:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [apptainer, pyxis]
 
     PartitionRecord:
       type: object

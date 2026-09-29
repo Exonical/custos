@@ -9,7 +9,10 @@ func TestParseMemoryMiB(t *testing.T) {
 	cases := map[string]int64{
 		"8192Mi": 8192, "8192M": 7813, "8Gi": 8192, "8G": 7630,
 		"512Ki": 1, "1Ti": 1048576, "512": 512, "1T": 953675,
-		"2048Ki": 2, "1.5Gi": 1536,
+		"2048Ki": 2, "1.5Gi": 1536, "1GB": 954, "1gb": 954,
+		"1GiB": 1024, "512MB": 489, "1KB": 1, "1MiB": 1,
+		"1TB": 953675, "1PB": 953674317, "1EB": 953674316407,
+		"1EiB": 1099511627776,
 	}
 	for in, want := range cases {
 		got, err := ParseMemoryMiB(in)
@@ -17,7 +20,7 @@ func TestParseMemoryMiB(t *testing.T) {
 			t.Errorf("%q: got %d err %v, want %d", in, got, err, want)
 		}
 	}
-	for _, bad := range []string{"", "Gi", "-1Gi", "8XB", "abc", "8 Gi"} {
+	for _, bad := range []string{"", "Gi", "-1Gi", "8XB", "abc", "8 Gi", "1B"} {
 		if _, err := ParseMemoryMiB(bad); err == nil {
 			t.Errorf("%q should not parse", bad)
 		}

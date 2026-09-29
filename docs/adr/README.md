@@ -31,6 +31,7 @@ decisions get a new ADR that references the old one.
 | [ADR-023](ADR-023-cluster-software-modules.md) | Platform-curated per-cluster software→module map; admission resolves requirements fail-closed | [workflows.md](../workflows.md), [script-validation.md](../script-validation.md) |
 | [ADR-024](ADR-024-builtin-workflow-templates.md) | Embedded, validated workflow template catalog exposed read-only over the API | [workflows.md](../workflows.md), [api.md](../api.md) |
 | [ADR-025](ADR-025-slurm-launch-and-sbatch-interchange.md) | Explicit sbatch/srun launch semantics with proposal-based sbatch import and export | [workflows.md](../workflows.md), [script-validation.md](../script-validation.md), [api.md](../api.md) |
+| [ADR-026](ADR-026-container-images-and-multinode.md) | Optional container images, cluster-selected runtimes, inline scripts and MPI/generic multinode launch | [workflows.md](../workflows.md), [slurm.md](../slurm.md), [threat-model.md](../threat-model.md) |
 
 ## Process
 

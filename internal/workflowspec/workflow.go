@@ -76,6 +76,99 @@ type Defaults struct {
 	Env              map[string]string `json:"env,omitempty"`
 }
 
+// UnmarshalJSON implements json.Unmarshaler and decodes env maps or lists.
+func (d *Defaults) UnmarshalJSON(data []byte) error {
+	type defaultsAlias Defaults
+	var decoded defaultsAlias
+	env, err := decodeObjectWithEnv(data, "env", &decoded)
+	if err != nil {
+		return err
+	}
+	decoded.Env, err = decodeEnv(env)
+	if err != nil {
+		return err
+	}
+	*d = Defaults(decoded)
+	return nil
+}
+
+func decodeObjectWithEnv(data []byte, envKey string, target any) (json.RawMessage, error) {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return nil, err
+	}
+	if fields == nil {
+		return nil, fmt.Errorf("expected object")
+	}
+	env := fields[envKey]
+	delete(fields, envKey)
+	rest, err := json.Marshal(fields)
+	if err != nil {
+		return nil, err
+	}
+	dec := json.NewDecoder(bytes.NewReader(rest))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(target); err != nil {
+		return nil, err
+	}
+	return env, nil
+}
+
+func decodeEnv(raw json.RawMessage) (map[string]string, error) {
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {
+		return nil, nil
+	}
+	switch trimmed[0] {
+	case '{':
+		var env map[string]string
+		if err := json.Unmarshal(trimmed, &env); err != nil {
+			return nil, fmt.Errorf("env: %w", err)
+		}
+		return env, nil
+	case '[':
+		var entries []string
+		if err := json.Unmarshal(trimmed, &entries); err != nil {
+			return nil, fmt.Errorf("env: %w", err)
+		}
+		env := make(map[string]string, len(entries))
+		for i, entry := range entries {
+			name, value, ok := strings.Cut(entry, "=")
+			if !ok || !validEnvName(name) {
+				return nil, fmt.Errorf("env[%d] must be a valid NAME=VALUE pair", i)
+			}
+			if _, exists := env[name]; exists {
+				return nil, fmt.Errorf("env[%d] duplicates %s", i, name)
+			}
+			env[name] = value
+		}
+		return env, nil
+	default:
+		return nil, fmt.Errorf("env must be an object or a list of NAME=VALUE strings")
+	}
+}
+
+func validEnvName(name string) bool {
+	if name == "" || len(name) > 128 {
+		return false
+	}
+	validFirst := func(b byte) bool {
+		return b == '_' || b >= 'A' && b <= 'Z' || b >= 'a' && b <= 'z'
+	}
+	validRest := func(b byte) bool {
+		return validFirst(b) || b >= '0' && b <= '9'
+	}
+	if !validFirst(name[0]) {
+		return false
+	}
+	for i := 1; i < len(name); i++ {
+		if !validRest(name[i]) {
+			return false
+		}
+	}
+	return true
+}
+
 // SecretUse binds a SecretReference to a consumption mode.
 type SecretUse struct {
 	Ref     string `json:"ref"`
@@ -126,6 +219,44 @@ type Output struct {
 	Path string `json:"path"`
 }
 
+// Image identifies an optional task container image.
+type Image struct {
+	URI string `json:"uri"`
+}
+
+// Multinode selects a distributed task launcher and node shape.
+type Multinode struct {
+	Nodes           int    `json:"nodes"`
+	Implementation  string `json:"implementation"`
+	ProcsPerNode    int    `json:"procsPerNode,omitempty"`
+	procsPerNodeSet bool
+}
+
+// UnmarshalJSON implements json.Unmarshaler and records optional slot presence.
+func (m *Multinode) UnmarshalJSON(data []byte) error {
+	type multinodeAlias Multinode
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.DisallowUnknownFields()
+	var decoded multinodeAlias
+	if err := dec.Decode(&decoded); err != nil {
+		return err
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	_, set := fields["procsPerNode"]
+	*m = Multinode(decoded)
+	m.procsPerNodeSet = set
+	return nil
+}
+
+// HasProcsPerNode reports whether the optional field was present in input.
+func (m Multinode) HasProcsPerNode() bool { return m.procsPerNodeSet }
+
+// EffectiveImplementation returns the native multinode implementation.
+func (m Multinode) EffectiveImplementation() string { return m.Implementation }
+
 // Task is one DAG node.
 type Task struct {
 	Name                string                `json:"name"`
@@ -137,6 +268,8 @@ type Task struct {
 	FanOut              *FanOut               `json:"fanOut,omitempty"`
 	Resources           TaskResources         `json:"resources,omitempty"`
 	Placement           *Placement            `json:"placement,omitempty"`
+	Image               *Image                `json:"image,omitempty"`
+	Multinode           *Multinode            `json:"multinode,omitempty"`
 	Command             []string              `json:"command,omitempty"`
 	Script              *ScriptRef            `json:"script,omitempty"`
 	Args                []string              `json:"args,omitempty"`
@@ -152,11 +285,35 @@ type Task struct {
 	Stderr              string                `json:"stderr,omitempty"`
 }
 
+// UnmarshalJSON implements json.Unmarshaler and decodes env maps or lists.
+func (t *Task) UnmarshalJSON(data []byte) error {
+	type taskAlias Task
+	var decoded taskAlias
+	env, err := decodeObjectWithEnv(data, "env", &decoded)
+	if err != nil {
+		return err
+	}
+	decoded.Env, err = decodeEnv(env)
+	if err != nil {
+		return err
+	}
+	*t = Task(decoded)
+	return nil
+}
+
 // EffectiveLaunch chooses the explicit launch mode, defaulting legacy mpi
 // tasks to srun and all other tasks to sbatch.
 func (t Task) EffectiveLaunch() string {
 	if t.Launch != "" {
 		return t.Launch
+	}
+	if t.Multinode != nil {
+		switch t.Multinode.EffectiveImplementation() {
+		case "openmpi", "mpich":
+			return LaunchSrun
+		case "generic":
+			return LaunchSbatch
+		}
 	}
 	if t.Type == "mpi" {
 		return LaunchSrun
@@ -164,10 +321,22 @@ func (t Task) EffectiveLaunch() string {
 	return LaunchSbatch
 }
 
+// EffectiveProcsPerNode returns the multinode slot count for one node.
+func (t Task) EffectiveProcsPerNode() int {
+	if t.Multinode != nil && t.Multinode.ProcsPerNode > 0 {
+		return t.Multinode.ProcsPerNode
+	}
+	if t.Resources.CPU > 0 {
+		return t.Resources.CPU
+	}
+	return 1
+}
+
 // TaskResources is the spec-facing resource block; Resolve converts it
 // into the normalized Resources used by admission.
 type TaskResources struct {
 	CPU           int         `json:"cpu,omitempty"`
+	CPUAffinity   string      `json:"cpuAffinity,omitempty"`
 	Memory        string      `json:"memory,omitempty"`
 	Walltime      string      `json:"walltime,omitempty"`
 	GPU           *GPURequest `json:"gpu,omitempty"`
@@ -192,7 +361,7 @@ type FieldError struct {
 
 // Empty reports whether the task declares no resource fields.
 func (t TaskResources) Empty() bool {
-	return t.CPU == 0 && t.Memory == "" && t.Walltime == "" &&
+	return t.CPU == 0 && t.CPUAffinity == "" && t.Memory == "" && t.Walltime == "" &&
 		t.GPU == nil && t.Nodes == 0 && t.Tasks == 0 &&
 		t.TasksPerNode == 0 && t.CPUsPerTask == 0 &&
 		t.MemoryPerNode == "" && len(t.Licenses) == 0 &&
@@ -245,6 +414,70 @@ func (t TaskResources) Resolve(path string) (Resources, []FieldError) {
 			Code: "RESOURCE_INVALID", Message: err.Error()})
 	}
 	return r, errs
+}
+
+// ResolveResources merges the task's scheduler resources with its
+// multinode shape, when present. Multinode memory remains per node.
+func (t Task) ResolveResources(path string) (Resources, []FieldError) {
+	if t.Multinode == nil {
+		r, errs := t.Resources.Resolve(path)
+		if t.Array != nil {
+			r.Array = t.Array.Normalized()
+		}
+		return r, errs
+	}
+	m := *t.Multinode
+	if m.Nodes < 1 || m.Nodes > 10000 {
+		return Resources{}, []FieldError{{Path: path + ".multinode.nodes",
+			Code: "MULTINODE_INVALID", Message: "multinode.nodes must be between 1 and 10000"}}
+	}
+	if t.Array != nil || t.Type == "array" || t.Resources.Nodes != 0 ||
+		t.Resources.Tasks != 0 || t.Resources.TasksPerNode != 0 ||
+		t.Resources.CPUsPerTask != 0 {
+		return Resources{}, []FieldError{{Path: path + ".multinode",
+			Code: "MULTINODE_CONFLICT", Message: "multinode conflicts with array or explicit nodes/tasks/tasksPerNode/cpusPerTask resources"}}
+	}
+	implementation := m.EffectiveImplementation()
+	if implementation != "openmpi" && implementation != "mpich" && implementation != "generic" {
+		return Resources{}, []FieldError{{Path: path + ".multinode.implementation",
+			Code: "MULTINODE_INVALID", Message: "implementation must be openmpi, mpich, or generic"}}
+	}
+	if m.HasProcsPerNode() && m.ProcsPerNode < 1 {
+		return Resources{}, []FieldError{{Path: path + ".multinode.procsPerNode",
+			Code: "MULTINODE_INVALID", Message: "procsPerNode must be >= 1 when set"}}
+	}
+	var r Resources
+	if !t.Resources.Empty() {
+		var errs []FieldError
+		r, errs = t.Resources.Resolve(path)
+		if len(errs) != 0 {
+			return Resources{}, errs
+		}
+	}
+	cores := t.Resources.CPU
+	if cores <= 0 {
+		cores = 1
+	}
+	procs := t.EffectiveProcsPerNode()
+	if procs < 1 {
+		return Resources{}, []FieldError{{Path: path + ".multinode.procsPerNode",
+			Code: "MULTINODE_INVALID", Message: "procsPerNode must be positive"}}
+	}
+	maxInt := int(^uint(0) >> 1)
+	if m.Nodes > maxInt/procs {
+		return Resources{}, []FieldError{{Path: path + ".multinode",
+			Code: "MULTINODE_INVALID", Message: "multinode total slot count overflows"}}
+	}
+	if implementation == "generic" {
+		r.Nodes, r.Tasks, r.TasksPerNode, r.CPUsPerTask = m.Nodes, m.Nodes, 1, cores
+	} else {
+		if procs > cores || cores%procs != 0 {
+			return Resources{}, []FieldError{{Path: path + ".multinode.procsPerNode",
+				Code: "MULTINODE_CPU_DIVISIBLE", Message: "multinode cpu cores must divide evenly by procsPerNode"}}
+		}
+		r.Nodes, r.Tasks, r.TasksPerNode, r.CPUsPerTask = m.Nodes, m.Nodes*procs, procs, cores/procs
+	}
+	return r, nil
 }
 
 // Decode parses a workflow document from JSON or YAML into the strict

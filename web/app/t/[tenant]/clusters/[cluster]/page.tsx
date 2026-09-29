@@ -51,11 +51,12 @@ export default async function ClusterDetailPage({ params }: { params: Promise<{ 
         <RefreshJobButton />
       </header>
 
-      <section aria-label="Cluster metadata" className="grid grid-cols-2 gap-px border border-border bg-border sm:grid-cols-4">
+      <section aria-label="Cluster metadata" className="grid grid-cols-2 gap-px border border-border bg-border sm:grid-cols-5">
         {[
           ["SLUG", current.name],
           ["STATUS", current.state],
           ["SLURM VERSION", current.slurm_version ?? "—"],
+          ["CONTAINER RUNTIME", current.container_runtime?.type ?? "none"],
           ["PARTITIONS", String(partitionsResponse.data.items.length)],
         ].map(([label, value]) => (
           <div key={label} className="min-w-0 bg-card px-3 py-3">

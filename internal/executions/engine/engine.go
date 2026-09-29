@@ -883,6 +883,7 @@ type admitScope struct {
 	params   map[string]any
 	tasks    []executions.TaskExecution
 	self     *executions.TaskExecution // item.index/item.count source
+	task     workflowspec.Task
 	res      workflowspec.Resources
 }
 
@@ -931,6 +932,22 @@ func (s admitScope) Lookup(path []string) (expr.Value, bool) {
 		if len(path) == 2 && path[1] == "taskId" {
 			return expr.Value{Kind: expr.Runtime,
 				Runtime: admission.RuntimeSlurmArrayTaskID}, true
+		}
+	case "multinode":
+		if len(path) != 2 || s.task.Multinode == nil ||
+			s.task.Multinode.EffectiveImplementation() != "generic" {
+			return expr.Value{}, false
+		}
+		runtimeVars := map[string]string{
+			"hostlist":        admission.RuntimeMultinodeHostlist,
+			"hostlistNoSlots": admission.RuntimeMultinodeHostlistNoSlots,
+			"totalSlots":      admission.RuntimeMultinodeTotalSlots,
+			"nodeIp":          admission.RuntimeMultinodeNodeIP,
+			"sshWrapper":      admission.RuntimeMultinodeSSHWrapper,
+			"rshWrapper":      admission.RuntimeMultinodeRSHWrapper,
+		}
+		if runtime, ok := runtimeVars[path[1]]; ok {
+			return expr.Value{Kind: expr.Runtime, Runtime: runtime}, true
 		}
 	case "tasks":
 		if len(path) != 3 {

@@ -1,0 +1,40 @@
+id: generic-multinode
+order: 110
+title: Generic Multinode
+summary: Launches a custom multinode workload with Fuzzball-compatible runtime variables.
+description: |
+  Generic multinode execution needs a cluster with a container runtime and
+  slurm_in_container enabled for this image: the remote launcher invokes
+  srun from inside the container. The image must include a compatible
+  Slurm client; Custos binds only the per-job directory.
+tags: {}
+workflow:
+  apiVersion: custos.io/v1alpha1
+  kind: Workflow
+  metadata:
+    name: generic-multinode
+  spec:
+    tasks:
+      - name: generic-multinode
+        image:
+          uri: oras://docker.io/anderbubble/openmpi-hello-world.sif@sha256:dc92ea0c541a8d9f30b4d6b78bfc57bd2fe9806689d93ece6069c6ed6519fa9a
+        env:
+          PATH: /usr/lib64/openmpi/bin:/usr/local/bin:/usr/bin:/bin
+        command:
+          - mpirun
+          - -H
+          - $MULTINODE_HOSTLIST
+          - --mca
+          - plm_rsh_agent
+          - $MULTINODE_SSH_WRAPPER
+          - -np
+          - $MULTINODE_TOTAL_SLOTS
+          - /usr/lib64/openmpi/bin/mpi_hello_world
+        resources:
+          cpu: 2
+          cpuAffinity: numa
+          memory: 1GB
+          walltime: "00:05:00"
+        multinode:
+          nodes: 2
+          implementation: generic

@@ -1,6 +1,8 @@
 package api
 
 import (
+	"bytes"
+	"encoding/json"
 	"net/http"
 	"time"
 
@@ -41,6 +43,7 @@ func clusterDTO(c clusters.Cluster) map[string]any {
 		"policy_management":     c.PolicyManagement,
 		"policy_parent_account": c.PolicyParentAccount,
 		"software_modules":      softwareModulesDTO(c.SoftwareModules),
+		"container_runtime":     c.ContainerRuntime,
 		"token_ref":             tok,
 		"visibility":            c.Visibility,
 		"state":                 c.State,
@@ -87,15 +90,16 @@ func summaryDTO(s clustersvc.ClusterSummary) map[string]any {
 		parts = []string{}
 	}
 	return map[string]any{
-		"id":            s.ID,
-		"name":          s.Name,
-		"display_name":  s.DisplayName,
-		"state":         s.State,
-		"slurm_version": s.SlurmVersion,
-		"partitions":    parts,
-		"gres_types":    s.GRESTypes,
-		"node_summary":  s.NodeSummary,
-		"defaults":      s.Defaults,
+		"id":                s.ID,
+		"name":              s.Name,
+		"display_name":      s.DisplayName,
+		"state":             s.State,
+		"slurm_version":     s.SlurmVersion,
+		"partitions":        parts,
+		"gres_types":        s.GRESTypes,
+		"node_summary":      s.NodeSummary,
+		"defaults":          s.Defaults,
+		"container_runtime": s.ContainerRuntime,
 	}
 }
 
@@ -113,20 +117,43 @@ func (r secretRefDTO) ref() secrets.Reference {
 		Mount: r.Mount, Path: r.Path, Key: r.Key, Version: r.Version}
 }
 
+type optionalContainerRuntimeDTO struct {
+	Present bool
+	Value   *validation.ContainerRuntime
+}
+
+func (o *optionalContainerRuntimeDTO) UnmarshalJSON(data []byte) error {
+	o.Present = true
+	trimmed := bytes.TrimSpace(data)
+	if bytes.Equal(trimmed, []byte("null")) {
+		o.Value = nil
+		return nil
+	}
+	dec := json.NewDecoder(bytes.NewReader(trimmed))
+	dec.DisallowUnknownFields()
+	var runtime validation.ContainerRuntime
+	if err := dec.Decode(&runtime); err != nil {
+		return err
+	}
+	o.Value = &runtime
+	return nil
+}
+
 type createClusterDTO struct {
-	Name                string                      `json:"name"`
-	DisplayName         string                      `json:"display_name"`
-	BaseURL             string                      `json:"base_url"`
-	APIVersion          string                      `json:"api_version"`
-	CABundlePEM         string                      `json:"ca_bundle_pem,omitempty"`
-	IdentityMode        string                      `json:"identity_mode"`
-	ServiceUser         string                      `json:"service_user"`
-	PolicyManagement    string                      `json:"policy_management,omitempty"`
-	PolicyParentAccount string                      `json:"policy_parent_account,omitempty"`
-	SoftwareModules     []validation.SoftwareModule `json:"software_modules,omitempty"`
-	TokenRef            secretRefDTO                `json:"token_ref"`
-	ClientCertRef       *secretRefDTO               `json:"client_cert_ref,omitempty"`
-	Visibility          string                      `json:"visibility"`
+	Name                string                       `json:"name"`
+	DisplayName         string                       `json:"display_name"`
+	BaseURL             string                       `json:"base_url"`
+	APIVersion          string                       `json:"api_version"`
+	CABundlePEM         string                       `json:"ca_bundle_pem,omitempty"`
+	IdentityMode        string                       `json:"identity_mode"`
+	ServiceUser         string                       `json:"service_user"`
+	PolicyManagement    string                       `json:"policy_management,omitempty"`
+	PolicyParentAccount string                       `json:"policy_parent_account,omitempty"`
+	SoftwareModules     []validation.SoftwareModule  `json:"software_modules,omitempty"`
+	ContainerRuntime    *validation.ContainerRuntime `json:"container_runtime,omitempty"`
+	TokenRef            secretRefDTO                 `json:"token_ref"`
+	ClientCertRef       *secretRefDTO                `json:"client_cert_ref,omitempty"`
+	Visibility          string                       `json:"visibility"`
 }
 
 type updateClusterDTO struct {
@@ -142,6 +169,7 @@ type updateClusterDTO struct {
 	PolicyManagement    *string                      `json:"policy_management,omitempty"`
 	PolicyParentAccount *string                      `json:"policy_parent_account,omitempty"`
 	SoftwareModules     *[]validation.SoftwareModule `json:"software_modules,omitempty"`
+	ContainerRuntime    optionalContainerRuntimeDTO  `json:"container_runtime,omitempty"`
 	Version             int                          `json:"version"`
 }
 
@@ -180,6 +208,7 @@ func (h *clusterHandlers) create(w http.ResponseWriter, r *http.Request) {
 			ServiceUser: in.ServiceUser, PolicyManagement: in.PolicyManagement,
 			PolicyParentAccount: in.PolicyParentAccount,
 			SoftwareModules:     in.SoftwareModules,
+			ContainerRuntime:    in.ContainerRuntime,
 			TokenRef:            in.TokenRef.ref(), ClientCertRef: cert, Visibility: in.Visibility,
 		})
 	if err != nil {
@@ -214,6 +243,10 @@ func (h *clusterHandlers) update(w http.ResponseWriter, r *http.Request) {
 		PolicyParentAccount: in.PolicyParentAccount,
 		SoftwareModules:     in.SoftwareModules,
 		Version:             in.Version,
+	}
+	if in.ContainerRuntime.Present {
+		up.ContainerRuntimeSet = true
+		up.ContainerRuntime = in.ContainerRuntime.Value
 	}
 	if in.TokenRef != nil {
 		tr := in.TokenRef.ref()

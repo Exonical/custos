@@ -116,14 +116,18 @@ type CreateInput struct {
 	PolicyManagement    string
 	PolicyParentAccount string
 	SoftwareModules     []validation.SoftwareModule
+	ContainerRuntime    *validation.ContainerRuntime
 	TokenRef            secrets.Reference
 	ClientCertRef       *secrets.Reference
 	Visibility          string
 }
 
 var (
-	softwareNameRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.+-]{0,63}$`)
-	moduleNameRe   = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.+/@-]{0,127}$`)
+	softwareNameRe     = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.+-]{0,63}$`)
+	moduleNameRe       = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.+/@-]{0,127}$`)
+	runtimeBinaryRe    = regexp.MustCompile(`^[A-Za-z0-9_.:@/=-]+$`)
+	runtimeMPIPluginRe = regexp.MustCompile(`^[a-z0-9_]+$`)
+	imagePrefixRe      = regexp.MustCompile(`^(?:(?:docker|oras)://[A-Za-z0-9._/:@+-]+|/[A-Za-z0-9._/+-]+)$`)
 )
 
 // normalizeSoftwareModules validates the site module catalog. Module
@@ -165,6 +169,52 @@ func normalizeSoftwareModules(in []validation.SoftwareModule) ([]validation.Soft
 	return out, nil
 }
 
+func normalizeContainerRuntime(in *validation.ContainerRuntime) (*validation.ContainerRuntime, error) {
+	if in == nil {
+		return nil, nil
+	}
+	invalid := func(msg string) (*validation.ContainerRuntime, error) {
+		return nil, apperr.New(apperr.Validation, "CONTAINER_RUNTIME_INVALID", msg)
+	}
+	out := *in
+	switch out.Type {
+	case "apptainer":
+		if out.Binary == "" {
+			out.Binary = "apptainer"
+		}
+		if len(out.Binary) > 128 || !runtimeBinaryRe.MatchString(out.Binary) {
+			return invalid("binary must match the wrapper safe-token charset")
+		}
+	case "pyxis":
+		if out.Binary != "" {
+			return invalid("binary is only valid for the apptainer runtime")
+		}
+	default:
+		return invalid("type must be apptainer or pyxis")
+	}
+	if out.MPIPlugin == "" {
+		out.MPIPlugin = "pmix"
+	}
+	if !runtimeMPIPluginRe.MatchString(out.MPIPlugin) {
+		return invalid("mpi_plugin must contain only lowercase letters, digits, and underscores")
+	}
+	out.AllowedImagePrefixes = slices.Clone(in.AllowedImagePrefixes)
+	for i, prefix := range out.AllowedImagePrefixes {
+		if len(prefix) > 512 || !imagePrefixRe.MatchString(prefix) {
+			return invalid(fmt.Sprintf("allowed_image_prefixes[%d] is not a safe image URI prefix", i))
+		}
+		for _, segment := range strings.Split(prefix, "/") {
+			if segment == ".." {
+				return invalid(fmt.Sprintf("allowed_image_prefixes[%d] cannot contain a .. path segment", i))
+			}
+		}
+	}
+	if out.AllowedImagePrefixes == nil {
+		out.AllowedImagePrefixes = []string{}
+	}
+	return &out, nil
+}
+
 // Create registers a cluster (platform cluster.manage).
 func (s *Service) Create(ctx context.Context, p authn.Principal,
 	in CreateInput) (clusters.Cluster, error) {
@@ -186,8 +236,13 @@ func (s *Service) Create(ctx context.Context, p authn.Principal,
 	if err != nil {
 		return clusters.Cluster{}, err
 	}
+	runtime, err := normalizeContainerRuntime(in.ContainerRuntime)
+	if err != nil {
+		return clusters.Cluster{}, err
+	}
 	c := clusters.Cluster{
 		SoftwareModules:     software,
+		ContainerRuntime:    runtime,
 		ID:                  uuid.Must(uuid.NewV7()),
 		Name:                in.Name,
 		DisplayName:         in.DisplayName,
@@ -227,7 +282,8 @@ func (s *Service) Create(ctx context.Context, p authn.Principal,
 	return c, nil
 }
 
-// UpdateInput is the PATCH body (nil = unchanged).
+// UpdateInput is the PATCH body; ContainerRuntimeSet distinguishes an
+// explicit null clear from an omitted field.
 type UpdateInput struct {
 	DisplayName         *string
 	BaseURL             *string
@@ -241,6 +297,8 @@ type UpdateInput struct {
 	PolicyManagement    *string
 	PolicyParentAccount *string
 	SoftwareModules     *[]validation.SoftwareModule
+	ContainerRuntime    *validation.ContainerRuntime
+	ContainerRuntimeSet bool
 	Version             int
 }
 
@@ -315,6 +373,13 @@ func (s *Service) Update(ctx context.Context, p authn.Principal, ref string,
 			return clusters.Cluster{}, err
 		}
 		c.SoftwareModules = software
+	}
+	if in.ContainerRuntimeSet {
+		runtime, err := normalizeContainerRuntime(in.ContainerRuntime)
+		if err != nil {
+			return clusters.Cluster{}, err
+		}
+		c.ContainerRuntime = runtime
 	}
 	c.Version = in.Version
 	if err := s.repo.Update(ctx, c); err != nil {
@@ -486,18 +551,24 @@ func (s *Service) ListAssignments(ctx context.Context, p authn.Principal,
 
 // --- tenant-facing ----------------------------------------------------------
 
+// ContainerRuntimeSummary reveals only the runtime kind to tenant users.
+type ContainerRuntimeSummary struct {
+	Type string `json:"type"`
+}
+
 // ClusterSummary is the tenant-visible cluster view — never base_url,
 // token_ref, ca_bundle, or other platform configuration.
 type ClusterSummary struct {
-	ID           string
-	Name         string
-	DisplayName  string
-	State        clusters.State
-	SlurmVersion string
-	Partitions   []string
-	GRESTypes    []string
-	NodeSummary  map[string]int
-	Defaults     clusters.AssignmentDefaults
+	ID               string
+	Name             string
+	DisplayName      string
+	State            clusters.State
+	SlurmVersion     string
+	Partitions       []string
+	GRESTypes        []string
+	NodeSummary      map[string]int
+	Defaults         clusters.AssignmentDefaults
+	ContainerRuntime *ContainerRuntimeSummary
 }
 
 // ListVisible lists clusters assigned to the tenant (tenant cluster.read).
@@ -565,6 +636,9 @@ func summarize(c clusters.Cluster, a clusters.Assignment) ClusterSummary {
 	sum := ClusterSummary{
 		ID: c.ID.String(), Name: c.Name, DisplayName: c.DisplayName,
 		State: c.State, Defaults: a.Defaults,
+	}
+	if c.ContainerRuntime != nil {
+		sum.ContainerRuntime = &ContainerRuntimeSummary{Type: c.ContainerRuntime.Type}
 	}
 	if c.Capabilities != nil {
 		sum.SlurmVersion = c.Capabilities.SlurmVersion

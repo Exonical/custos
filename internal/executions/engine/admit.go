@@ -161,14 +161,18 @@ func admitTask(ctx context.Context, d Deps,
 		return denyFail("PARAMETERS_INVALID", "parameters",
 			perrs[0].Message)
 	}
-	res, resErrs := st.Resources.Resolve("")
-	if len(resErrs) > 0 {
-		return denyFail("RESOURCES_INVALID", "resources",
-			resErrs[0].Message)
+	var res workflowspec.Resources
+	if !st.Resources.Empty() || st.Multinode != nil {
+		var resErrs []workflowspec.FieldError
+		res, resErrs = st.ResolveResources("resources")
+		if len(resErrs) > 0 {
+			return denyFail(resErrs[0].Code, resErrs[0].Path,
+				resErrs[0].Message)
+		}
 	}
 	sc := admitScope{
 		spec: spec, workflow: wf.Name, version: v.Number,
-		exec: e, params: params, self: &t, res: res,
+		exec: e, params: params, self: &t, task: *st, res: res,
 	}
 	allTasks, err := d.Execs.ListTasks(ctx, scope, e.TenantID, e.ID)
 	if err != nil {
@@ -246,6 +250,17 @@ func admitTask(ctx context.Context, d Deps,
 			return err
 		}
 		cluster = c
+		if st.Script.HasInline() {
+			stored, putErr := d.Scripts.Put(ctx, scope, e.TenantID,
+				in.Language, in.Script, e.RequestedBy)
+			if putErr != nil {
+				return putErr
+			}
+			if stored != in.Digest {
+				return apperr.New(apperr.Internal, "SCRIPT_DIGEST_MISMATCH",
+					"inline script store returned a mismatched digest")
+			}
+		}
 		var cid *uuid.UUID
 		if cluster != nil {
 			cid = &cluster.ID
@@ -337,9 +352,18 @@ func admitTask(ctx context.Context, d Deps,
 		}
 	}
 	alloc := allocations.NewEnforcement(d.Allocations, scope, bindingMeta.ID)
+	var multinode *workflowspec.Multinode
+	if st.Multinode != nil {
+		resolved := *st.Multinode
+		resolved.Implementation = resolved.EffectiveImplementation()
+		resolved.ProcsPerNode = st.EffectiveProcsPerNode()
+		multinode = &resolved
+	}
 	built, denial := admission.Build(admission.BuildInput{
-		Spec: espec, Software: st.Software, Request: res, Policy: pol,
-		Binding: binding, Cluster: workflows.ClusterSnapshot(cluster),
+		Spec: espec, Software: st.Software, Request: res,
+		Image: st.Image, Multinode: multinode,
+		CPUAffinity: st.Resources.CPUAffinity, ContainerEnv: env.User,
+		Policy: pol, Binding: binding, Cluster: workflows.ClusterSnapshot(cluster),
 		Allocate: alloc.Allocate(ctx),
 	})
 	if denial != nil {
@@ -517,13 +541,36 @@ func placementCluster(ctx context.Context, d Deps,
 
 // --- template rendering -------------------------------------------------------
 
+func multinodeRuntimeLiteral(value string) (string, bool) {
+	runtime := map[string]string{
+		"MULTINODE_HOSTLIST":         admission.RuntimeMultinodeHostlist,
+		"MULTINODE_HOSTLIST_NOSLOTS": admission.RuntimeMultinodeHostlistNoSlots,
+		"MULTINODE_TOTAL_SLOTS":      admission.RuntimeMultinodeTotalSlots,
+		"MULTINODE_NODE_IP":          admission.RuntimeMultinodeNodeIP,
+		"MULTINODE_SSH_WRAPPER":      admission.RuntimeMultinodeSSHWrapper,
+		"MULTINODE_RSH_WRAPPER":      admission.RuntimeMultinodeRSHWrapper,
+	}
+	for name, ref := range runtime {
+		if value == "$"+name || value == "${"+name+"}" {
+			return ref, true
+		}
+	}
+	return "", false
+}
+
 // renderArgv renders command/args elements: each element is a template;
-// {{ array.taskId }} renders to a runtime ArgvElement only when it is
-// the whole element.
+// runtime references are accepted only when they occupy the whole element.
 func renderArgv(elems []string, sc admitScope) (
 	[]admission.ArgvElement, error) {
 	out := make([]admission.ArgvElement, 0, len(elems))
 	for i, s := range elems {
+		if runtime, ok := multinodeRuntimeLiteral(s); ok {
+			if sc.task.Multinode == nil || sc.task.Multinode.EffectiveImplementation() != "generic" {
+				return nil, fmt.Errorf("argv[%d]: multinode runtime references require a generic multinode task", i)
+			}
+			out = append(out, admission.ArgvElement{Runtime: runtime})
+			continue
+		}
 		tpl, err := expr.ParseTemplate(s)
 		if err != nil {
 			return nil, fmt.Errorf("argv[%d]: %w", i, err)
@@ -634,6 +681,8 @@ func interpreterFor(l workflowspec.Language) (admission.Interpreter, error) {
 		return admission.InterpreterBash, nil
 	case workflowspec.LanguageSh:
 		return admission.InterpreterSh, nil
+	case workflowspec.LanguagePython:
+		return admission.InterpreterPython, nil
 	default:
 		return "", apperr.New(apperr.Validation, "LANGUAGE_UNSUPPORTED",
 			"script language "+string(l)+" is not supported for jobs")

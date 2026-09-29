@@ -127,6 +127,9 @@ func TestEffectiveLaunchCompatibility(t *testing.T) {
 		{name: "omitted type", task: workflowspec.Task{}, want: workflowspec.LaunchSbatch},
 		{name: "explicit sbatch overrides mpi alias", task: workflowspec.Task{Type: "mpi", Launch: workflowspec.LaunchSbatch}, want: workflowspec.LaunchSbatch},
 		{name: "explicit srun", task: workflowspec.Task{Launch: workflowspec.LaunchSrun}, want: workflowspec.LaunchSrun},
+		{name: "openmpi multinode", task: workflowspec.Task{Multinode: &workflowspec.Multinode{Implementation: "openmpi"}}, want: workflowspec.LaunchSrun},
+		{name: "mpich multinode", task: workflowspec.Task{Multinode: &workflowspec.Multinode{Implementation: "mpich"}}, want: workflowspec.LaunchSrun},
+		{name: "generic multinode", task: workflowspec.Task{Multinode: &workflowspec.Multinode{Implementation: "generic"}}, want: workflowspec.LaunchSbatch},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := tt.task.EffectiveLaunch(); got != tt.want {
@@ -168,5 +171,130 @@ func TestUnknownFieldRejected(t *testing.T) {
 	_, err := workflowspec.Decode([]byte(bad), "application/json")
 	if err == nil || !strings.Contains(err.Error(), "bogus") {
 		t.Fatalf("unknown field not rejected with path: %v", err)
+	}
+}
+
+func TestScriptObjectRejectsUnknownFields(t *testing.T) {
+	bad := `{"apiVersion":"custos.io/v1alpha1","kind":"Workflow","metadata":{"name":"x"},"spec":{"tasks":[{"name":"run","script":{"inline":"echo hi","unexpected":true}}]}}`
+	if _, err := workflowspec.Decode([]byte(bad), "application/json"); err == nil || !strings.Contains(err.Error(), "unexpected") {
+		t.Fatalf("unknown ScriptRef field was not rejected: %v", err)
+	}
+}
+
+func TestEnvListShorthand(t *testing.T) {
+	w := decodeYAML(t, `
+apiVersion: custos.io/v1alpha1
+kind: Workflow
+metadata: {name: env-list}
+spec:
+  defaults:
+    env: ["DEFAULT=a=b"]
+  tasks:
+    - name: run
+      command: ["true"]
+      env: ["PATH=/usr/bin:/bin", "VALUE=a=b"]
+`)
+	if w.Spec.Defaults.Env["DEFAULT"] != "a=b" ||
+		w.Spec.Tasks[0].Env["PATH"] != "/usr/bin:/bin" ||
+		w.Spec.Tasks[0].Env["VALUE"] != "a=b" {
+		t.Fatalf("environment list was not split at the first equals: %+v", w)
+	}
+	canonical, err := workflowspec.Canonical(w)
+	if err != nil || !strings.Contains(string(canonical), `"env":{"PATH":"/usr/bin:/bin","VALUE":"a=b"}`) {
+		t.Fatalf("environment did not canonicalize to a map: %s, %v", canonical, err)
+	}
+	for _, bad := range []string{
+		`{"apiVersion":"custos.io/v1alpha1","kind":"Workflow","metadata":{"name":"x"},"spec":{"tasks":[{"name":"a","command":["true"],"env":["NO_EQUALS"]}]}}`,
+		`{"apiVersion":"custos.io/v1alpha1","kind":"Workflow","metadata":{"name":"x"},"spec":{"tasks":[{"name":"a","command":["true"],"env":["A=1","A=2"]}]}}`,
+		`{"apiVersion":"custos.io/v1alpha1","kind":"Workflow","metadata":{"name":"x"},"spec":{"tasks":[{"name":"a","command":["true"],"env":["BAD-NAME=1"]}]}}`,
+	} {
+		if _, err := workflowspec.Decode([]byte(bad), "application/json"); err == nil {
+			t.Errorf("invalid environment list decoded: %s", bad)
+		}
+	}
+}
+
+func TestInlineScriptObjectCanonicalAndEffectiveLanguage(t *testing.T) {
+	w := decodeYAML(t, `
+apiVersion: custos.io/v1alpha1
+kind: Workflow
+metadata: {name: inline}
+spec:
+  tasks:
+    - name: run
+      script: |
+        #!/usr/bin/env sh
+        echo inline
+`)
+	script := w.Spec.Tasks[0].Script
+	if script == nil || !script.HasInline() || script.EffectiveLanguage() != workflowspec.LanguageSh || script.Language != "" {
+		t.Fatalf("inline script/language: %+v", script)
+	}
+	canonical, err := workflowspec.Canonical(w)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var root map[string]any
+	if err := json.Unmarshal(canonical, &root); err != nil {
+		t.Fatal(err)
+	}
+	task := root["spec"].(map[string]any)["tasks"].([]any)[0].(map[string]any)
+	object := task["script"].(map[string]any)
+	if object["inline"] == nil || object["ref"] != nil {
+		t.Fatalf("inline script did not canonicalize as an object: %s", canonical)
+	}
+	for _, tc := range []struct {
+		source string
+		want   workflowspec.Language
+	}{
+		{"#!/bin/bash\necho ok", workflowspec.LanguageBash},
+		{"#!/usr/bin/env python3\nprint('ok')", workflowspec.LanguagePython},
+		{"echo no shebang", workflowspec.LanguageBash},
+	} {
+		if got := (workflowspec.ScriptRef{Inline: tc.source}).EffectiveLanguage(); got != tc.want {
+			t.Errorf("EffectiveLanguage(%q) = %q, want %q", tc.source, got, tc.want)
+		}
+	}
+}
+
+func TestResolveMultinodeResources(t *testing.T) {
+	mpi := workflowspec.Task{
+		Multinode: &workflowspec.Multinode{Nodes: 2, Implementation: "openmpi"},
+		Resources: workflowspec.TaskResources{CPU: 4, Memory: "1GB", Walltime: "5m"},
+	}
+	resolved, errs := mpi.ResolveResources("resources")
+	if len(errs) != 0 || resolved.Nodes != 2 || resolved.Tasks != 8 ||
+		resolved.TasksPerNode != 4 || resolved.CPUsPerTask != 1 ||
+		resolved.MemoryPerNodeMiB != 954 || mpi.EffectiveLaunch() != workflowspec.LaunchSrun {
+		t.Fatalf("MPI resolution: %+v errors=%+v launch=%s", resolved, errs, mpi.EffectiveLaunch())
+	}
+	generic := workflowspec.Task{
+		Multinode: &workflowspec.Multinode{Nodes: 2, Implementation: "generic"},
+		Resources: workflowspec.TaskResources{CPU: 2, Walltime: "5m"},
+	}
+	resolved, errs = generic.ResolveResources("resources")
+	if len(errs) != 0 || resolved.Nodes != 2 || resolved.Tasks != 2 ||
+		resolved.TasksPerNode != 1 || resolved.CPUsPerTask != 2 ||
+		generic.EffectiveProcsPerNode() != 2 || generic.EffectiveLaunch() != workflowspec.LaunchSbatch {
+		t.Fatalf("generic resolution: %+v errors=%+v", resolved, errs)
+	}
+	empty := workflowspec.Task{Multinode: &workflowspec.Multinode{Nodes: 1, Implementation: "generic"}}
+	resolved, errs = empty.ResolveResources("resources")
+	if len(errs) != 0 || resolved.Nodes != 1 || resolved.Tasks != 1 || resolved.CPUsPerTask != 1 {
+		t.Fatalf("empty resource block did not resolve: %+v errors=%+v", resolved, errs)
+	}
+	bad := workflowspec.Task{
+		Multinode: &workflowspec.Multinode{Nodes: 2, ProcsPerNode: 3, Implementation: "openmpi"},
+		Resources: workflowspec.TaskResources{CPU: 4, Walltime: "5m"},
+	}
+	if _, errs := bad.ResolveResources("resources"); len(errs) == 0 || errs[0].Code != "MULTINODE_CPU_DIVISIBLE" {
+		t.Fatalf("nondivisible MPI request errors = %+v", errs)
+	}
+	conflict := workflowspec.Task{
+		Multinode: &workflowspec.Multinode{Nodes: 1, Implementation: "generic"},
+		Resources: workflowspec.TaskResources{CPUsPerTask: 2},
+	}
+	if _, errs := conflict.ResolveResources("resources"); len(errs) == 0 || errs[0].Code != "MULTINODE_CONFLICT" {
+		t.Fatalf("explicit cpusPerTask multinode conflict errors = %+v", errs)
 	}
 }

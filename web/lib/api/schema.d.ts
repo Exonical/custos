@@ -2123,6 +2123,21 @@ export interface components {
             default_account_prefix?: string;
             allowed_partitions?: string[];
         };
+        ContainerRuntime: {
+            /** @enum {string} */
+            type: "apptainer" | "pyxis";
+            /**
+             * @description Apptainer executable; defaults to apptainer and is unused by pyxis.
+             * @default apptainer
+             */
+            binary: string;
+            allowed_image_prefixes?: string[];
+            require_digest?: boolean;
+            /** @description Required for generic multinode tasks whose remote launcher runs from inside the image. */
+            slurm_in_container?: boolean;
+            /** @default pmix */
+            mpi_plugin: string;
+        };
         Cluster: {
             /** Format: uuid */
             id: string;
@@ -2140,6 +2155,8 @@ export interface components {
             policy_parent_account: string;
             /** @description Site map from workflow software requirements to environment modules (ADR-023). */
             software_modules?: components["schemas"]["SoftwareModule"][];
+            /** @description Null means image execution is unavailable on this cluster. */
+            container_runtime: components["schemas"]["ContainerRuntime"] | null;
             token_ref: components["schemas"]["SecretRef"];
             client_cert_ref?: components["schemas"]["SecretRef"];
             /** @enum {string} */
@@ -2174,6 +2191,8 @@ export interface components {
             policy_parent_account?: string;
             /** @description Site map from workflow software requirements to environment modules (ADR-023). */
             software_modules?: components["schemas"]["SoftwareModule"][];
+            /** @description Null means image execution is unavailable on this cluster. */
+            container_runtime?: components["schemas"]["ContainerRuntime"] | null;
             token_ref: components["schemas"]["SecretRef"];
             client_cert_ref?: components["schemas"]["SecretRef"];
             /** @enum {string} */
@@ -2193,6 +2212,8 @@ export interface components {
             policy_parent_account?: string;
             /** @description Site map from workflow software requirements to environment modules (ADR-023). */
             software_modules?: components["schemas"]["SoftwareModule"][];
+            /** @description Null means image execution is unavailable on this cluster. */
+            container_runtime?: components["schemas"]["ContainerRuntime"] | null;
             token_ref?: components["schemas"]["SecretRef"];
             client_cert_ref?: components["schemas"]["SecretRef"];
             /** @enum {string} */
@@ -2224,7 +2245,7 @@ export interface components {
         AssignmentPut: {
             defaults?: components["schemas"]["AssignmentDefaults"];
         };
-        /** @description Tenant-facing view; contains no platform configuration (base_url, token_ref, ca_bundle are never returned to tenants). */
+        /** @description Tenant-facing view; exposes only the container runtime type and never returns base_url, token_ref, ca_bundle, or the full runtime configuration. */
         ClusterSummary: {
             /** Format: uuid */
             id: string;
@@ -2239,6 +2260,12 @@ export interface components {
                 [key: string]: number;
             };
             defaults: components["schemas"]["AssignmentDefaults"];
+            /** @description Exposes only the runtime type to tenant users. */
+            container_runtime: components["schemas"]["ContainerRuntimeSummary"] | null;
+        };
+        ContainerRuntimeSummary: {
+            /** @enum {string} */
+            type: "apptainer" | "pyxis";
         };
         PartitionRecord: {
             name: string;
@@ -4224,7 +4251,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Invalid endpoint (SSRF denied) or unresolvable token_ref. */
+            /** @description Invalid endpoint (SSRF denied), unresolvable token_ref, or invalid container_runtime. */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -4346,7 +4373,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Invalid endpoint or unresolvable token_ref. */
+            /** @description Invalid endpoint, unresolvable token_ref, or invalid container_runtime. */
             422: {
                 headers: {
                     [name: string]: unknown;

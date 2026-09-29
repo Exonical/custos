@@ -46,6 +46,22 @@ function stringMap(value: unknown): Record<string, string> | undefined {
   return Object.fromEntries(Object.entries(source).filter((entry): entry is [string, string] => typeof entry[1] === "string"));
 }
 
+function environmentMap(value: unknown): Record<string, string> | undefined {
+  const source = stringMap(value);
+  if (source) return source;
+  if (!Array.isArray(value)) return undefined;
+  const env: Record<string, string> = {};
+  for (const entry of value) {
+    if (typeof entry !== "string") continue;
+    const separator = entry.indexOf("=");
+    if (separator < 1) continue;
+    const name = entry.slice(0, separator);
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name) || Object.hasOwn(env, name)) continue;
+    env[name] = entry.slice(separator + 1);
+  }
+  return env;
+}
+
 function normalizeParameter(value: unknown): WorkflowParameter {
   const source = record(value) ?? {};
   const kind = source.type;
@@ -96,6 +112,10 @@ function normalizeResources(value: unknown): TaskResources | undefined {
     const string = text(source[key]);
     if (string !== undefined) resources[key] = string;
   }
+  const cpuAffinity = source.cpuAffinity;
+  if (cpuAffinity === "none" || cpuAffinity === "core" || cpuAffinity === "socket" || cpuAffinity === "numa") {
+    resources.cpuAffinity = cpuAffinity;
+  }
   const exclusive = source.exclusive;
   if (typeof exclusive === "boolean") resources.exclusive = exclusive;
   const licenses = strings(source.licenses);
@@ -131,10 +151,13 @@ function normalizeTask(value: unknown): Task | undefined {
   const name = text(source?.name);
   if (!source || !name) return undefined;
   const rawType = text(source.type);
+  const rawMultinode = record(source.multinode);
+  const multinodeImplementation = text(rawMultinode?.implementation);
+  const multinodeSrun = multinodeImplementation === "openmpi" || multinodeImplementation === "mpich";
   const task: Task = {
     name,
-    // Legacy `type: mpi` means srun; the other legacy aliases mean sbatch.
-    launch: source.launch === "srun" || source.launch === "sbatch" ? source.launch : rawType === "mpi" ? "srun" : "sbatch",
+    // Legacy mpi and MPI multinode implementations use srun by default.
+    launch: source.launch === "srun" || source.launch === "sbatch" ? source.launch : rawType === "mpi" || multinodeSrun ? "srun" : "sbatch",
     dependsOn: strings(source.dependsOn) ?? [],
   };
   const kind = specialKinds.find((candidate) => candidate === rawType);
@@ -150,12 +173,25 @@ function normalizeTask(value: unknown): Task | undefined {
   if (command) task.command = command;
   const args = strings(source.args);
   if (args) task.args = args;
-  const env = stringMap(source.env);
+  const env = environmentMap(source.env);
   if (env) task.env = env;
   const resources = normalizeResources(source.resources);
   if (resources) task.resources = resources;
   const placement = normalizePlacement(source.placement);
   if (placement) task.placement = placement;
+  const image = record(source.image);
+  const imageURI = text(image?.uri);
+  if (imageURI !== undefined) task.image = { uri: imageURI };
+  const multinode = record(source.multinode);
+  const multinodeNodes = finite(multinode?.nodes);
+  const implementation = text(multinode?.implementation);
+  if (multinode && multinodeNodes !== undefined && multinodeNodes >= 1 &&
+    (implementation === "openmpi" || implementation === "mpich" || implementation === "generic")) {
+    const normalized: NonNullable<Task["multinode"]> = { nodes: multinodeNodes, implementation };
+    const procsPerNode = finite(multinode.procsPerNode);
+    if (procsPerNode !== undefined && procsPerNode >= 1) normalized.procsPerNode = procsPerNode;
+    task.multinode = normalized;
+  }
   const fanOut = record(source.fanOut);
   if (fanOut) {
     const count = typeof fanOut.count === "string" ? fanOut.count : finite(fanOut.count);
@@ -184,11 +220,26 @@ function normalizeTask(value: unknown): Task | undefined {
     if (maxConcurrent !== undefined) normalized.maxConcurrent = maxConcurrent;
     task.array = normalized;
   }
-  const script = record(source.script);
-  const scriptRef = text(script?.ref);
-  const language = script?.language;
-  if (script && scriptRef && (language === "bash" || language === "sh" || language === "python" || language === "yaml" || language === "json")) {
-    task.script = { ref: scriptRef, language };
+  if (typeof source.script === "string") {
+    task.script = { inline: source.script };
+  } else {
+    const script = record(source.script);
+    if (script) {
+      const normalized: Exclude<NonNullable<Task["script"]>, string> = {};
+      const scriptRef = text(script.ref);
+      const inline = text(script.inline);
+      const language = script.language;
+      const validLanguage = language === "bash" || language === "sh" || language === "python" || language === "yaml" || language === "json";
+      if (scriptRef !== undefined && validLanguage) {
+        normalized.ref = scriptRef;
+        normalized.language = language;
+      }
+      if (inline !== undefined) {
+        normalized.inline = inline;
+        if (validLanguage) normalized.language = language;
+      }
+      if (normalized.ref !== undefined || normalized.inline !== undefined) task.script = normalized;
+    }
   }
   const software = Array.isArray(source.software) ? source.software.flatMap((item) => {
     const entry = record(item);
@@ -234,7 +285,7 @@ function normalizeDefaults(value: unknown): Defaults | undefined {
     const string = text(source[key]);
     if (string !== undefined) defaults[key] = string;
   }
-  const env = stringMap(source.env);
+  const env = environmentMap(source.env);
   if (env) defaults.env = env;
   return defaults;
 }

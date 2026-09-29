@@ -124,11 +124,11 @@ function makeProjects(startedAt) {
 function makeClusters() {
   return {
     acme: [
-      { id: clusterIds["cluster-e2e"], name: "cluster-e2e", display_name: "E2E Cluster", state: "active", slurm_version: "26.05.4", partitions: ["debug", "compute"], node_summary: { idle: 18, allocated: 6 }, defaults: {} },
-      { id: clusterIds.hopper, name: "hopper", display_name: "Hopper", state: "active", slurm_version: "26.05.4", partitions: ["gpu", "batch"], node_summary: { idle: 4, allocated: 12 }, defaults: {} },
+      { id: clusterIds["cluster-e2e"], name: "cluster-e2e", display_name: "E2E Cluster", state: "active", slurm_version: "26.05.4", partitions: ["debug", "compute"], node_summary: { idle: 18, allocated: 6 }, defaults: {}, container_runtime: { type: "apptainer" } },
+      { id: clusterIds.hopper, name: "hopper", display_name: "Hopper", state: "active", slurm_version: "26.05.4", partitions: ["gpu", "batch"], node_summary: { idle: 4, allocated: 12 }, defaults: {}, container_runtime: null },
     ],
     globex: [
-      { id: clusterIds.titan, name: "titan", display_name: "Titan", state: "degraded", slurm_version: "26.05.3", partitions: ["cpu", "long"], node_summary: { idle: 3, allocated: 21 }, defaults: {} },
+      { id: clusterIds.titan, name: "titan", display_name: "Titan", state: "degraded", slurm_version: "26.05.3", partitions: ["cpu", "long"], node_summary: { idle: 3, allocated: 21 }, defaults: {}, container_runtime: null },
     ],
   };
 }
@@ -706,7 +706,7 @@ function makeWorkflowExecutionFixtures(startedAt, users, workflows, versions, jo
           resources: { nodes: task.resources?.nodes ?? 1, tasks: task.resources?.tasks ?? 1, tasks_per_node: task.resources?.tasksPerNode ?? 1, cpus_per_task: task.resources?.cpusPerTask ?? task.resources?.cpu ?? 1, walltime_seconds: 3_600 },
           placement: { cluster: tenant === "acme" ? "cluster-e2e" : "titan", reason: "mock fixture" },
           environment: { user: task.env ?? {}, controlled: {}, runtime: {}, secret_refs: [] },
-          payload: { script_id: generatedUuid(taskNumber + 20_000), digest: digestValue, language: task.script?.language ?? "bash", interpreter: "/bin/bash" },
+          payload: { script_id: generatedUuid(taskNumber + 20_000), digest: digestValue, language: typeof task.script === "string" ? "bash" : task.script?.language ?? "bash", interpreter: "/bin/bash" },
           argv: (task.command ?? []).map((literal) => ({ literal })),
           inputs: [],
           outputs: [],

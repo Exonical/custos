@@ -14,6 +14,42 @@ describe("normalizeWorkflowSpec", () => {
     });
   });
 
+  it("normalizes optional image, multinode, affinity, and inline script fields", () => {
+    const result = normalizeWorkflowSpec({
+      metadata: { name: "mpi" },
+      spec: {
+        tasks: [
+          {
+            name: "openmpi",
+            image: { uri: "oras://docker.io/example/mpi.sif" },
+            script: "#!/bin/sh\necho mpi\n",
+            resources: { cpu: 4, cpuAffinity: "numa" },
+            multinode: { nodes: 1, implementation: "openmpi" },
+          },
+          {
+            name: "generic",
+            launch: "sbatch",
+            image: { uri: "oras://docker.io/example/generic.sif" },
+            script: { inline: "#!/bin/bash\necho generic\n" },
+            multinode: { nodes: 2, implementation: "generic", procsPerNode: 3 },
+          },
+        ],
+      },
+    });
+    expect(result.spec.tasks[0]).toMatchObject({
+      launch: "srun",
+      image: { uri: "oras://docker.io/example/mpi.sif" },
+      script: { inline: "#!/bin/sh\necho mpi\n" },
+      resources: { cpuAffinity: "numa" },
+      multinode: { nodes: 1, implementation: "openmpi" },
+    });
+    expect(result.spec.tasks[1]).toMatchObject({
+      launch: "sbatch",
+      script: { inline: "#!/bin/bash\necho generic\n" },
+      multinode: { nodes: 2, implementation: "generic", procsPerNode: 3 },
+    });
+  });
+
   it("preserves supported spec values and accepts number parameters defensively", () => {
     const result = normalizeWorkflowSpec({
       apiVersion: "custos.io/v1alpha1",

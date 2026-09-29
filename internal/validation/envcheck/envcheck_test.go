@@ -10,6 +10,7 @@ import (
 func TestClassify(t *testing.T) {
 	cases := map[string]envcheck.Class{
 		"SLURM_NTASKS":         envcheck.ClassControlled,
+		"MULTINODE_HOSTLIST":   envcheck.ClassControlled,
 		"SBATCH_FOO":           envcheck.ClassControlled,
 		"SRUN_X":               envcheck.ClassControlled,
 		"CUSTOS_EXECUTION_ID":  envcheck.ClassControlled,
@@ -68,6 +69,21 @@ func TestValidate(t *testing.T) {
 		if c[code] != want {
 			t.Errorf("missing %s/%s in %+v", code, want, ds)
 		}
+	}
+}
+
+func TestContainerEnvironment(t *testing.T) {
+	if envcheck.ClassifyForTask("PATH", nil, true) != envcheck.ClassUser ||
+		envcheck.ClassifyForTask("LD_LIBRARY_PATH", nil, true) != envcheck.ClassUser {
+		t.Fatal("PATH and LD_LIBRARY_PATH should be configurable for image tasks")
+	}
+	ds := envcheck.Validate(map[string]string{
+		"PATH": "/usr/bin", "LD_LIBRARY_PATH": "/opt/mpi/lib",
+		"APPTAINERENV_HOME": "/tmp", "PYXIS_IMAGE": "override",
+	}, envcheck.EnvPolicy{Container: true})
+	c := codes(ds)
+	if c["CUSTOS301"] != validation.SeverityError || c["CUSTOS303"] != "" {
+		t.Fatalf("container environment policy incorrect: %+v", ds)
 	}
 }
 

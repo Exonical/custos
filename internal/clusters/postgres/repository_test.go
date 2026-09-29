@@ -78,6 +78,9 @@ func TestClusterCRUD(t *testing.T) {
 	if byName.SoftwareModules == nil || len(byName.SoftwareModules) != 0 {
 		t.Fatalf("new cluster software_modules = %#v, want empty", byName.SoftwareModules)
 	}
+	if byName.ContainerRuntime != nil {
+		t.Fatalf("new cluster container_runtime = %#v, want null", byName.ContainerRuntime)
+	}
 	byID, err := repo.GetByNameOrID(ctx, c.ID.String())
 	if err != nil || byID.Name != "alpha" {
 		t.Fatalf("get by id: %v %+v", err, byID)
@@ -95,6 +98,11 @@ func TestClusterCRUD(t *testing.T) {
 	byName.SoftwareModules = []validation.SoftwareModule{
 		{Name: "openmpi", Version: "5.0", Modules: []string{"gcc/13.2.0", "openmpi/5.0.3"}},
 	}
+	byName.ContainerRuntime = &validation.ContainerRuntime{
+		Type: "apptainer", Binary: "apptainer",
+		AllowedImagePrefixes: []string{"oras://docker.io/anderbubble/"},
+		RequireDigest:        true, SlurmInContainer: true, MPIPlugin: "pmix",
+	}
 	if err := repo.Update(ctx, byName); err != nil {
 		t.Fatal(err)
 	}
@@ -105,6 +113,13 @@ func TestClusterCRUD(t *testing.T) {
 	if len(got.SoftwareModules) != 1 || got.SoftwareModules[0].Version != "5.0" ||
 		len(got.SoftwareModules[0].Modules) != 2 || got.SoftwareModules[0].Modules[1] != "openmpi/5.0.3" {
 		t.Fatalf("software_modules round-trip: %+v", got.SoftwareModules)
+	}
+	if got.ContainerRuntime == nil || got.ContainerRuntime.Type != "apptainer" ||
+		got.ContainerRuntime.Binary != "apptainer" || !got.ContainerRuntime.RequireDigest ||
+		!got.ContainerRuntime.SlurmInContainer || got.ContainerRuntime.MPIPlugin != "pmix" ||
+		len(got.ContainerRuntime.AllowedImagePrefixes) != 1 ||
+		got.ContainerRuntime.AllowedImagePrefixes[0] != "oras://docker.io/anderbubble/" {
+		t.Fatalf("container_runtime round-trip: %+v", got.ContainerRuntime)
 	}
 	// stale version -> conflict
 	stale := got

@@ -110,7 +110,7 @@ field controls only how the payload is started inside that allocation:
 | launch | Wrapper behavior |
 | --- | --- |
 | omitted or `sbatch` | Run the executable once in the batch script. Resource counts describe the allocation; they do not repeat the executable. |
-| `srun` | Start the executable once under `srun`; emit `--ntasks=N` when `resources.tasks` is positive, otherwise inherit the allocation (for example nodes × tasksPerNode). |
+| `srun` | Start the executable once under `srun`; ordinary tasks emit `--ntasks=N` when `resources.tasks` is positive, otherwise inherit the allocation. OpenMPI/MPICH multinode steps use `--mpi=<plugin>` and inherit their resolved rank allocation. |
 
 `type: batch`, `mpi`, `gpu`, and `array` remain accepted as deprecated
 compatibility aliases for stored specs; legacy `type: mpi` defaults to
@@ -129,19 +129,90 @@ block is also valid on any Slurm-backed non-condition task.
 | `condition` | no Slurm job; engine evaluates expression | for `when` on downstream tasks; cannot specify `launch` or `array` |
 
 Every Slurm-backed task carries either `command` (argv executed directly by
-the wrapper) or `script` (`{ref: sha256:…, language}` pointing at a
-content-addressed payload) plus optional `args`. Scripts are edited in the
-UI, validated, and referenced by digest so the immutable version pins the
-exact bytes; scheduler settings live only in `resources`/`placement`/
-`defaults`, never in the payload (`docs/script-validation.md`). `shell`
+the wrapper) or `script` (a stored `{ref, language}` or inline source) plus
+optional `args`. Scripts are validated and pinned by content digest; inline
+source also remains in the immutable spec (`docs/script-validation.md`).
+Scheduler settings live only in `resources`/`placement`/`defaults`, never in
+the payload. `shell`
 differs from `batch`+`script` only in that its payload may be any shell
 text including constructs the advisory scanners flag; it is the escape
 hatch, gated accordingly.
 
+### Images, inline scripts, and multinode
+
+`image` is optional per task; tasks without it keep the ordinary host
+execution path. Image URIs are restricted to safe `docker://`, `oras://`, or
+absolute-path references and may be digest-pinned with `@sha256:<hex>`. The
+platform cluster's `container_runtime` selects `apptainer` or `pyxis`, an
+optional image-prefix allow-list, digest requirement, MPI plugin, and whether
+a compatible Slurm client is available inside the image. No site bind paths
+are configured; both runtimes mount only `$CUSTOS_JOB_DIR`.
+
+`script` accepts a content-addressed `{ref, language}` object, an inline
+`{inline: | ...}` object, or inline text as shorthand. Inline source remains
+in the immutable spec; create/update stores the same bytes content-addressed,
+and admission stores/verifies them again before freezing the payload digest.
+The effective language uses an explicit `language` when supplied, otherwise
+it is inferred from an inline shebang (`sh`, `bash`, or `python`) without
+rewriting the spec.
+
+```yaml
+- name: mpi-hello-world
+  env: { PATH: /usr/lib64/openmpi/bin:/usr/local/bin:/usr/bin:/bin }
+  image: { uri: oras://docker.io/anderbubble/openmpi-hello-world.sif }
+  script:
+    inline: |
+      #!/bin/sh
+      mpi_hello_world
+  resources: { cpu: 4, cpuAffinity: numa, memory: 1GB, walltime: "00:05:00" }
+  multinode: { nodes: 1, implementation: openmpi }
+
+- name: generic-multinode
+  image:
+    uri: oras://docker.io/anderbubble/openmpi-hello-world.sif@sha256:dc92ea0c541a8d9f30b4d6b78bfc57bd2fe9806689d93ece6069c6ed6519fa9a
+  env: { PATH: /usr/lib64/openmpi/bin:/usr/local/bin:/usr/bin:/bin }
+  command: [mpirun, -H, $MULTINODE_HOSTLIST, --mca, plm_rsh_agent, $MULTINODE_SSH_WRAPPER, -np, $MULTINODE_TOTAL_SLOTS, /usr/lib64/openmpi/bin/mpi_hello_world]
+  resources: { cpu: 2, cpuAffinity: numa, memory: 1GB, walltime: "00:05:00" }
+  multinode: { nodes: 2, implementation: generic }
+```
+
+`env` accepts either a string map or a list of `NAME=VALUE` strings. Lists
+split on the first `=` and reject invalid or duplicate names; canonical specs
+use the map form. For image tasks, user env is passed into the container via
+`/usr/bin/env KEY=VALUE` inside either runtime, not into the Slurm submission
+environment or the host environment. Images must contain `/usr/bin/env`.
+Pyxis `--container-env` carries only runtime, secret, and `MULTINODE_*` names
+whose host-provided values override image defaults. Image tasks may set `PATH`
+and `LD_LIBRARY_PATH`; Custos, Slurm, container-runtime, and generated names
+stay reserved.
+
+`resources.cpuAffinity` is `none`, `core`, `socket`, or `numa`; it maps to
+`srun --cpu-bind=cores|sockets|ldoms`. A batch wrapper without a final srun
+exports controlled `SLURM_CPU_BIND` so nested srun steps inherit the choice.
+For multinode tasks, `resources.cpu` means CPUs per node (default 1) and
+`resources.memory` remains per node. OpenMPI and MPICH default `procsPerNode`
+to `cpu`, request `nodes × procsPerNode` ranks, and use `srun --mpi=<plugin>`;
+`cpusPerTask` resolves to `cpu / procsPerNode`, which must divide evenly.
+Generic multinode runs its command once, allocates one Slurm task per node,
+and uses `procsPerNode` (default `cpu`) as its slot count. It exports
+`MULTINODE_HOSTLIST`, `MULTINODE_HOSTLIST_NOSLOTS`, `MULTINODE_TOTAL_SLOTS`,
+`MULTINODE_NODE_IP`, `MULTINODE_SSH_WRAPPER`, and `MULTINODE_RSH_WRAPPER`;
+the remote wrapper uses `srun --overlap` rather than SSH. Whole-element
+`{{ multinode.* }}` or `$MULTINODE_*` argv values are accepted only on a
+generic multinode task; embedded values remain literal. Generic image tasks
+require a cluster with `slurm_in_container` enabled and an image containing a
+compatible Slurm client.
+
+A multinode block conflicts with arrays and explicit resource `nodes`,
+`tasks`, or `tasksPerNode`; an explicit launch must agree with the selected
+implementation. Task-level sbatch export returns `EXPORT_UNSUPPORTED` for
+images and multinode configurations because the runtime and launcher context
+are cluster-specific.
+
 ### Templating
 
 Mustache-like `{{ }}` with a **restricted expression language**: dotted
-lookups in `parameters`, `run`, `task`, `item`, `array`, `tasks.<name>.*`,
+lookups in `parameters`, `run`, `task`, `item`, `array`, `multinode`, `tasks.<name>.*`,
 `secrets.<handle>` (only as the entire env value and only for `use: env`),
 plus comparison/boolean operators and integer arithmetic for `when`
 and `fanOut.count`. No function calls, no loops, no string-to-code. All
@@ -151,16 +222,24 @@ becomes the allow-listed runtime reference `"$SLURM_ARRAY_TASK_ID"` in
 the generated wrapper, so it is legal only on a task with an `array`
 spec and as the **entire** argv element or env value (never embedded in
 literal text or arithmetic); static validation rejects it otherwise
-(`REF_ARRAY_RUNTIME_WHOLE`).
+(`REF_ARRAY_RUNTIME_WHOLE`). `{{ multinode.hostlist }}`,
+`hostlistNoSlots`, `totalSlots`, `nodeIp`, `sshWrapper`, and `rshWrapper` are
+runtime values only as whole command/args elements on generic multinode tasks
+(`MULTINODE_REF`). The equivalent whole argv elements `$MULTINODE_HOSTLIST`
+and `${MULTINODE_HOSTLIST}` are accepted for Fuzzball compatibility; embedded
+forms remain literals.
 Implementation: hand-written lexer/parser in `internal/workflowspec/expr`
 (~500 lines) rather than pulling in a general template engine; the small
 grammar is a security feature.
 
 ### Resource units
 
-`cpu: 4`, `memory: 8Gi|8G|8192Mi`, `walltime: 30m|4h|1-12:00:00`,
-`gpu: {count, type?}`, `nodes`, `tasksPerNode`, `cpusPerTask`,
-`memoryPerNode`. Parsed with `k8s.io/apimachinery/pkg/api/resource`-compatible
+`cpu: 4`, `memory: 8Gi|8G|8192Mi|1GB|512MiB`,
+`walltime: 30m|4h|1-12:00:00`, `gpu: {count, type?}`, `nodes`,
+`tasksPerNode`, `cpusPerTask`, `memoryPerNode`. Decimal `KB` through `EB`
+units scale by 1000; `KiB` through `EiB` scale by 1024; suffix matching is
+case-insensitive. Memory resolves to per-node MiB, including for multinode
+requests. Parsed with `k8s.io/apimachinery/pkg/api/resource`-compatible
 semantics reimplemented locally (avoid importing apimachinery for one type).
 
 ## Validation (backend, always)

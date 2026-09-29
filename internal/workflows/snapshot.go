@@ -32,6 +32,7 @@ func ClusterSnapshot(c *clusters.Cluster) validation.ClusterSnapshot {
 		return snap
 	}
 	snap.Software = c.SoftwareModules
+	snap.ContainerRuntime = c.ContainerRuntime
 	if c.Capabilities == nil {
 		return snap
 	}
@@ -59,27 +60,37 @@ func TaskSnapshot(ctx context.Context, scope tenants.Scope,
 		return validation.Input{}, nil, apperr.New(apperr.Invalid,
 			"TASK_NO_SCRIPT", "task has no script payload")
 	}
-	digest, err := validation.ParseDigest(task.Script.Digest)
-	if err != nil {
-		return validation.Input{}, nil, apperr.New(apperr.Invalid,
-			"SCRIPT_REF", "script ref must be sha256:<hex>")
-	}
-	body, err := scripts.Get(ctx, scope, tenantID, digest)
-	if err != nil {
-		if apperr.Is(err, apperr.NotFound) {
-			return validation.Input{}, nil, apperr.New(
-				apperr.Validation, "SCRIPT_UNKNOWN",
-				"script digest is not stored in this tenant")
+	var (
+		digest validation.Digest
+		body   []byte
+		err    error
+	)
+	if task.Script.HasInline() {
+		body = []byte(task.Script.Inline)
+		digest = validation.DigestOf(body)
+	} else {
+		digest, err = validation.ParseDigest(task.Script.Digest)
+		if err != nil {
+			return validation.Input{}, nil, apperr.New(apperr.Invalid,
+				"SCRIPT_REF", "script ref must be sha256:<hex>")
 		}
-		return validation.Input{}, nil, err
+		body, err = scripts.Get(ctx, scope, tenantID, digest)
+		if err != nil {
+			if apperr.Is(err, apperr.NotFound) {
+				return validation.Input{}, nil, apperr.New(
+					apperr.Validation, "SCRIPT_UNKNOWN",
+					"script digest is not stored in this tenant")
+			}
+			return validation.Input{}, nil, err
+		}
 	}
 	var res workflowspec.Resources
-	if !task.Resources.Empty() {
+	if !task.Resources.Empty() || task.Multinode != nil {
 		var resErrs []workflowspec.FieldError
-		res, resErrs = task.Resources.Resolve("")
+		res, resErrs = task.ResolveResources("resources")
 		if len(resErrs) > 0 {
 			return validation.Input{}, nil, apperr.New(apperr.Validation,
-				"RESOURCES_INVALID", resErrs[0].Message)
+				resErrs[0].Code, resErrs[0].Message)
 		}
 	}
 	env := map[string]string{}
@@ -114,15 +125,14 @@ func TaskSnapshot(ctx context.Context, scope tenants.Scope,
 		}
 		cluster = &c
 		s := ClusterSnapshot(cluster)
+		if task.Image == nil {
+			s.ContainerRuntime = nil
+		}
 		snap = &s
 	}
-	lang := task.Script.Language
-	if lang == "" {
-		lang = workflowspec.LanguageBash
-	}
 	return validation.Input{
-		Language: lang, Script: body, Digest: digest,
+		Language: task.Script.EffectiveLanguage(), Script: body, Digest: digest,
 		Resources: res, Environment: env, Software: task.Software,
-		Cluster: snap,
+		Cluster: snap, Container: task.Image != nil,
 	}, cluster, nil
 }

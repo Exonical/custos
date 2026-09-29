@@ -222,7 +222,7 @@ GET    /api/v1/tenants/{tenant}/audit-events
 GET    /api/v1/clusters                             platform registry list
 POST   /api/v1/clusters                             register cluster (SSRF-vetted base_url, token_ref)
 GET    /api/v1/clusters/{cluster}                   platform detail
-PATCH  /api/v1/clusters/{cluster}                   update (optimistic version; includes policy_management=inherit|enforce|report, policy_parent_account and software_modules)
+PATCH  /api/v1/clusters/{cluster}                   update (optimistic version; includes policy_management, software_modules and container_runtime)
 POST   /api/v1/clusters/{cluster}/disable           disable (stops the sync chain)
 POST   /api/v1/clusters/{cluster}/test-connection   open + ping + capabilities (no state change)
 GET    /api/v1/clusters/{cluster}/accounting        watermark/error/unattributed collector status
@@ -253,3 +253,11 @@ environment modules, for example
 without `version` matches any requested version; an exact `version` entry
 wins. Admission denies unmatched requirements with `SOFTWARE_UNAVAILABLE`
 (ADR-023).
+
+Platform cluster create/get/patch accepts and returns `container_runtime`;
+`null` means that image tasks are unavailable on the cluster, and patching it
+with `null` clears the configuration. The object selects `type: apptainer` or
+`pyxis`, may pin `allowed_image_prefixes` and `require_digest`, and sets
+`slurm_in_container` plus `mpi_plugin`. Apptainer's `binary` defaults to
+`apptainer`. Tenant-visible cluster summaries expose only the runtime type,
+not binaries, prefixes, or other platform configuration.

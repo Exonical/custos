@@ -13,7 +13,9 @@ invariant that binds it all together.
 Enforced three ways:
 
 1. **By types.** The admission pipeline that produces `ExecutionSpec` does
-   not receive script bodies — only `ScriptRef{ID, Digest, Language}`. The
+   not carry script bodies forward — it freezes only the content-addressed
+   `PayloadRef{Digest, Language}`. Inline source is converted to a digest for
+   validation/submission while remaining in the immutable workflow spec. The
    Slurm adapter's `JobSubmission` is built from `ExecutionSpec` alone. There
    is no code path in which a string from a script reaches a scheduler field.
 2. **By validation.** Scripts containing policy-controlled `#SBATCH`
@@ -203,10 +205,12 @@ at write time by comparing effective severities).
   UTF-8 are rejected, nothing is normalized (CRLF is preserved and
   produces a `shsyntax` WARNING `CUSTOS010` because bash will choke on
   `\r`; the author fixes it).
-- Tasks reference scripts by digest: `script: { ref: "sha256:...", language: bash }`
-  inside the immutable `WorkflowVersion.spec`. The spec hash therefore
-  covers every script digest. Publishing requires a current, valid
-  `ScriptValidation` for every script-bearing task.
+- A script may reference a stored payload (`script: {ref: "sha256:...", language: bash}`)
+  or keep inline text (`script: {inline: "..."}`) in the immutable spec.
+  Create/update stores inline bytes content-addressed without rewriting the
+  spec; admission repeats the idempotent put and verifies the digest. Inline
+  payloads use the same limits and validation pipeline. Publishing requires a
+  current, valid `ScriptValidation` for every script-bearing task.
 - At execution, the wrapper embeds the digest and verifies the payload on
   the compute node before executing it (see wrapper). Integrity is checked
   at three points: publish (validation ↔ digest), admission (spec ↔
@@ -393,8 +397,8 @@ the preview from this response and nothing else.
 `JobDescMsg` fields; the `script` field is the wrapper below. The wrapper
 is generated from a Go `text/template` whose data struct contains only
 admission-validated values. User values are single-quoted, while launcher
-and optional container prefixes are composed from individually validated
-`SafeToken` words before the payload/argv; payload bytes are never
+and optional container prefixes are assembled from safe launcher tokens or
+Custos-prequoted shell words before the payload/argv; payload bytes are never
 interpolated as text.
 
 ```bash
@@ -412,11 +416,14 @@ trap 'rm -rf "$CUSTOS_JOB_DIR"' EXIT
 {{ end }}{{ range .Env }}export {{ .Name }}={{ q .Value }}
 {{ end }}
 # --- payload (base64, verified) ---
-base64 -d > "$CUSTOS_JOB_DIR/payload" <<'CUSTOS_PAYLOAD_{{ .Nonce }}'
+base64 -d > "$CUSTOS_JOB_DIR/payload.in" <<'CUSTOS_PAYLOAD_{{ .Nonce }}'
 {{ .PayloadBase64 }}
 CUSTOS_PAYLOAD_{{ .Nonce }}
-echo {{ q .PayloadDigest }}"  $CUSTOS_JOB_DIR/payload" | sha256sum -c --quiet
-chmod 0500 "$CUSTOS_JOB_DIR/payload"
+echo {{ q .PayloadDigest }}"  $CUSTOS_JOB_DIR/payload.in" | sha256sum -c --quiet
+{{ if .SrunLaunch }}chmod 0500 "$CUSTOS_JOB_DIR/payload.in"
+srun --ntasks="$SLURM_JOB_NUM_NODES" --ntasks-per-node=1 mkdir -p -m 0700 "$CUSTOS_JOB_DIR"
+sbcast --force --preserve "$CUSTOS_JOB_DIR/payload.in" "$CUSTOS_JOB_DIR/payload"{{ else }}mv "$CUSTOS_JOB_DIR/payload.in" "$CUSTOS_JOB_DIR/payload"
+chmod 0500 "$CUSTOS_JOB_DIR/payload"{{ end }}
 cd {{ q .WorkingDir }}
 {{ range .LaunchWords }}{{ . }} {{ end }}{{ range .ContainerWords }}{{ . }} {{ end }}{{ if .HasPayload }}{{ q .Interpreter }} "$CUSTOS_JOB_DIR/payload"{{ end }}{{ range .Argv }} {{ . }}{{ end }}
 ```
@@ -425,11 +432,14 @@ The launch line deliberately does not `exec`: the shell must survive the
 payload so the EXIT trap removes `$CUSTOS_JOB_DIR` (including the payload
 copy), and `set -e` propagates the payload's exit status.
 
-The launch line is assembled from `ExecutionSpec.Launch`: `srun` with
-`--ntasks=N` when a positive task count is set, or plain `srun` to inherit
-an allocation such as nodes × tasksPerNode. New specs and ad-hoc jobs persist
-`sbatch` or `srun`; only already-frozen legacy specs with an empty launch
-field retain the old `tasks > 1` srun fallback.
+The launcher is assembled from the frozen `ExecutionSpec`. Ordinary srun
+launches include `--ntasks=N` when the task count is positive; MPI multinode
+launches add `--mpi=<plugin>` and inherit the allocated ranks. A Pyxis image
+forces a single-task srun when the workflow launch is sbatch. Srun payloads are
+written as `payload.in`, verified, then copied with `sbcast` to each allocated
+node because `$CUSTOS_JOB_DIR` may be node-local. New specs and ad-hoc jobs
+persist `sbatch` or `srun`; only already-frozen legacy specs with an empty
+launch field retain the old `tasks > 1` srun fallback.
 
 Properties:
 
@@ -460,11 +470,20 @@ own process environment is never consulted. Classes:
 
 | Class | Source | Names | Rule |
 | --- | --- | --- | --- |
-| Controlled | Custos | `CUSTOS_*`, `SLURM_*`, `SBATCH_*`, `SRUN_*`, `SALLOC_*`, `PATH`(base), `HOME`, `USER`, `TMPDIR` | set by Custos/Slurm; user values rejected `CUSTOS301` |
+| Controlled | Custos | `CUSTOS_*`, `SLURM_*`, `SBATCH_*`, `SRUN_*`, `SALLOC_*`, `MULTINODE_*`, `APPTAINER*`, `SINGULARITY*`, `PYXIS_*`, `ENROOT_*`, `PATH` (host), `HOME`, `USER`, `TMPDIR` | set by Custos/Slurm/runtime; user values rejected `CUSTOS301` |
 | Generated | Software catalog | vars from `ResolvedSoftware` (e.g. `OMPI_MCA_*` defaults) | user cannot override `CUSTOS302` |
 | Secret-injected | `SecretReference` | declared `secrets.<handle>` using env or wrapped-token mode; only reference UUID/name/mode/handle enter `ExecutionSpec`; values are resolved directly into the scheduler request | |
 | Filtered | policy | default-denied names; tenant policy may allow specific ones: `LD_PRELOAD`, `LD_AUDIT`, `LD_LIBRARY_PATH`, `LD_DEBUG*`, `GLIBC_TUNABLES`, `BASH_ENV`, `ENV`, `PROMPT_COMMAND`, `SHELLOPTS`, `PYTHONSTARTUP`, `PYTHONHOME`, `PERL5OPT`, `RUBYOPT`, `NODE_OPTIONS`, `JAVA_TOOL_OPTIONS`, `*_PROXY`/`*_proxy`, `CUDA_VISIBLE_DEVICES`, `ROCR_VISIBLE_DEVICES`, `OMPI_*`, `PMIX_*`, `I_MPI_*`, `UCX_*`, `NCCL_*` | `CUSTOS303 variable is filtered by policy` |
 | User-configurable | task `env` | everything else | name `^[A-Za-z_][A-Za-z0-9_]*$`, ≤ 128 chars; value ≤ 32 KiB, no NUL/CR/LF; total ≤ 256 KiB |
+
+For an image task only, `PATH` and `LD_LIBRARY_PATH` are reclassified as
+user-configurable; other controlled and filtered names remain protected.
+Apptainer and Pyxis pass user values through `/usr/bin/env KEY=VALUE` inside
+the container, so images must include `/usr/bin/env`. Pyxis `--container-env`
+is reserved for runtime, secret, and `MULTINODE_*` names whose host-provided
+values must override image defaults. In both cases user environment values are
+omitted from `JobSubmission.Environment` and never exported on the host;
+controlled, runtime, and secret values remain host-side.
 
 Rationale for filtering MPI/CUDA/NCCL vars *by default*: they can silently
 change binding, transport and device visibility across a shared node; sites

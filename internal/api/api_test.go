@@ -307,7 +307,7 @@ func TestWorkflowTemplatesListAndGet(t *testing.T) {
 	var list struct {
 		Items []map[string]any `json:"items"`
 	}
-	if code := get("/api/v1/workflow-templates", &list); code != 200 || len(list.Items) != 8 {
+	if code := get("/api/v1/workflow-templates", &list); code != 200 || len(list.Items) != 11 {
 		t.Fatalf("list -> %d with %d items", code, len(list.Items))
 	}
 	if _, ok := list.Items[0]["spec"]; ok {

@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/Exonical/custos/internal/validation"
 	"github.com/Exonical/custos/internal/workflowspec"
 	"github.com/Exonical/custos/internal/workflowspec/expr"
 )
@@ -26,6 +27,37 @@ func fe(path, code, msg string) FieldError {
 
 var nameRe = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`)
 var envNameRe = regexp.MustCompile(`^[A-Z_][A-Z0-9_]*$`)
+var imageURIRe = regexp.MustCompile(`^(?:(?:docker|oras)://[A-Za-z0-9._/:@+-]+|/[A-Za-z0-9._/+-]+)$`)
+var imageDigestRe = regexp.MustCompile(`@sha256:[0-9a-f]{64}$`)
+var multinodeDollarRefRe = regexp.MustCompile(`\$\{?(MULTINODE_HOSTLIST|MULTINODE_HOSTLIST_NOSLOTS|MULTINODE_TOTAL_SLOTS|MULTINODE_NODE_IP|MULTINODE_SSH_WRAPPER|MULTINODE_RSH_WRAPPER)\}?`)
+
+const maxMultinodeNodes = 10000
+
+func validImageURI(uri string) bool {
+	if len(uri) == 0 || len(uri) > 512 || !imageURIRe.MatchString(uri) {
+		return false
+	}
+	if strings.Contains(uri, "@") && (strings.Count(uri, "@") != 1 || !imageDigestRe.MatchString(uri)) {
+		return false
+	}
+	for _, segment := range strings.Split(uri, "/") {
+		if segment == ".." {
+			return false
+		}
+	}
+	return true
+}
+
+func multinodeImplementation(task workflowspec.Task) string {
+	if task.Multinode == nil {
+		return ""
+	}
+	return task.Multinode.EffectiveImplementation()
+}
+
+func genericMultinode(task workflowspec.Task) bool {
+	return task.Multinode != nil && multinodeImplementation(task) == "generic"
+}
 
 // Task types of docs/workflows.md §Task types.
 const (
@@ -294,6 +326,97 @@ func slurmBacked(t workflowspec.Task) bool {
 		ty == TypeArray || ty == TypeShell
 }
 
+func checkTaskFeatures(t workflowspec.Task, base string, ty string) []FieldError {
+	var errs []FieldError
+	if t.Script != nil {
+		hasRef := t.Script.Digest != ""
+		hasInline := t.Script.HasInline()
+		if hasRef == hasInline {
+			errs = append(errs, fe(base+".script", "SCRIPT_SOURCE", "script must specify exactly one of ref or inline"))
+		}
+		if hasRef {
+			if _, err := validation.ParseDigest(t.Script.Digest); err != nil {
+				errs = append(errs, fe(base+".script.ref", "SCRIPT_REF", "script ref must be sha256:<64 lowercase hex>"))
+			}
+			if t.Script.Language == "" {
+				errs = append(errs, fe(base+".script.language", "SCRIPT_LANGUAGE_INVALID", "referenced scripts require a language"))
+			}
+		}
+		if hasInline {
+			if t.Script.Inline == "" {
+				errs = append(errs, fe(base+".script", "SCRIPT_SOURCE", "inline script cannot be empty"))
+			}
+			if len([]byte(t.Script.Inline)) > validation.DefaultLimits.MaxScriptBytes {
+				errs = append(errs, fe(base+".script.inline", "SCRIPT_INLINE_TOO_LARGE", "inline script exceeds the stored script size limit"))
+			}
+			language := t.Script.EffectiveLanguage()
+			if language != workflowspec.LanguageBash && language != workflowspec.LanguageSh && language != workflowspec.LanguagePython {
+				errs = append(errs, fe(base+".script.language", "SCRIPT_LANGUAGE_INVALID", "inline scripts support bash, sh, or python"))
+			}
+		}
+	}
+	if t.Image != nil {
+		if !slurmBacked(t) || ty == TypeCondition {
+			errs = append(errs, fe(base+".image", "IMAGE_TASK_KIND", "image is only valid on Slurm-backed tasks"))
+		}
+		if !validImageURI(t.Image.URI) {
+			errs = append(errs, fe(base+".image.uri", "IMAGE_URI_INVALID", "image URI must be a safe docker://, oras://, or absolute path reference"))
+		}
+	}
+	if t.Multinode != nil {
+		m := t.Multinode
+		if !slurmBacked(t) || ty == TypeCondition {
+			errs = append(errs, fe(base+".multinode", "MULTINODE_TASK_KIND", "multinode is only valid on Slurm-backed tasks"))
+		}
+		if m.Nodes < 1 || m.Nodes > maxMultinodeNodes {
+			errs = append(errs, fe(base+".multinode.nodes", "MULTINODE_INVALID", "nodes must be between 1 and 10000"))
+		}
+		implementation := m.EffectiveImplementation()
+		if m.Implementation != "openmpi" && m.Implementation != "mpich" && m.Implementation != "generic" {
+			errs = append(errs, fe(base+".multinode.implementation", "MULTINODE_INVALID", "implementation must be openmpi, mpich, or generic"))
+		}
+		if m.ProcsPerNode < 0 || (m.HasProcsPerNode() && m.ProcsPerNode < 1) {
+			errs = append(errs, fe(base+".multinode.procsPerNode", "MULTINODE_INVALID", "procsPerNode must be >= 1 when set"))
+		}
+		if t.Array != nil || ty == TypeArray || t.Resources.Nodes != 0 ||
+			t.Resources.Tasks != 0 || t.Resources.TasksPerNode != 0 ||
+			t.Resources.CPUsPerTask != 0 {
+			errs = append(errs, fe(base+".multinode", "MULTINODE_CONFLICT", "multinode conflicts with array or explicit nodes/tasks/tasksPerNode/cpusPerTask resources"))
+		}
+		wantLaunch := workflowspec.LaunchSbatch
+		if implementation == "openmpi" || implementation == "mpich" {
+			wantLaunch = workflowspec.LaunchSrun
+		}
+		if t.Launch != "" && (t.Launch == workflowspec.LaunchSbatch || t.Launch == workflowspec.LaunchSrun) && t.Launch != wantLaunch {
+			errs = append(errs, fe(base+".launch", "MULTINODE_LAUNCH", "explicit launch conflicts with multinode implementation"))
+		}
+		cores := t.Resources.CPU
+		if cores <= 0 {
+			cores = 1
+		}
+		procs := m.ProcsPerNode
+		if procs <= 0 {
+			procs = cores
+		}
+		if (implementation == "openmpi" || implementation == "mpich") &&
+			(procs > cores || cores%procs != 0) {
+			errs = append(errs, fe(base+".multinode.procsPerNode", "MULTINODE_CPU_DIVISIBLE", "CPU cores per node must divide evenly by procsPerNode"))
+		}
+		maxInt := int(^uint(0) >> 1)
+		if procs > 0 && m.Nodes > maxInt/procs {
+			errs = append(errs, fe(base+".multinode", "MULTINODE_INVALID", "total multinode slot count overflows"))
+		}
+	}
+	if affinity := t.Resources.CPUAffinity; affinity != "" {
+		if affinity != "none" && affinity != "core" && affinity != "socket" && affinity != "numa" {
+			errs = append(errs, fe(base+".resources.cpuAffinity", "CPU_AFFINITY_INVALID", "cpuAffinity must be none, core, socket, or numa"))
+		} else if !slurmBacked(t) {
+			errs = append(errs, fe(base+".resources.cpuAffinity", "CPU_AFFINITY_TASK_KIND", "cpuAffinity is only valid on Slurm-backed tasks"))
+		}
+	}
+	return errs
+}
+
 func checkShapes(w workflowspec.Workflow) []FieldError {
 	var errs []FieldError
 	for i, t := range w.Spec.Tasks {
@@ -309,6 +432,7 @@ func checkShapes(w workflowspec.Workflow) []FieldError {
 			errs = append(errs, fe(base+".launch", "LAUNCH_INVALID",
 				"condition tasks cannot select a Slurm launch mode"))
 		}
+		errs = append(errs, checkTaskFeatures(t, base, ty)...)
 		switch {
 		case !taskTypes[ty]:
 			errs = append(errs, fe(base+".type",
@@ -327,8 +451,8 @@ func checkShapes(w workflowspec.Workflow) []FieldError {
 					"CONDITION_WHEN_REQUIRED",
 					"condition tasks require a when expression"))
 			}
-			if len(t.Command) > 0 || t.Script != nil ||
-				!emptyResources(t.Resources) {
+			if len(t.Command) > 0 || t.Script != nil || t.Image != nil ||
+				t.Multinode != nil || !emptyResources(t.Resources) {
 				errs = append(errs, fe(base,
 					"CONDITION_HAS_WORKLOAD",
 					"condition tasks run no Slurm job: no command, script or resources"))
@@ -387,12 +511,13 @@ func checkShapes(w workflowspec.Workflow) []FieldError {
 // taskScope describes where a template/expression lives, which bounds
 // the namespaces its refs may use.
 type taskScope struct {
-	task       workflowspec.Task
-	declared   map[string]bool // task names
-	params     map[string]bool // parameter names
-	depClosure map[string]bool // transitive deps of this task
-	secrets    map[string]workflowspec.SecretUse
-	inEnv      bool // secret refs only inside env values
+	task           workflowspec.Task
+	declared       map[string]bool // task names
+	params         map[string]bool // parameter names
+	depClosure     map[string]bool // transitive deps of this task
+	secrets        map[string]workflowspec.SecretUse
+	inEnv          bool // secret refs only inside env values
+	allowMultinode bool
 }
 
 func checkExprs(w workflowspec.Workflow, _ map[string]bool) []FieldError {
@@ -464,6 +589,22 @@ func checkExprs(w workflowspec.Workflow, _ map[string]bool) []FieldError {
 			p, ok := e.SoleRef()
 			return ok && p.String() == "array.taskId"
 		}
+		hasMultinodeRef := func(refs []expr.Path) bool {
+			for _, ref := range refs {
+				if len(ref) > 0 && ref[0] == "multinode" {
+					return true
+				}
+			}
+			return false
+		}
+		wholeMultinodeRef := func(tpl *expr.Template) bool {
+			e, ok := tpl.SoleExpr()
+			if !ok {
+				return false
+			}
+			p, ok := e.SoleRef()
+			return ok && len(p) == 2 && p[0] == "multinode"
+		}
 		parse := func(src, path string, bare, allowRuntime bool) {
 			if bare {
 				e, err := expr.BareExpr(src)
@@ -490,6 +631,9 @@ func checkExprs(w workflowspec.Workflow, _ map[string]bool) []FieldError {
 				return
 			}
 			refs := tpl.Refs()
+			if hasMultinodeRef(refs) && allowRuntime && genericMultinode(t) && !wholeMultinodeRef(tpl) {
+				errs = append(errs, fe(path, "MULTINODE_REF", "multinode runtime references must be the whole command or args element"))
+			}
 			if !allowRuntime && hasArrayTaskID(refs) ||
 				!arrayRuntimeOK(tpl, refs) {
 				errs = append(errs, fe(path,
@@ -500,7 +644,9 @@ func checkExprs(w workflowspec.Workflow, _ map[string]bool) []FieldError {
 				errs = append(errs, fe(path, "REF_SECRET_WHOLE",
 					"secrets.<handle> must be the whole env value"))
 			}
-			checkRefs(refs, sc, path)
+			scope := sc
+			scope.allowMultinode = allowRuntime && genericMultinode(t)
+			checkRefs(refs, scope, path)
 		}
 		for j, c := range t.Command {
 			parse(c, fmt.Sprintf("%s.command[%d]", base, j), false, true)
@@ -554,9 +700,37 @@ func checkExprs(w workflowspec.Workflow, _ map[string]bool) []FieldError {
 		if t.Stderr != "" {
 			parse(t.Stderr, base+".stderr", false, false)
 		}
+		if !genericMultinode(t) {
+			for j, value := range t.Command {
+				if multinodeDollarRefRe.MatchString(value) {
+					errs = append(errs, fe(fmt.Sprintf("%s.command[%d]", base, j), "MULTINODE_REF", "multinode runtime variables are only valid on generic multinode tasks"))
+				}
+			}
+			for j, value := range t.Args {
+				if multinodeDollarRefRe.MatchString(value) {
+					errs = append(errs, fe(fmt.Sprintf("%s.args[%d]", base, j), "MULTINODE_REF", "multinode runtime variables are only valid on generic multinode tasks"))
+				}
+			}
+			for name, value := range t.Env {
+				if multinodeDollarRefRe.MatchString(value) {
+					errs = append(errs, fe(base+".env."+name, "MULTINODE_REF", "multinode runtime variables are only valid on generic multinode tasks"))
+				}
+			}
+			for _, field := range []struct{ name, value string }{
+				{"workingDirectory", t.WorkingDirectory}, {"stdout", t.Stdout},
+				{"stderr", t.Stderr}, {"when", t.When},
+			} {
+				if multinodeDollarRefRe.MatchString(field.value) {
+					errs = append(errs, fe(base+"."+field.name, "MULTINODE_REF", "multinode runtime variables are only valid on generic multinode tasks"))
+				}
+			}
+		}
 	}
 	if d := w.Spec.Defaults; d != nil {
 		for k, v := range d.Env {
+			if multinodeDollarRefRe.MatchString(v) {
+				errs = append(errs, fe("spec.defaults.env."+k, "MULTINODE_REF", "multinode runtime variables require a generic multinode task"))
+			}
 			sc := taskScope{declared: declared, params: params, secrets: w.Spec.Secrets,
 				inEnv: true}
 			tpl, err := expr.ParseTemplate(v)
@@ -645,6 +819,17 @@ func checkRef(r expr.Path, sc taskScope, path string) []FieldError {
 		if sc.task.Array == nil {
 			return []FieldError{fe(path, "REF_ARRAY_SCOPE",
 				"array.* is only valid on tasks with an array spec")}
+		}
+	case "multinode":
+		fields := map[string]bool{
+			"hostlist": true, "hostlistNoSlots": true, "totalSlots": true,
+			"nodeIp": true, "sshWrapper": true, "rshWrapper": true,
+		}
+		if len(r) != 2 || !fields[r[1]] {
+			return []FieldError{fe(path, "MULTINODE_REF", "unsupported multinode runtime reference")}
+		}
+		if !sc.allowMultinode || !genericMultinode(sc.task) {
+			return []FieldError{fe(path, "MULTINODE_REF", "multinode runtime references are only valid in command or args of generic multinode tasks")}
 		}
 	case "secrets":
 		if len(r) != 2 {
