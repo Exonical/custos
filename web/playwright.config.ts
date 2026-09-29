@@ -26,7 +26,7 @@ export default defineConfig({
         PORT: webPort,
         MOCK_OIDC_PORT: process.env.MOCK_OIDC_PORT ?? "4300",
         MOCK_API_PORT: process.env.MOCK_API_PORT ?? "4301",
-        MOCK_OIDC_AUTO_LOGIN: process.env.MOCK_OIDC_AUTO_LOGIN ?? "alice",
+        MOCK_OIDC_AUTO_LOGIN: process.env.MOCK_OIDC_AUTO_LOGIN ?? process.env.MOCK_USER ?? "alice",
         MOCK_OIDC_TOKEN_TTL: process.env.MOCK_OIDC_TOKEN_TTL ?? "120",
         MOCK_API_LATENCY_MS: process.env.MOCK_API_LATENCY_MS ?? "0",
       },

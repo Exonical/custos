@@ -1,5 +1,5 @@
 // @ts-check
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import http from "node:http";
 import { createMockData, userNameFromAccessToken } from "./data.mjs";
 
@@ -18,6 +18,13 @@ import { createMockData, userNameFromAccessToken } from "./data.mjs";
 /** @typedef {import("../lib/api/schema").components["schemas"]["AccountingUsageRow"]} AccountingUsageRow */
 /** @typedef {import("../lib/api/schema").components["schemas"]["Job"]} Job */
 /** @typedef {import("../lib/api/schema").components["schemas"]["JobList"]} JobList */
+/** @typedef {import("../lib/api/schema").components["schemas"]["Workflow"]} Workflow */
+/** @typedef {import("../lib/api/schema").components["schemas"]["WorkflowVersion"]} WorkflowVersion */
+/** @typedef {import("../lib/api/schema").components["schemas"]["WorkflowExecution"]} WorkflowExecution */
+/** @typedef {Omit<WorkflowExecution, "parameters"> & {parameters: Record<string, unknown>}} WorkflowExecutionFixture */
+/** @typedef {import("../lib/api/schema").components["schemas"]["WorkflowExecuteRequest"]} WorkflowExecuteRequest */
+/** @typedef {import("../lib/api/schema").components["schemas"]["TaskExecution"]} TaskExecution */
+/** @typedef {import("../lib/api/schema").components["schemas"]["TaskExecutionList"]} TaskExecutionList */
 /** @typedef {import("../lib/api/schema").components["schemas"]["HealthStatus"]} HealthStatus */
 /** @typedef {import("../lib/api/schema").components["schemas"]["Error"]} ApiErrorBody */
 /** @typedef {import("../lib/api/schema").operations["getJobExecutionSpec"]["responses"][200]["content"]["application/json"]} ExecutionSpec */
@@ -40,6 +47,31 @@ function sendError(response, status, code, message, requestId) {
   /** @type {ApiErrorBody} */
   const body = { error: { code, message, request_id: requestId } };
   send(response, status, body);
+}
+
+/** @param {http.ServerResponse} response @param {number} status */
+function sendEmpty(response, status) {
+  response.writeHead(status, { "cache-control": "no-store" });
+  response.end();
+}
+
+/** @param {http.IncomingMessage} request @returns {Promise<{raw: Buffer, value: unknown}>} */
+async function readJsonBody(request) {
+  const chunks = [];
+  let length = 0;
+  for await (const chunk of request) {
+    const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    length += bytes.byteLength;
+    if (length > 1_048_576) throw new RangeError("body too large");
+    chunks.push(bytes);
+  }
+  const raw = Buffer.concat(chunks);
+  return { raw, value: raw.length ? JSON.parse(raw.toString("utf8")) : null };
+}
+
+/** @param {unknown} value @returns {Record<string, unknown> | undefined} */
+function objectRecord(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value) ? /** @type {Record<string, unknown>} */ (value) : undefined;
 }
 
 /** @param {http.IncomingMessage} request */
@@ -224,6 +256,15 @@ const server = http.createServer(async (request, response) => {
   const projectMembers = url.pathname.match(/^\/api\/v1\/tenants\/([^/]+)\/projects\/([^/]+)\/members$/);
   const projectBindings = url.pathname.match(/^\/api\/v1\/tenants\/([^/]+)\/projects\/([^/]+)\/cluster-bindings$/);
   const projectAllocations = url.pathname.match(/^\/api\/v1\/tenants\/([^/]+)\/projects\/([^/]+)\/allocations$/);
+  const tenantWorkflows = url.pathname.match(/^\/api\/v1\/tenants\/([^/]+)\/workflows$/);
+  const workflowVersion = url.pathname.match(/^\/api\/v1\/tenants\/([^/]+)\/workflows\/([^/]+)\/versions\/([^/]+)$/);
+  const workflowVersions = url.pathname.match(/^\/api\/v1\/tenants\/([^/]+)\/workflows\/([^/]+)\/versions$/);
+  const workflowDetail = url.pathname.match(/^\/api\/v1\/tenants\/([^/]+)\/workflows\/([^/]+)$/);
+  const tenantWorkflowExecutions = url.pathname.match(/^\/api\/v1\/tenants\/([^/]+)\/workflow-executions$/);
+  const workflowExecutionTaskSpec = url.pathname.match(/^\/api\/v1\/tenants\/([^/]+)\/workflow-executions\/([^/]+)\/tasks\/([^/]+)\/execution-spec$/);
+  const workflowExecutionTasks = url.pathname.match(/^\/api\/v1\/tenants\/([^/]+)\/workflow-executions\/([^/]+)\/tasks$/);
+  const workflowExecutionCancel = url.pathname.match(/^\/api\/v1\/tenants\/([^/]+)\/workflow-executions\/([^/]+)\/cancel$/);
+  const workflowExecutionDetail = url.pathname.match(/^\/api\/v1\/tenants\/([^/]+)\/workflow-executions\/([^/]+)$/);
   const tenantClusters = url.pathname.match(/^\/api\/v1\/tenants\/([^/]+)\/clusters$/);
   const clusterDetail = url.pathname.match(/^\/api\/v1\/tenants\/([^/]+)\/clusters\/([^/]+)$/);
   const clusterPartitions = url.pathname.match(/^\/api\/v1\/tenants\/([^/]+)\/clusters\/([^/]+)\/partitions$/);
@@ -238,6 +279,43 @@ const server = http.createServer(async (request, response) => {
   const tenant = tenantPath && isTenantSlug(tenantPath) ? tenantPath : undefined;
   if (tenantPath && (!tenant || !user.me.memberships.some((membership) => membership.slug === tenant))) {
     return sendError(response, 404, "NOT_FOUND", "Tenant not found", id);
+  }
+
+  if (tenantWorkflows && request.method === "GET" && tenant) {
+    const project = url.searchParams.get("project");
+    if (project && !data.projects[tenant].some((item) => item.id === project)) {
+      return sendError(response, 400, "MALFORMED", "invalid project", id);
+    }
+    const workflows = data.workflows[tenant].filter((item) => !project || item.projectId === project);
+    return send(response, 200, { workflows });
+  }
+  if (workflowDetail && request.method === "GET" && tenant) {
+    const workflow = data.workflows[tenant].find((item) => item.id === workflowDetail[2]);
+    return workflow ? send(response, 200, workflow) : sendError(response, 404, "WORKFLOW_UNKNOWN", "Workflow not found", id);
+  }
+  if (workflowVersions && request.method === "GET" && tenant) {
+    const workflowId = workflowVersions[2];
+    if (!data.workflows[tenant].some((item) => item.id === workflowId)) return sendError(response, 404, "WORKFLOW_UNKNOWN", "Workflow not found", id);
+    const versions = (data.workflowVersions[workflowId] ?? []).map((version) => ({
+      id: version.id,
+      workflowId: version.workflowId,
+      number: version.number,
+      state: version.state,
+      schemaVersion: version.schemaVersion,
+      specHash: version.specHash,
+      layout: version.layout,
+      version: version.version,
+      createdAt: version.createdAt,
+      publishedAt: version.publishedAt,
+    }));
+    return send(response, 200, { versions });
+  }
+  if (workflowVersion && request.method === "GET" && tenant) {
+    const workflowId = workflowVersion[2];
+    const versionId = workflowVersion[3];
+    if (!data.workflows[tenant].some((item) => item.id === workflowId)) return sendError(response, 404, "WORKFLOW_UNKNOWN", "Workflow not found", id);
+    const version = (data.workflowVersions[workflowId] ?? []).find((item) => item.id === versionId);
+    return version ? send(response, 200, version) : sendError(response, 404, "VERSION_UNKNOWN", "Workflow version not found", id);
   }
 
   if (tenantProjects && request.method === "GET" && tenant) {
@@ -350,6 +428,177 @@ const server = http.createServer(async (request, response) => {
     const topList = { items: rows.slice(0, limit) };
     return send(response, 200, topList);
   }
+  if (tenantWorkflowExecutions && tenant && request.method === "POST") {
+    const keyHeader = request.headers["idempotency-key"];
+    const idempotencyKey = typeof keyHeader === "string" ? keyHeader : "";
+    if (!idempotencyKey || idempotencyKey.length > 128) return sendError(response, 400, "IDEMPOTENCY_KEY_REQUIRED", "Idempotency-Key header is required", id);
+    let rawBody;
+    let input;
+    try {
+      ({ raw: rawBody, value: input } = await readJsonBody(request));
+    } catch (error) {
+      return sendError(response, error instanceof RangeError ? 413 : 400, error instanceof RangeError ? "BODY_TOO_LARGE" : "MALFORMED", "Malformed workflow execution request", id);
+    }
+    const requestBody = objectRecord(input);
+    if (!requestBody || Object.keys(requestBody).some((key) => !["workflow", "version", "parameters"].includes(key))) {
+      return sendError(response, 400, "MALFORMED", "Malformed workflow execution request", id);
+    }
+    if (typeof requestBody.workflow !== "string" || !/^[0-9a-f-]{36}$/i.test(requestBody.workflow)
+      || (requestBody.version !== undefined && (typeof requestBody.version !== "string" || !/^[0-9a-f-]{36}$/i.test(requestBody.version)))) {
+      return sendError(response, 400, "MALFORMED", "Workflow and version must be UUIDs", id);
+    }
+    const parameters = requestBody.parameters === undefined ? {} : objectRecord(requestBody.parameters);
+    if (!parameters) return sendError(response, 400, "MALFORMED", "parameters must be an object", id);
+    const workflow = data.workflows[tenant].find((item) => item.id === requestBody.workflow);
+    if (!workflow) return sendError(response, 404, "WORKFLOW_UNKNOWN", "Workflow not found", id);
+    const membership = user.me.memberships.find((item) => item.slug === tenant);
+    const tenantRoles = membership?.roles ?? [];
+    const projectRoles = (user.me.project_memberships ?? []).filter((item) => item.project_id === workflow.projectId).flatMap((item) => item.roles);
+    const canExecute = user.me.platform_roles.includes("platform-admin")
+      || tenantRoles.some((role) => ["tenant-admin", "workflow-author", "researcher"].includes(role))
+      || projectRoles.some((role) => ["project-admin", "project-member"].includes(role));
+    if (!canExecute) return sendError(response, 403, "FORBIDDEN", "Requires workflow.execute", id);
+    const requestedVersion = typeof requestBody.version === "string" ? requestBody.version : workflow.latestPublishedVersionId;
+    if (!requestedVersion) return sendError(response, 409, "NO_PUBLISHED_VERSION", "Workflow has no published version", id);
+    const version = (data.workflowVersions[workflow.id] ?? []).find((item) => item.id === requestedVersion);
+    if (!version) return sendError(response, 404, "VERSION_UNKNOWN", "Workflow version not found", id);
+    if (version.state !== "published") return sendError(response, 409, "VERSION_STATE", "Only published versions can be executed", id);
+    const key = `${tenant}:${idempotencyKey}`;
+    const bodyHash = createHash("sha256").update(rawBody).digest("hex");
+    const previous = data.idempotency.get(key);
+    if (previous) {
+      if (previous.bodyHash !== bodyHash) return sendError(response, 409, "IDEMPOTENCY_KEY_REUSED", "Idempotency-Key was reused with a different request", id);
+      return send(response, 202, previous.execution);
+    }
+    const now = new Date().toISOString();
+    /** @type {WorkflowExecutionFixture} */
+    const execution = {
+      id: randomUUID(),
+      tenantId: workflow.tenantId,
+      projectId: workflow.projectId,
+      workflowId: workflow.id,
+      workflowVersionId: version.id,
+      specHash: version.specHash,
+      parameters,
+      strategy: version.spec.spec.execution?.strategy ?? "auto",
+      state: "PENDING",
+      stateReason: "",
+      requestedBy: user.me.user_id,
+      createdAt: now,
+      startedAt: null,
+      endedAt: null,
+      updatedAt: now,
+      version: 1,
+    };
+    /** @type {TaskExecution[]} */
+    const rows = [];
+    for (const task of version.spec.spec.tasks) {
+      let count = 1;
+      if (task.fanOut?.count !== undefined) {
+        const rawCount = typeof task.fanOut.count === "number" ? task.fanOut.count : Number(task.fanOut.count.match(/^\d+$/)?.[0] ?? parameters.shards ?? 1);
+        count = Number.isFinite(rawCount) && rawCount > 0 ? Math.min(100, Math.floor(rawCount)) : 1;
+      } else if (task.array) {
+        const step = task.array.step && task.array.step > 0 ? task.array.step : 1;
+        count = Math.min(100, Math.max(1, Math.floor((task.array.end - task.array.start) / step) + 1));
+      }
+      for (let index = 0; index < count; index += 1) {
+        rows.push({
+          id: randomUUID(), executionId: execution.id, taskName: task.name, index, count, attempt: 1,
+          state: "PENDING", stateReason: "", jobId: null, validationId: null,
+          createdAt: now, updatedAt: now, version: 1,
+        });
+      }
+    }
+    data.workflowExecutions[tenant].unshift(execution);
+    data.taskExecutions[execution.id] = rows;
+    data.idempotency.set(key, { bodyHash, execution });
+    return send(response, 202, execution);
+  }
+
+  if (tenantWorkflowExecutions && tenant && request.method === "GET") {
+    const membership = user.me.memberships.find((item) => item.slug === tenant);
+    const roles = membership?.roles ?? [];
+    const canReadTenant = user.me.platform_roles.includes("platform-admin") || roles.some((role) => ["tenant-admin", "tenant-operator", "auditor"].includes(role));
+    const canReadSelf = canReadTenant || roles.some((role) => ["workflow-author", "researcher", "viewer"].includes(role));
+    if (!canReadSelf) return sendError(response, 403, "FORBIDDEN", "Requires execution.read.self", id);
+    const workflowFilter = url.searchParams.get("workflow") ?? "";
+    if (workflowFilter && !/^[0-9a-f-]{36}$/i.test(workflowFilter)) return sendError(response, 400, "MALFORMED", "workflow must be a uuid", id);
+    const stateFilter = url.searchParams.get("state") ?? "";
+    const source = data.workflowExecutions[tenant].filter((execution) =>
+      (canReadTenant || execution.requestedBy === user.me.user_id)
+      && (!workflowFilter || execution.workflowId === workflowFilter)
+      && (!stateFilter || execution.state === stateFilter));
+    const page = cursorPage(source, url.searchParams, id, response);
+    if (!page) return;
+    /** @type {{items: WorkflowExecutionFixture[], next_cursor: string | null}} */
+    const executionPage = page;
+    return send(response, 200, executionPage);
+  }
+
+  if (workflowExecutionCancel && tenant && request.method === "POST") {
+    const execution = data.workflowExecutions[tenant].find((item) => item.id === workflowExecutionCancel[2]);
+    if (!execution) return sendError(response, 404, "EXECUTION_UNKNOWN", "Execution not found", id);
+    const membership = user.me.memberships.find((item) => item.slug === tenant);
+    const canCancel = user.me.platform_roles.includes("platform-admin")
+      || execution.requestedBy === user.me.user_id
+      || membership?.roles.some((role) => ["tenant-admin", "tenant-operator"].includes(role));
+    if (!canCancel) return sendError(response, 403, "FORBIDDEN", "Requires execution.cancel.self or execution.cancel.any", id);
+    if (["SUCCEEDED", "FAILED", "PARTIAL_FAILURE", "CANCELED"].includes(execution.state)) {
+      return sendError(response, 409, "EXECUTION_TERMINAL", "Execution is already terminal", id);
+    }
+    const now = new Date().toISOString();
+    execution.state = "CANCELED";
+    execution.stateReason = "Canceled by requester.";
+    execution.endedAt = now;
+    execution.updatedAt = now;
+    execution.version += 1;
+    for (const task of data.taskExecutions[execution.id] ?? []) {
+      if (!["COMPLETED", "FAILED", "SKIPPED", "CANCELED"].includes(task.state)) {
+        task.state = "CANCELED";
+        task.stateReason = "Canceled with workflow execution.";
+        task.updatedAt = now;
+        task.version += 1;
+      }
+    }
+    return sendEmpty(response, 202);
+  }
+
+  if (workflowExecutionTaskSpec && tenant && request.method === "GET") {
+    const execution = data.workflowExecutions[tenant].find((item) => item.id === workflowExecutionTaskSpec[2]);
+    if (!execution) return sendError(response, 404, "EXECUTION_UNKNOWN", "Execution not found", id);
+    const membership = user.me.memberships.find((item) => item.slug === tenant);
+    const canRead = user.me.platform_roles.includes("platform-admin") || execution.requestedBy === user.me.user_id
+      || membership?.roles.some((role) => ["tenant-admin", "tenant-operator", "auditor"].includes(role));
+    if (!canRead) return sendError(response, 403, "FORBIDDEN", "Requires execution.read.*", id);
+    const taskId = workflowExecutionTaskSpec[3];
+    const task = (data.taskExecutions[execution.id] ?? []).find((item) => item.id === taskId);
+    if (!task) return sendError(response, 404, "TASK_EXECUTION_UNKNOWN", "Task execution not found", id);
+    const spec = data.frozenTaskSpecs.get(taskId);
+    return spec ? send(response, 200, spec) : sendError(response, 404, "EXECUTION_SPEC_NOT_FROZEN", "ExecutionSpec is not frozen yet", id);
+  }
+
+  if (workflowExecutionTasks && tenant && request.method === "GET") {
+    const execution = data.workflowExecutions[tenant].find((item) => item.id === workflowExecutionTasks[2]);
+    if (!execution) return sendError(response, 404, "EXECUTION_UNKNOWN", "Execution not found", id);
+    const membership = user.me.memberships.find((item) => item.slug === tenant);
+    const canRead = user.me.platform_roles.includes("platform-admin") || execution.requestedBy === user.me.user_id
+      || membership?.roles.some((role) => ["tenant-admin", "tenant-operator", "auditor"].includes(role));
+    if (!canRead) return sendError(response, 403, "FORBIDDEN", "Requires execution.read.*", id);
+    /** @type {TaskExecutionList} */
+    const taskList = { tasks: data.taskExecutions[execution.id] ?? [] };
+    return send(response, 200, taskList);
+  }
+
+  if (workflowExecutionDetail && tenant && request.method === "GET") {
+    const execution = data.workflowExecutions[tenant].find((item) => item.id === workflowExecutionDetail[2]);
+    if (!execution) return sendError(response, 404, "EXECUTION_UNKNOWN", "Execution not found", id);
+    const membership = user.me.memberships.find((item) => item.slug === tenant);
+    const canRead = user.me.platform_roles.includes("platform-admin") || execution.requestedBy === user.me.user_id
+      || membership?.roles.some((role) => ["tenant-admin", "tenant-operator", "auditor"].includes(role));
+    if (!canRead) return sendError(response, 403, "FORBIDDEN", "Requires execution.read.*", id);
+    return send(response, 200, execution);
+  }
+
   if (tenantJobs && request.method === "GET" && tenant) {
     return sendJobPage(data.jobs[tenant], tenant, "", url.searchParams, id, response);
   }

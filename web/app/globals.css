@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "shadcn/tailwind.css";
+@import "@xyflow/react/dist/style.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -194,4 +195,54 @@ body {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+.workflow-canvas.react-flow {
+  --xy-edge-stroke-default: var(--border);
+  --xy-edge-stroke-selected-default: var(--primary);
+  --xy-connectionline-stroke-default: var(--primary);
+  --xy-attribution-background-color-default: var(--card);
+  --xy-background-color-default: var(--card);
+  --xy-background-pattern-dots-color-default: var(--border);
+  --xy-background-pattern-lines-color-default: var(--border);
+  --xy-background-pattern-cross-color-default: var(--border);
+  --xy-node-color-default: var(--foreground);
+  --xy-node-border-default: 1px solid var(--border);
+  --xy-node-background-color-default: var(--card);
+  --xy-node-group-background-color-default: color-mix(in oklch, var(--card) 70%, transparent);
+  --xy-node-boxshadow-hover-default: none;
+  --xy-node-boxshadow-selected-default: 0 0 0 1px var(--primary);
+  --xy-node-border-radius-default: 0;
+  --xy-handle-background-color-default: var(--primary);
+  --xy-handle-border-color-default: var(--background);
+  --xy-selection-background-color-default: color-mix(in oklch, var(--primary) 10%, transparent);
+  --xy-selection-border-default: 1px dotted var(--primary);
+  --xy-controls-button-background-color-default: var(--card);
+  --xy-controls-button-background-color-hover-default: var(--muted);
+  --xy-controls-button-color-default: var(--foreground);
+  --xy-controls-button-color-hover-default: var(--primary);
+  --xy-controls-button-border-color-default: var(--border);
+  --xy-controls-box-shadow-default: none;
+  --xy-edge-label-background-color-default: var(--card);
+  --xy-edge-label-color-default: var(--foreground);
+}
+
+.workflow-canvas .react-flow__controls-button {
+  background: var(--card);
+  border-color: var(--border);
+  fill: var(--foreground);
+}
+
+.workflow-canvas .react-flow__controls-button:hover {
+  background: var(--muted);
+  fill: var(--primary);
+}
+
+.workflow-canvas .react-flow__attribution {
+  border: 1px solid var(--border);
+  color: var(--muted-foreground);
+}
+
+.workflow-canvas .react-flow__attribution a {
+  color: var(--muted-foreground);
 }

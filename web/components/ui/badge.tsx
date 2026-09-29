@@ -28,11 +28,25 @@ const badgeVariants = cva(
 
 const stateStyles: Record<string, string> = {
   RUNNING: "border-status-running/35 bg-status-running/10 text-status-running",
+  SUCCEEDED: "border-status-completed/35 bg-status-completed/10 text-status-completed",
+  COMPLETED: "border-status-completed/35 bg-status-completed/10 text-status-completed",
   QUEUED: "border-status-queued/35 bg-status-queued/10 text-status-queued",
   SUBMITTING: "border-status-queued/35 bg-status-queued/10 text-status-queued",
-  FAILED: "border-status-failed/35 bg-status-failed/10 text-status-failed",
-  COMPLETED: "border-status-completed/35 bg-status-completed/10 text-status-completed",
+  PENDING: "border-status-queued/35 bg-status-queued/10 text-status-queued",
+  VALIDATING: "border-status-queued/35 bg-status-queued/10 text-status-queued",
+  READY: "border-status-queued/35 bg-status-queued/10 text-status-queued",
+  BLOCKED: "border-status-degraded/35 bg-status-degraded/10 text-status-degraded",
+  ADMITTING: "border-status-degraded/35 bg-status-degraded/10 text-status-degraded",
+  CANCELING: "border-status-canceled/35 bg-status-canceled/10 text-status-canceled",
   CANCELED: "border-status-canceled/35 bg-status-canceled/10 text-status-canceled",
+  SKIPPED: "border-status-completed/35 bg-status-completed/10 text-status-completed",
+  FAILED: "border-status-failed/35 bg-status-failed/10 text-status-failed",
+  PARTIAL_FAILURE: "border-status-degraded/35 bg-status-degraded/10 text-status-degraded",
+  active: "border-status-active/35 bg-status-active/10 text-status-active",
+  archived: "border-status-canceled/35 bg-status-canceled/10 text-status-canceled",
+  draft: "border-status-queued/35 bg-status-queued/10 text-status-queued",
+  published: "border-status-active/35 bg-status-active/10 text-status-active",
+  deprecated: "border-status-canceled/35 bg-status-canceled/10 text-status-canceled",
 };
 
 function Badge({

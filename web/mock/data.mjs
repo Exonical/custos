@@ -13,6 +13,12 @@
 /** @typedef {import("../lib/api/schema").components["schemas"]["AccountingTopRow"]} AccountingTopRow */
 /** @typedef {{day:string,user_id:string,project_id:string,cluster_id:string,account:string,partition:string,jobs:number,failed:number,cpu_seconds:number,gpu_seconds:number,node_seconds:number,mem_gb_seconds:number,wait_seconds:number[],run_seconds:number[]}} UsageDailyRecord */
 /** @typedef {import("../lib/api/schema").components["schemas"]["Job"]} Job */
+/** @typedef {import("../lib/api/schema").components["schemas"]["Workflow"]} Workflow */
+/** @typedef {import("../lib/api/schema").components["schemas"]["WorkflowVersion"]} WorkflowVersion */
+/** @typedef {Omit<WorkflowVersion, "spec" | "layout"> & {spec: import("../lib/workflow/spec").CustosWorkflow, layout?: unknown}} WorkflowVersionFixture */
+/** @typedef {import("../lib/api/schema").components["schemas"]["WorkflowExecution"]} WorkflowExecution */
+/** @typedef {Omit<WorkflowExecution, "parameters"> & {parameters: Record<string, unknown>}} WorkflowExecutionFixture */
+/** @typedef {import("../lib/api/schema").components["schemas"]["TaskExecution"]} TaskExecution */
 /** @typedef {import("../lib/api/schema").components["schemas"]["MembershipRef"]} MembershipRef */
 /** @typedef {import("../lib/api/schema").components["schemas"]["ProjectMembershipRef"]} ProjectMembershipRef */
 /** @typedef {"alice" | "admin" | "bob"} MockUserName */
@@ -20,7 +26,7 @@
 /** @typedef {"p1" | "genomics" | "climate" | "cfd"} ProjectSlug */
 /** @typedef {"cluster-e2e" | "hopper" | "titan"} ClusterName */
 /** @typedef {{ sub: string, name: string, email: string, me: Me }} MockUser */
-/** @typedef {{ users: Record<MockUserName, MockUser>, projects: Record<TenantSlug, Project[]>, projectMembers: Record<string, ProjectMembership[]>, clusters: Record<TenantSlug, ClusterSummary[]>, clusterBindings: Record<TenantSlug, ClusterBinding[]>, partitions: Record<string, PartitionRecord[]>, connectors: Record<TenantSlug, SecretConnector[]>, references: Record<TenantSlug, SecretReference[]>, projectAllocations: Record<string, Allocation[]>, tenantAllocations: Record<TenantSlug, AccountingAllocationItem[]>, jobs: Record<TenantSlug, Job[]>, usageRecords: Record<TenantSlug, UsageDailyRecord[]>, executionSpecs: Map<string, Record<string, never>> }} MockData */
+/** @typedef {{ users: Record<MockUserName, MockUser>, projects: Record<TenantSlug, Project[]>, projectMembers: Record<string, ProjectMembership[]>, clusters: Record<TenantSlug, ClusterSummary[]>, clusterBindings: Record<TenantSlug, ClusterBinding[]>, partitions: Record<string, PartitionRecord[]>, connectors: Record<TenantSlug, SecretConnector[]>, references: Record<TenantSlug, SecretReference[]>, projectAllocations: Record<string, Allocation[]>, tenantAllocations: Record<TenantSlug, AccountingAllocationItem[]>, workflows: Record<TenantSlug, Workflow[]>, workflowVersions: Record<string, WorkflowVersionFixture[]>, workflowExecutions: Record<TenantSlug, WorkflowExecutionFixture[]>, taskExecutions: Record<string, TaskExecution[]>, frozenTaskSpecs: Map<string, unknown>, idempotency: Map<string, {bodyHash: string, execution: WorkflowExecutionFixture}>, jobs: Record<TenantSlug, Job[]>, usageRecords: Record<TenantSlug, UsageDailyRecord[]>, executionSpecs: Map<string, Record<string, never>> }} MockData */
 
 /** @type {Record<TenantSlug, string>} */
 const tenantIds = {
@@ -41,6 +47,25 @@ const projectIds = {
   genomics: "22222222-2222-4222-8222-222222222223",
   climate: "22222222-2222-4222-8222-222222222224",
   cfd: "22222222-2222-4222-8222-222222222225",
+};
+
+const workflowIds = {
+  gaussian: generatedUuid(10_001),
+  chain: generatedUuid(10_002),
+  archived: generatedUuid(10_003),
+  draftOnly: generatedUuid(10_004),
+  globexPipeline: generatedUuid(10_005),
+};
+
+const workflowVersionIds = {
+  gaussianDeprecated: generatedUuid(11_001),
+  gaussianPublished: generatedUuid(11_002),
+  gaussianDraft: generatedUuid(11_003),
+  chainPublished: generatedUuid(11_004),
+  chainDraft: generatedUuid(11_005),
+  archivedPublished: generatedUuid(11_006),
+  draftOnly: generatedUuid(11_007),
+  globexPublished: generatedUuid(11_008),
 };
 
 /** @type {Record<ClusterName, string>} */
@@ -456,6 +481,288 @@ function makeTenantAllocations(startedAt, projects, projectAllocations) {
   return result;
 }
 
+/** @returns {Record<string, import("../lib/workflow/spec").CustosWorkflow>} */
+function makeWorkflowDocuments() {
+  const gaussian = /** @type {import("../lib/workflow/spec").CustosWorkflow} */ ({
+    apiVersion: "custos.io/v1alpha1",
+    kind: "Workflow",
+    metadata: { name: "gaussian-simulation", labels: { domain: "chemistry" } },
+    spec: {
+      parameters: {
+        molecule: { type: "string", required: true, pattern: "^[a-zA-Z0-9_-]{1,64}$" },
+        iterations: { type: "integer", default: 100, minimum: 1, maximum: 100_000 },
+        shards: { type: "integer", default: 4, minimum: 1, maximum: 256 },
+      },
+      placement: { cluster: "cluster-e2e" },
+      defaults: { account: null, partition: "compute", qos: "normal", workingDirectory: "/scratch/{{ run.id }}", env: { OMP_NUM_THREADS: "{{ task.resources.cpu }}" } },
+      secrets: {
+        hfToken: { ref: "hf-token", use: "env", envName: "HF_TOKEN" },
+        license: { ref: "license-key", use: "wrapped_token" },
+      },
+      execution: { strategy: "engine", failurePolicy: "continue" },
+      tasks: [
+        { name: "prepare", type: "batch", resources: { cpu: 4, memory: "8Gi", walltime: "30m" }, command: ["./prepare", "{{ parameters.molecule }}"], outputs: { shardList: { type: "file", path: "shards.json" } } },
+        { name: "simulate", type: "mpi", dependsOn: ["prepare"], fanOut: { count: "{{ parameters.shards }}" }, resources: { nodes: 2, tasksPerNode: 4, memoryPerNode: "16Gi", walltime: "4h" }, command: ["./simulate", "--shard", "{{ item.index }}"], retry: { attempts: 2, on: ["FAILED", "NODE_FAIL"] } },
+        { name: "merge", type: "batch", dependsOn: ["simulate"], when: "{{ tasks.simulate.succeededCount }} > 0", resources: { cpu: 4, memory: "16Gi", walltime: "1h" }, command: ["./merge"] },
+        { name: "train", type: "gpu", dependsOn: ["merge"], resources: { gpu: { count: 1, type: "a100" }, cpu: 8, memory: "32Gi", walltime: "2h" }, script: { ref: digest(90_001), language: "python" }, args: ["--epochs", "{{ parameters.iterations }}"], env: { WANDB_MODE: "offline" } },
+        { name: "sweep", type: "array", dependsOn: ["merge"], array: { start: 0, end: 3, maxConcurrent: 2 }, command: ["./sweep", "{{ array.taskId }}"] },
+      ],
+    },
+  });
+  const chain = /** @type {import("../lib/workflow/spec").CustosWorkflow} */ ({
+    apiVersion: "custos.io/v1alpha1",
+    kind: "Workflow",
+    metadata: { name: "three-task-chain" },
+    spec: {
+      parameters: { input: { type: "string", required: true, pattern: "^[a-zA-Z0-9_./-]+$" } },
+      tasks: [
+        { name: "fetch", type: "batch", command: ["./fetch", "{{ parameters.input }}"], resources: { cpu: 1, memory: "2Gi", walltime: "20m" } },
+        { name: "analyze", type: "batch", dependsOn: ["fetch"], command: ["./analyze"], resources: { cpu: 4, memory: "8Gi", walltime: "1h" } },
+        { name: "report", type: "batch", dependsOn: ["analyze"], command: ["./report"], resources: { cpu: 1, memory: "2Gi", walltime: "20m" } },
+      ],
+    },
+  });
+  const archived = JSON.parse(JSON.stringify(chain));
+  archived.metadata.name = "archived-climate-pipeline";
+  const draftOnly = /** @type {import("../lib/workflow/spec").CustosWorkflow} */ ({
+    apiVersion: "custos.io/v1alpha1",
+    kind: "Workflow",
+    metadata: { name: "draft-only-workflow" },
+    spec: { parameters: {}, tasks: [{ name: "stage", type: "batch", command: ["./stage"] }] },
+  });
+  const globex = /** @type {import("../lib/workflow/spec").CustosWorkflow} */ ({
+    apiVersion: "custos.io/v1alpha1",
+    kind: "Workflow",
+    metadata: { name: "cfd-postprocess" },
+    spec: { parameters: {}, tasks: [{ name: "mesh", type: "batch", command: ["./mesh"] }, { name: "solve", type: "mpi", dependsOn: ["mesh"], command: ["./solve"] }, { name: "collect", type: "batch", dependsOn: ["solve"], command: ["./collect"] }] },
+  });
+  return { gaussian, chain, archived, draftOnly, globex };
+}
+
+/** @param {string} id @param {string} workflowId @param {number} number @param {WorkflowVersion["state"]} state @param {import("../lib/workflow/spec").CustosWorkflow} spec @param {number} startedAt @param {unknown} layout @returns {WorkflowVersionFixture} */
+function workflowVersionFixture(id, workflowId, number, state, spec, startedAt, layout = {}) {
+  return {
+    id,
+    workflowId,
+    number,
+    state,
+    schemaVersion: "custos.io/v1alpha1",
+    specHash: digest(100_000 + number + Number.parseInt(id.slice(-4), 16)),
+    layout,
+    spec,
+    version: 1,
+    createdAt: iso(startedAt),
+    publishedAt: state === "draft" ? null : iso(startedAt + 3_600_000),
+  };
+}
+
+/** @param {number} startedAt @param {Record<TenantSlug, Project[]>} projects @returns {{workflows:Record<TenantSlug,Workflow[]>,versions:Record<string,WorkflowVersionFixture[]>}} */
+function makeWorkflowFixtures(startedAt, projects) {
+  const documents = makeWorkflowDocuments();
+  const gaussianLayout = { nodes: { prepare: { x: 40, y: 120 }, simulate: { x: 330, y: 120 }, merge: { x: 620, y: 120 }, train: { x: 910, y: 40 }, sweep: { x: 910, y: 220 } } };
+  const versions = {
+    [workflowIds.gaussian]: [
+      workflowVersionFixture(workflowVersionIds.gaussianDraft, workflowIds.gaussian, 3, "draft", documents.gaussian, startedAt - 86_400_000, {}),
+      workflowVersionFixture(workflowVersionIds.gaussianPublished, workflowIds.gaussian, 2, "published", documents.gaussian, startedAt - 7 * 86_400_000, gaussianLayout),
+      workflowVersionFixture(workflowVersionIds.gaussianDeprecated, workflowIds.gaussian, 1, "deprecated", documents.gaussian, startedAt - 30 * 86_400_000, {}),
+    ],
+    [workflowIds.chain]: [
+      workflowVersionFixture(workflowVersionIds.chainDraft, workflowIds.chain, 2, "draft", documents.chain, startedAt - 3_600_000, {}),
+      workflowVersionFixture(workflowVersionIds.chainPublished, workflowIds.chain, 1, "published", documents.chain, startedAt - 12 * 86_400_000, {}),
+    ],
+    [workflowIds.archived]: [
+      workflowVersionFixture(workflowVersionIds.archivedPublished, workflowIds.archived, 1, "published", documents.archived, startedAt - 20 * 86_400_000, {}),
+    ],
+    [workflowIds.draftOnly]: [
+      workflowVersionFixture(workflowVersionIds.draftOnly, workflowIds.draftOnly, 1, "draft", documents.draftOnly, startedAt - 2 * 86_400_000, {}),
+    ],
+    [workflowIds.globexPipeline]: [
+      workflowVersionFixture(workflowVersionIds.globexPublished, workflowIds.globexPipeline, 1, "published", documents.globex, startedAt - 5 * 86_400_000, {}),
+    ],
+  };
+  /** @type {Record<TenantSlug, Workflow[]>} */
+  const workflows = {
+    acme: [
+      { id: workflowIds.gaussian, tenantId: tenantIds.acme, projectId: projectIds.p1, name: "Gaussian simulation", description: "Fan-out MPI simulation with GPU training.", state: "active", latestPublishedVersionId: workflowVersionIds.gaussianPublished, version: 3, createdAt: iso(startedAt - 30 * 86_400_000), updatedAt: iso(startedAt - 86_400_000) },
+      { id: workflowIds.chain, tenantId: tenantIds.acme, projectId: projectIds.genomics, name: "Three-task chain", description: "Fetch, analyze, and report.", state: "active", latestPublishedVersionId: workflowVersionIds.chainPublished, version: 2, createdAt: iso(startedAt - 18 * 86_400_000), updatedAt: iso(startedAt - 3_600_000) },
+      { id: workflowIds.archived, tenantId: tenantIds.acme, projectId: projectIds.climate, name: "Archived climate pipeline", description: "A historical workflow.", state: "archived", latestPublishedVersionId: workflowVersionIds.archivedPublished, version: 1, createdAt: iso(startedAt - 40 * 86_400_000), updatedAt: iso(startedAt - 10 * 86_400_000) },
+      { id: workflowIds.draftOnly, tenantId: tenantIds.acme, projectId: projectIds.p1, name: "Draft-only workflow", description: "No published version yet.", state: "active", latestPublishedVersionId: null, version: 1, createdAt: iso(startedAt - 4 * 86_400_000), updatedAt: iso(startedAt - 2 * 86_400_000) },
+    ],
+    globex: [
+      { id: workflowIds.globexPipeline, tenantId: tenantIds.globex, projectId: projectIds.cfd, name: "CFD postprocess", description: "Three-step post-processing chain.", state: "active", latestPublishedVersionId: workflowVersionIds.globexPublished, version: 1, createdAt: iso(startedAt - 9 * 86_400_000), updatedAt: iso(startedAt - 5 * 86_400_000) },
+    ],
+  };
+  for (const tenant of /** @type {TenantSlug[]} */ (["acme", "globex"])) {
+    for (const workflow of workflows[tenant]) {
+      if (!projects[tenant].some((project) => project.id === workflow.projectId)) throw new Error("workflow fixture project is missing");
+    }
+  }
+  return { workflows, versions };
+}
+
+/** @param {number} startedAt @param {Record<MockUserName, MockUser>} users @param {Record<TenantSlug, Workflow[]>} workflows @param {Record<string, WorkflowVersionFixture[]>} versions @param {Record<TenantSlug, Job[]>} jobs @returns {{executions:Record<TenantSlug,WorkflowExecutionFixture[]>,tasks:Record<string,TaskExecution[]>,frozen:Map<string,unknown>}} */
+function makeWorkflowExecutionFixtures(startedAt, users, workflows, versions, jobs) {
+  /** @type {Record<TenantSlug, WorkflowExecutionFixture[]>} */
+  const executions = { acme: [], globex: [] };
+  /** @type {Record<string, TaskExecution[]>} */
+  const tasksByExecution = {};
+  const frozenTaskSpecs = new Map();
+  let executionNumber = 12_000;
+  let taskNumber = 13_000;
+  const definitions = [
+    { tenant: "acme", workflow: workflowIds.gaussian, version: workflowVersionIds.gaussianPublished, state: "RUNNING", owner: "alice", age: 180, mode: "fanout" },
+    { tenant: "acme", workflow: workflowIds.chain, version: workflowVersionIds.chainPublished, state: "PENDING", owner: "alice", age: 4 },
+    { tenant: "acme", workflow: workflowIds.chain, version: workflowVersionIds.chainPublished, state: "VALIDATING", owner: "admin", age: 5 },
+    { tenant: "acme", workflow: workflowIds.gaussian, version: workflowVersionIds.gaussianPublished, state: "QUEUED", owner: "alice", age: 15 },
+    { tenant: "acme", workflow: workflowIds.chain, version: workflowVersionIds.chainPublished, state: "SUCCEEDED", owner: "admin", age: 60 },
+    { tenant: "acme", workflow: workflowIds.gaussian, version: workflowVersionIds.gaussianPublished, state: "FAILED", owner: "alice", age: 120 },
+    { tenant: "acme", workflow: workflowIds.gaussian, version: workflowVersionIds.gaussianPublished, state: "PARTIAL_FAILURE", owner: "alice", age: 240 },
+    { tenant: "acme", workflow: workflowIds.chain, version: workflowVersionIds.chainPublished, state: "CANCELING", owner: "admin", age: 30 },
+    { tenant: "acme", workflow: workflowIds.chain, version: workflowVersionIds.chainPublished, state: "CANCELED", owner: "alice", age: 90 },
+    { tenant: "globex", workflow: workflowIds.globexPipeline, version: workflowVersionIds.globexPublished, state: "SUCCEEDED", owner: "admin", age: 45 },
+  ];
+  const activeStates = new Set(["QUEUED", "RUNNING", "CANCELING"]);
+  const endedStates = new Set(["SUCCEEDED", "FAILED", "PARTIAL_FAILURE", "CANCELED"]);
+
+  for (const definition of definitions) {
+    const tenant = /** @type {TenantSlug} */ (definition.tenant);
+    const workflow = workflows[tenant].find((item) => item.id === definition.workflow);
+    const version = versions[definition.workflow]?.find((item) => item.id === definition.version);
+    if (!workflow || !version) continue;
+    const id = generatedUuid(executionNumber++);
+    const createdAt = startedAt - definition.age * 60_000;
+    const started = activeStates.has(definition.state) || endedStates.has(definition.state);
+    const ended = endedStates.has(definition.state);
+    const executionUpdatedAt = iso(createdAt + (ended ? 90_000 : started ? 45_000 : 1_000));
+    const parameters = definition.workflow === workflowIds.gaussian
+      ? { molecule: "benzene", iterations: 120, shards: 4 }
+      : definition.workflow === workflowIds.chain ? { input: "samples/cohort-a" } : {};
+    /** @type {WorkflowExecutionFixture} */
+    const execution = {
+      id,
+      tenantId: tenantIds[tenant],
+      projectId: workflow.projectId,
+      workflowId: workflow.id,
+      workflowVersionId: version.id,
+      specHash: version.specHash,
+      parameters,
+      strategy: version.spec.spec.execution?.strategy ?? "engine",
+      state: /** @type {WorkflowExecution["state"]} */ (definition.state),
+      stateReason: definition.state === "FAILED" ? "A task failed after all retry attempts." : definition.state === "PARTIAL_FAILURE" ? "Execution continued with one failed task." : definition.state === "CANCELED" ? "Canceled by requester." : "",
+      requestedBy: users[/** @type {MockUserName} */ (definition.owner)].me.user_id,
+      createdAt: iso(createdAt),
+      startedAt: started ? iso(createdAt + 10_000) : null,
+      endedAt: ended ? executionUpdatedAt : null,
+      updatedAt: executionUpdatedAt,
+      version: 2,
+    };
+    executions[tenant].push(execution);
+
+    /** @type {TaskExecution[]} */
+    const taskRows = [];
+    let rowIndex = 0;
+    const projectJobs = jobs[tenant].filter((job) => job.project_id === workflow.projectId);
+    const jobPool = projectJobs.length ? projectJobs : jobs[tenant];
+    /** @param {import("../lib/workflow/spec").Task} task @param {number} index @param {number} count @param {number} attempt @param {string} state @param {string} [reason] */
+    const addTask = (task, index, count, attempt, state, reason = "") => {
+      const taskId = generatedUuid(taskNumber++);
+      const jobId = ["SUBMITTING", "QUEUED", "RUNNING", "COMPLETED", "FAILED"].includes(state) && jobPool.length > 0
+        ? jobPool[(executionNumber + rowIndex) % jobPool.length].id
+        : null;
+      const digestValue = jobId ? digest(taskNumber + rowIndex) : undefined;
+      const taskUpdatedAt = executionUpdatedAt;
+      /** @type {TaskExecution} */
+      const row = {
+        id: taskId,
+        executionId: id,
+        taskName: task.name,
+        index,
+        count,
+        attempt,
+        state: /** @type {TaskExecution["state"]} */ (state),
+        stateReason: reason,
+        jobId,
+        validationId: null,
+        ...(digestValue ? { executionSpecDigest: digestValue } : {}),
+        createdAt: iso(createdAt + rowIndex * 1_000),
+        updatedAt: taskUpdatedAt,
+        version: attempt,
+      };
+      taskRows.push(row);
+      if (jobId && digestValue) {
+        frozenTaskSpecs.set(taskId, {
+          schema_version: 1,
+          id: taskId,
+          tenant_id: execution.tenantId,
+          project_id: execution.projectId,
+          principal_id: execution.requestedBy,
+          workflow_version_id: execution.workflowVersionId,
+          task_name: task.name,
+          attempt,
+          cluster: { id: clusterIds[tenant === "acme" ? "cluster-e2e" : "titan"], name: tenant === "acme" ? "cluster-e2e" : "titan", api_version: "slurm.v0_0_42" },
+          account: `${tenant}-account`,
+          partition: task.partition ?? "compute",
+          qos: task.qos ?? "normal",
+          resources: { nodes: task.resources?.nodes ?? 1, tasks: task.resources?.tasks ?? 1, tasks_per_node: task.resources?.tasksPerNode ?? 1, cpus_per_task: task.resources?.cpusPerTask ?? task.resources?.cpu ?? 1, walltime_seconds: 3_600 },
+          placement: { cluster: tenant === "acme" ? "cluster-e2e" : "titan", reason: "mock fixture" },
+          environment: { user: task.env ?? {}, controlled: {}, runtime: {}, secret_refs: [] },
+          payload: { script_id: generatedUuid(taskNumber + 20_000), digest: digestValue, language: task.script?.language ?? "bash", interpreter: "/bin/bash" },
+          argv: (task.command ?? []).map((literal) => ({ literal })),
+          inputs: [],
+          outputs: [],
+          working_dir: task.workingDirectory ?? "/scratch/mock-execution",
+          stdout: task.stdout ?? "",
+          stderr: task.stderr ?? "",
+          security: { slurm_user: "alice", impersonation_mode: "service", shell_task: false, wrapped_token_refs: [] },
+          admission: { estimated_cost: { cpu_hours: 1 }, warnings: [] },
+          digest: digestValue,
+          admitted_at: taskUpdatedAt,
+          admitted_by: "mock-worker",
+        });
+      }
+      rowIndex += 1;
+    };
+
+    if (definition.mode === "fanout") {
+      for (const task of version.spec.spec.tasks) {
+        if (task.name === "simulate") {
+          const taskStates = ["COMPLETED", "COMPLETED", "RUNNING", "QUEUED"];
+          taskStates.forEach((state, index) => addTask(task, index, 4, index === 0 ? 2 : 1, state, index === 0 ? "Attempt 2 completed after attempt 1 FAILED." : ""));
+        } else if (task.name === "sweep") {
+          for (let index = 0; index < 4; index += 1) addTask(task, index, 4, 1, "PENDING");
+        } else {
+          const state = task.name === "prepare" ? "COMPLETED" : task.name === "merge" ? "BLOCKED" : "PENDING";
+          addTask(task, 0, 1, 1, state);
+        }
+      }
+    } else if (definition.state === "PENDING" || definition.state === "VALIDATING") {
+      if (definition.state === "VALIDATING") {
+        version.spec.spec.tasks.forEach((task, index) => addTask(task, 0, 1, 1, index === 0 ? "ADMITTING" : "BLOCKED"));
+      }
+    } else {
+      version.spec.spec.tasks.forEach((task, index) => {
+        let state = definition.state === "SUCCEEDED" ? "COMPLETED"
+          : definition.state === "FAILED" ? index === 0 ? "FAILED" : "SKIPPED"
+            : definition.state === "PARTIAL_FAILURE" ? index === 0 ? "COMPLETED" : index === 1 ? "FAILED" : "SKIPPED"
+              : definition.state === "CANCELING" ? index === 0 ? "RUNNING" : "CANCELED"
+                : definition.state === "CANCELED" ? "CANCELED"
+                  : definition.state === "QUEUED" ? index === 0 ? "SUBMITTING" : "BLOCKED"
+                    : "PENDING";
+        const count = task.fanOut ? Number(parameters.shards ?? 1) : task.array ? 4 : 1;
+        for (let taskIndex = 0; taskIndex < count; taskIndex += 1) {
+          const instanceState = task.name === "simulate" && definition.state === "PARTIAL_FAILURE" && taskIndex === 1 ? "FAILED" : state;
+          addTask(task, taskIndex, count, task.name === "simulate" && taskIndex === 0 && definition.state === "SUCCEEDED" ? 2 : 1, instanceState, instanceState === "FAILED" ? "Retry attempt failed." : "");
+        }
+      });
+    }
+    tasksByExecution[id] = taskRows;
+  }
+  for (const tenant of /** @type {TenantSlug[]} */ (["acme", "globex"])) {
+    executions[tenant].sort((left, right) => (right.createdAt ?? "").localeCompare(left.createdAt ?? ""));
+  }
+  return { executions, tasks: tasksByExecution, frozen: frozenTaskSpecs };
+}
+
 /** @param {number} startedAt @param {string} issuer @param {number} seed @returns {MockData} */
 export function createMockData(startedAt = Date.now(), issuer = "http://127.0.0.1:4300/realms/custos", seed = 20260927) {
   const users = createMockUsers(issuer);
@@ -470,10 +777,17 @@ export function createMockData(startedAt = Date.now(), issuer = "http://127.0.0.
   const projectAllocations = makeProjectAllocations(startedAt, projects, clusterBindings);
   const tenantAllocations = makeTenantAllocations(startedAt, projects, projectAllocations);
   const usageRecords = makeUsageRecords(jobs, projects, clusters, seed);
+  const workflowData = makeWorkflowFixtures(startedAt, projects);
+  const executionData = makeWorkflowExecutionFixtures(startedAt, users, workflowData.workflows, workflowData.versions, jobs);
   /** @type {Map<string, Record<string, never>>} */
   const executionSpecs = new Map();
   for (const tenantJobs of Object.values(jobs)) {
     for (const job of tenantJobs) executionSpecs.set(job.id, {});
   }
-  return { users, projects, projectMembers, clusters, clusterBindings, partitions, connectors, references, projectAllocations, tenantAllocations, jobs, usageRecords, executionSpecs };
+  return {
+    users, projects, projectMembers, clusters, clusterBindings, partitions, connectors, references,
+    projectAllocations, tenantAllocations, workflows: workflowData.workflows, workflowVersions: workflowData.versions,
+    workflowExecutions: executionData.executions, taskExecutions: executionData.tasks, frozenTaskSpecs: executionData.frozen,
+    idempotency: new Map(), jobs, usageRecords, executionSpecs,
+  };
 }

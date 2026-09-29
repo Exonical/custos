@@ -5,7 +5,14 @@ const requestedUser = process.env.MOCK_USER;
 const selectedUser = requestedUser === "admin" || requestedUser === "bob" ? requestedUser : "alice";
 const pickerLabels = { alice: "Alice Researcher", admin: "Platform Admin", bob: "Bob Newcomer" };
 
-test("login, jobs, CSRF-protected cancellation, and logout", async ({ page, baseURL }) => {
+function lastSegment(href: string | null): string {
+  const segment = href?.split("/").at(-1);
+  if (!segment) throw new Error(`expected an href with an id, got ${String(href)}`);
+  return segment;
+}
+
+test("login, workflows, executions, jobs, CSRF-protected mutations, and logout", async ({ page, baseURL }) => {
+  test.setTimeout(120_000);
   let sawLogin = false;
   page.on("request", (request) => {
     if (new URL(request.url()).pathname === "/auth/login") sawLogin = true;
@@ -88,9 +95,94 @@ test("login, jobs, CSRF-protected cancellation, and logout", async ({ page, base
     await expect(page.getByRole("heading", { name: "Top consumers · by user" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Tenant allocations" })).toBeVisible();
     await expect(page.getByText("CPU budget")).toBeVisible();
+    await page.goto("/t/globex/workflows");
+    await expect(page.getByRole("link", { name: "CFD postprocess" })).toBeVisible();
   }
 
   if (selectedUser === "alice") {
+    const workflowConsoleIssues: string[] = [];
+    page.on("console", (message) => {
+      const path = new URL(page.url()).pathname;
+      const expectedNegativeCall = /Failed to load resource: the server responded with a status of (?:400|409)/.test(message.text());
+      if (!expectedNegativeCall && /\/t\/[^/]+\/(?:workflows|executions)(?:\/|$)/.test(path) && (message.type() === "error" || message.type() === "warning")) {
+        workflowConsoleIssues.push(`${path} [${message.type()}]: ${message.text()}`);
+      }
+    });
+    page.on("pageerror", (error) => {
+      const path = new URL(page.url()).pathname;
+      if (/\/t\/[^/]+\/(?:workflows|executions)(?:\/|$)/.test(path)) workflowConsoleIssues.push(`${path} [pageerror]: ${error.message}`);
+    });
+    await page.goto("/t/acme/workflows");
+    await expect(page.getByRole("heading", { name: "Workflows" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Gaussian simulation" })).toBeVisible();
+    const workflowUrl = await page.getByRole("link", { name: "Gaussian simulation" }).getAttribute("href");
+    const draftWorkflowUrl = await page.getByRole("link", { name: "Draft-only workflow" }).getAttribute("href");
+    expect(workflowUrl).toBeTruthy();
+    expect(draftWorkflowUrl).toBeTruthy();
+    const workflowId = lastSegment(workflowUrl);
+    const draftWorkflowId = lastSegment(draftWorkflowUrl);
+    await page.getByRole("link", { name: "Gaussian simulation" }).click();
+    await expect(page.getByRole("tab", { name: "Versions" })).toBeVisible();
+    const publishedVersionHref = await page.getByRole("link", { name: "v2", exact: true }).getAttribute("href");
+    expect(publishedVersionHref).toBeTruthy();
+    const publishedVersionId = lastSegment(publishedVersionHref);
+    await page.getByRole("link", { name: "v2", exact: true }).click();
+    for (const nodeName of ["prepare", "simulate", "merge", "train", "sweep"]) await expect(page.getByText(nodeName, { exact: true }).first()).toBeVisible();
+    await page.getByRole("tab", { name: "YAML" }).click();
+    await expect(page.locator(".monaco-editor .view-lines")).toContainText("apiVersion: custos.io/v1alpha1");
+    await page.goto(workflowUrl ?? "/t/acme/workflows");
+    const workflowCsrfToken = (await page.context().cookies()).find((cookie) => cookie.name === "custos_csrf")?.value ?? "";
+    expect(workflowCsrfToken).toBeTruthy();
+    const callExecute = (key: string | undefined, requestBody: Record<string, unknown>) => page.evaluate(async ({ idempotencyKey, body, csrfToken }) => {
+      const headers: Record<string, string> = { Accept: "application/json", "Content-Type": "application/json", "X-CSRF-Token": csrfToken };
+      if (idempotencyKey) headers["Idempotency-Key"] = idempotencyKey;
+      const response = await fetch("/api/bff/tenants/acme/workflow-executions", {
+        method: "POST", credentials: "same-origin", headers, body: JSON.stringify(body),
+      });
+      const responseBody: unknown = await response.json().catch(() => null);
+      return { status: response.status, body: responseBody };
+    }, { idempotencyKey: key, body: requestBody, csrfToken: workflowCsrfToken });
+    const idempotencyKey = "smoke-workflow-idempotency-key";
+    const executeBody = { workflow: workflowId, version: publishedVersionId, parameters: { molecule: "water", iterations: 20, shards: 2 } };
+    const firstRun = await callExecute(idempotencyKey, executeBody);
+    expect(firstRun.status).toBe(202);
+    const firstExecutionId = (firstRun.body as { id?: unknown }).id;
+    expect(typeof firstExecutionId).toBe("string");
+    const replay = await callExecute(idempotencyKey, executeBody);
+    expect(replay.status).toBe(202);
+    expect((replay.body as { id?: unknown }).id).toBe(firstExecutionId);
+    const keyConflict = await callExecute(idempotencyKey, { ...executeBody, parameters: { ...executeBody.parameters, molecule: "methane" } });
+    expect(keyConflict.status).toBe(409);
+    expect((keyConflict.body as { error?: { code?: string } }).error?.code).toBe("IDEMPOTENCY_KEY_REUSED");
+    const missingKey = await callExecute(undefined, executeBody);
+    expect(missingKey.status).toBe(400);
+    expect((missingKey.body as { error?: { code?: string } }).error?.code).toBe("IDEMPOTENCY_KEY_REQUIRED");
+    const noPublishedVersion = await callExecute("smoke-draft-only-key", { workflow: draftWorkflowId, parameters: {} });
+    expect(noPublishedVersion.status).toBe(409);
+    expect((noPublishedVersion.body as { error?: { code?: string } }).error?.code).toBe("NO_PUBLISHED_VERSION");
+
+    await page.getByRole("button", { name: "Run" }).click();
+    await expect(page.getByRole("dialog", { name: "Run Gaussian simulation" })).toBeVisible();
+    await page.getByLabel(/molecule/).fill("benzene");
+    await page.getByRole("button", { name: "Run workflow" }).click();
+    await expect(page).toHaveURL(/\/t\/acme\/executions\/[0-9a-f-]+$/);
+    await expect(page.getByRole("heading", { level: 1, name: /^Execution / })).toBeVisible();
+    await page.getByRole("button", { name: "Cancel execution" }).click();
+    await page.getByRole("button", { name: "Confirm cancel" }).click();
+    await expect(page.getByText("CANCELED").first()).toBeVisible();
+
+    await page.goto("/t/acme/executions");
+    const runningRow = page.getByRole("row").filter({ hasText: "Gaussian simulation" }).filter({ hasText: "RUNNING" }).first();
+    await expect(runningRow).toBeVisible();
+    await runningRow.getByRole("link").first().click();
+    await expect(page.getByText("2/4 COMPLETED")).toBeVisible();
+    await expect(page.getByRole("columnheader", { name: "Index / count" })).toBeVisible();
+    await page.getByText("simulate", { exact: true }).first().click();
+    await expect(page.getByRole("heading", { name: "Task executions · simulate" })).toBeVisible();
+    await page.getByRole("button", { name: "Inspect" }).first().click();
+    await expect(page.getByRole("region", { name: "Frozen execution specification" })).toBeVisible();
+    expect(workflowConsoleIssues).toEqual([]);
+
     await page.goto("/t/acme/secrets?tab=connectors");
     await expect(page.getByRole("heading", { name: "You don't have access to this view" })).toBeVisible();
   }

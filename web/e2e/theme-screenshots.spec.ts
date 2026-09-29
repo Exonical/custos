@@ -76,8 +76,12 @@ test("capture dark industrial console screenshots", async ({ page }) => {
 
   const cspViolations: string[] = [];
   const consoleIssues: string[] = [];
+  const externalRequests: string[] = [];
   const externalFontRequests: string[] = [];
   const localFontRequests: string[] = [];
+  const workerUrls: string[] = [];
+  const documentCspHeaders: string[] = [];
+  const localHosts = new Set(["localhost", "127.0.0.1", "::1"]);
   page.on("console", (message) => {
     const type = message.type();
     if (type === "error" || type === "warning") {
@@ -90,8 +94,16 @@ test("capture dark industrial console screenshots", async ({ page }) => {
   page.on("pageerror", (error) => consoleIssues.push(`${new URL(page.url()).pathname} [pageerror]: ${error.message}`));
   page.on("request", (request) => {
     const url = new URL(request.url());
+    if (["http:", "https:", "ws:", "wss:"].includes(url.protocol) && !localHosts.has(url.hostname)) externalRequests.push(request.url());
+    if (url.protocol === "blob:" || url.protocol === "data:") externalRequests.push(request.url());
     if (url.hostname === "fonts.googleapis.com" || url.hostname.endsWith(".gstatic.com")) externalFontRequests.push(request.url());
     if (url.pathname.endsWith(".woff2")) localFontRequests.push(request.url());
+  });
+  page.on("worker", (worker) => workerUrls.push(worker.url()));
+  page.on("response", (response) => {
+    if (response.request().resourceType() === "document") {
+      void response.headerValue("content-security-policy").then((value) => { if (value) documentCspHeaders.push(value); });
+    }
   });
 
   await page.goto("/");
@@ -258,6 +270,85 @@ test("capture dark industrial console screenshots", async ({ page }) => {
   await page.mouse.move(1435, 890);
   await capture(page, "26-usage-top-by-project.png", consoleIssues);
 
+  await page.goto("/t/acme/workflows");
+  await expect(page.getByRole("heading", { name: "Workflows" })).toBeVisible();
+  await expectCompactMonoControl(page.getByRole("combobox", { name: "Project" }));
+  await expectCompactMonoControl(page.getByRole("button", { name: "Show archived" }));
+  await expect(page.getByRole("link", { name: "Gaussian simulation" })).toBeVisible();
+  await capture(page, "27-workflows.png", consoleIssues);
+  const workflowLink = page.getByRole("link", { name: "Gaussian simulation" });
+  const workflowHref = await workflowLink.getAttribute("href");
+  expect(workflowHref).not.toBeNull();
+  await workflowLink.click();
+  await expect(page.getByRole("heading", { name: "Gaussian simulation" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Run" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Versions" })).toBeVisible();
+  await capture(page, "28-workflow-detail-versions.png", consoleIssues);
+  await page.getByRole("tab", { name: "Executions" }).click();
+  await expect(page.getByRole("columnheader", { name: "State" })).toBeVisible();
+  await capture(page, "29-workflow-detail-executions.png", consoleIssues);
+  await page.getByRole("tab", { name: "Versions" }).click();
+  const publishedVersionLink = page.getByRole("link", { name: "v2", exact: true });
+  const publishedVersionHref = await publishedVersionLink.getAttribute("href");
+  expect(publishedVersionHref).not.toBeNull();
+  await publishedVersionLink.click();
+  await expect(page.getByRole("heading", { name: "Version 2" })).toBeVisible();
+  for (const nodeName of ["prepare", "simulate", "merge", "train", "sweep"]) {
+    await expect(page.getByText(nodeName, { exact: true }).first()).toBeVisible();
+  }
+  await capture(page, "30-workflow-version-graph.png", consoleIssues);
+  const yamlWorkerEvent = page.waitForEvent("worker", { timeout: 15_000 });
+  await page.getByRole("tab", { name: "YAML" }).click();
+  const yamlWorker = await yamlWorkerEvent;
+  expect(yamlWorker.url()).toMatch(/^https?:\/\//);
+  await expect(page.locator(".monaco-editor .view-lines")).toContainText("apiVersion: custos.io/v1alpha1");
+  await expect.poll(() => documentCspHeaders.some((header) => header.includes("worker-src 'self'"))).toBe(true);
+  await capture(page, "31-workflow-version-yaml.png", consoleIssues);
+  await page.getByRole("tab", { name: "Parameters" }).click();
+  await expect(page.getByRole("columnheader", { name: "Constraints" })).toBeVisible();
+  await capture(page, "32-workflow-version-parameters.png", consoleIssues);
+  await page.goto(workflowHref ?? "/t/acme/workflows");
+  await page.getByRole("button", { name: "Run" }).click();
+  await expect(page.getByRole("dialog", { name: "Run Gaussian simulation" })).toBeVisible();
+  await expectCompactMonoControl(page.getByLabel(/molecule/));
+  await capture(page, "33-workflow-run-dialog.png", consoleIssues);
+  await page.keyboard.press("Escape");
+
+  await page.goto("/t/acme/executions");
+  await expect(page.getByRole("heading", { name: "Executions" })).toBeVisible();
+  await expectCompactMonoControl(page.getByRole("combobox", { name: "Workflow" }));
+  await expectCompactMonoControl(page.getByRole("combobox", { name: "State" }));
+  await capture(page, "34-executions.png", consoleIssues);
+  const runningExecutionRow = page.getByRole("row").filter({ hasText: "Gaussian simulation" }).filter({ hasText: "RUNNING" }).first();
+  await expect(runningExecutionRow).toBeVisible();
+  const runningExecutionHref = await runningExecutionRow.getByRole("link").first().getAttribute("href");
+  expect(runningExecutionHref).not.toBeNull();
+  await runningExecutionRow.getByRole("link").first().click();
+  await expect(page.getByText("2/4 COMPLETED")).toBeVisible();
+  await expect(page.getByRole("columnheader", { name: "Index / count" })).toBeVisible();
+  await capture(page, "35-execution-detail-running.png", consoleIssues);
+  await page.getByText("simulate", { exact: true }).first().click();
+  await expect(page.getByRole("heading", { name: "Task executions · simulate" })).toBeVisible();
+  await capture(page, "36-execution-task-filter.png", consoleIssues);
+  await page.getByRole("button", { name: "Inspect" }).first().click();
+  await expect(page.getByRole("region", { name: "Frozen execution specification" })).toBeVisible();
+  await expect(page.locator("pre").last()).toContainText("task_name");
+  await capture(page, "36-execution-task-spec.png", consoleIssues);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/t/acme/workflows");
+  await expectNoHorizontalOverflow(page, 390);
+  await expectTableScrollContainer(page);
+  await capture(page, "37-workflows-mobile-390x844.png", consoleIssues);
+  await page.goto(publishedVersionHref ?? "/t/acme/workflows");
+  await expectNoHorizontalOverflow(page, 390);
+  await capture(page, "38-workflow-version-mobile-390x844.png", consoleIssues);
+  await page.goto("/t/acme/executions");
+  await page.getByRole("row").filter({ hasText: "Gaussian simulation" }).filter({ hasText: "RUNNING" }).first().getByRole("link").first().click();
+  await expectNoHorizontalOverflow(page, 390);
+  await expectTableScrollContainer(page);
+  await capture(page, "39-execution-detail-mobile-390x844.png", consoleIssues);
+
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/t/acme/jobs");
   await expect(page.getByRole("heading", { name: "Jobs" })).toBeVisible();
@@ -318,6 +409,10 @@ test("capture dark industrial console screenshots", async ({ page }) => {
   await capture(page, "23-403-secrets-connectors-alice.png", consoleIssues);
 
   expect(cspViolations).toEqual([]);
+  expect(externalRequests).toEqual([]);
   expect(externalFontRequests).toEqual([]);
   expect(localFontRequests.length).toBeGreaterThan(0);
+  expect(workerUrls.length).toBeGreaterThan(0);
+  expect(workerUrls.every((workerUrl) => localHosts.has(new URL(workerUrl).hostname))).toBe(true);
+  expect(documentCspHeaders.some((header) => header.includes("worker-src 'self'"))).toBe(true);
 });

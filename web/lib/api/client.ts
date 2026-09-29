@@ -40,7 +40,28 @@ export type AccountingAllocationItem = components["schemas"]["AccountingAllocati
 export type AccountingAllocationList = components["schemas"]["AccountingAllocationList"];
 export type Job = components["schemas"]["Job"];
 export type JobList = components["schemas"]["JobList"];
+export type Workflow = components["schemas"]["Workflow"];
+export type WorkflowVersion = components["schemas"]["WorkflowVersion"];
+export type WorkflowExecution = components["schemas"]["WorkflowExecution"];
+export type WorkflowExecutionList = components["schemas"]["WorkflowExecutionList"];
+export type TaskExecution = components["schemas"]["TaskExecution"];
+export type TaskExecutionList = components["schemas"]["TaskExecutionList"];
+export type WorkflowExecuteRequest = components["schemas"]["WorkflowExecuteRequest"];
 export type ExecutionSpec = Record<string, unknown>;
+
+export function parseWorkflowVersion(value: unknown): WorkflowVersion | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const candidate = value as Record<string, unknown>;
+  return typeof candidate.id === "string"
+    && typeof candidate.workflowId === "string"
+    && typeof candidate.number === "number"
+    && ["draft", "published", "deprecated"].includes(String(candidate.state))
+    && typeof candidate.schemaVersion === "string"
+    && typeof candidate.specHash === "string"
+    && typeof candidate.version === "number"
+    ? value as WorkflowVersion
+    : null;
+}
 
 export function createApiClient(accessToken: string, options: { mockFail?: string } = {}) {
   const config = getConfig();

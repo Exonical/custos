@@ -16,17 +16,22 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "gen:api": "openapi-typescript ../api/openapi/v1.yaml -o lib/api/schema.d.ts",
+    "gen:spec": "json2ts --input ../internal/workflowspec/schema/v1alpha1.json --output lib/workflow/spec.d.ts --unreachableDefinitions",
     "e2e:smoke": "playwright test --config=playwright.config.ts",
     "e2e:live": "playwright test --config=playwright.live.config.ts"
   },
   "dependencies": {
     "@auth/core": "0.41.3",
     "@base-ui/react": "1.8.0",
+    "@dagrejs/dagre": "3.1.1",
     "@hookform/resolvers": "5.9.1",
+    "@monaco-editor/react": "4.7.0",
     "@tanstack/react-table": "9.2.4",
+    "@xyflow/react": "12.11.6",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
     "lucide-react": "1.48.0",
+    "monaco-editor": "0.56.0",
     "next": "16.3.6",
     "next-auth": "5.0.0-beta.32",
     "openapi-fetch": "0.17.0",
@@ -38,6 +43,7 @@
     "sonner": "2.0.8",
     "tailwind-merge": "3.7.0",
     "undici": "8.11.2",
+    "yaml": "2.9.1",
     "zod": "4.6.5"
   },
   "devDependencies": {
@@ -55,6 +61,7 @@
     "eslint-config-next": "16.3.6",
     "eslint-config-prettier": "10.1.8",
     "jsdom": "30.1.1",
+    "json-schema-to-typescript": "16.0.0",
     "openapi-typescript": "7.13.0",
     "postcss": "8.5.28",
     "prettier": "3.9.9",

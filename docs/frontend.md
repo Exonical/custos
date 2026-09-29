@@ -87,11 +87,18 @@ logging, and no debug endpoints).
   standalone production output. Server Components handle read-heavy pages.
 - UI library: **shadcn/ui `base-nova` on Base UI primitives + Tailwind 4**.
   Accessible, desktop-friendly dense tables; components are vendored.
-- Jobs use TanStack Table with API keyset cursors and state/project filters.
-  Forms use react-hook-form + zod; API types are generated from OpenAPI.
-- M8-A implements Dashboard and Jobs list/detail. Workflows, executions,
-  clusters, usage, and admin pages are future sections; Monaco, React Flow,
-  and charts are out of scope for this slice.
+- Jobs and executions use full-width, horizontally contained tables with API
+  cursors and URL-backed filters. Forms use react-hook-form + zod; API types are
+  generated from OpenAPI and the workflow document type is generated from
+  `internal/workflowspec/schema/v1alpha1.json` with `pnpm gen:spec`.
+- Workflow version graphs use React Flow with dagre fallback layout. Read-only
+  YAML and frozen ExecutionSpecs use Monaco from the bundled `monaco-editor`
+  package through `@monaco-editor/react`; the loader is configured with the
+  local Monaco instance and its worker is a same-origin module worker. YAML
+  serialization uses `yaml`.
+- Workflow UI batch 2a implements read-only workflow/version and execution
+  views plus Run and Cancel. The editor (graph/YAML editing, validation, draft
+  save, publish, and deprecate) is batch 2b, not part of 2a.
 
 ## Design system
 
@@ -108,10 +115,10 @@ failed red, completed steel, and canceled gray. New UI must use these semantic
 tokens rather than raw Tailwind palette colors. There is no light theme or
 switcher for now.
 
-## Future workflow-editor contract (not implemented in M8-A)
+## Future workflow-editor contract (batch 2b)
 
-The following consistency rules are retained for a future workflow editor;
-M8-A does not include the editor.
+The following consistency rules are retained for the full workflow editor in
+batch 2b; the 2a routes are read-only except for Run and Cancel.
 
 ### Visual ⇄ YAML consistency
 
@@ -129,13 +136,17 @@ projections:
   errors are mapped onto nodes/fields.
 - Saving sends `{spec, layout}`; the backend hashes only `spec`.
 
-## Pages (M8-A)
+The BFF request-header allow-list does not currently forward
+`X-Expected-Version`, which draft save requires. Batch 2b must account for this;
+2a does not change the allow-list.
 
-Implemented: tenant selection, Dashboard, and Jobs (keyset-paginated list,
-detail, read-only ExecutionSpec/resource usage, and CSRF-protected cancel).
-The shell includes tenant switching, logout, and disabled coming-soon entries
-for Workflows, Templates, Interactive, Projects, Secrets, Usage, Clusters, and
-Policies. Tenant pages live under
+## Pages (M8-A and workflow batch 2a)
+
+Implemented: tenant selection, Dashboard, Jobs, Projects, Clusters, Secrets,
+Usage, Workflows, and Executions. Workflow batch 2a provides read-only
+workflow/version graphs and YAML, execution/task details, parameterized Run,
+and CSRF-protected Cancel; it does not include the full editor. Templates,
+Interactive, and Policies remain coming-soon entries. Tenant pages live under
 `/t/{tenant}/...`, mirroring the API. The browser UI never calls the API
 directly; Server Components use the server API client and mutations use the BFF.
 The Job API currently exposes job reads, cancellation, and ExecutionSpec only;
@@ -151,8 +162,9 @@ authorization, and audit requirements before implementation.
 
 ## Security headers (BFF and API)
 
-`Content-Security-Policy` (nonce-based scripts, `frame-ancestors 'none'`,
-`connect-src 'self'`; `unsafe-eval` is added only for Next development),
+`Content-Security-Policy` (nonce-based scripts, `worker-src 'self'`,
+`frame-ancestors 'none'`, `connect-src 'self'`; `unsafe-eval` is added only for
+Next development),
 `Strict-Transport-Security`, `X-Content-Type-Options:
 nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`,
 `Permissions-Policy` minimal. API CORS: deny by default; allow-list of
