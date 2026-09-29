@@ -40,3 +40,11 @@ addresses fail closed. Slurm endpoints use the same transport.
   updated, or explicitly tested.
 - Tenant isolation for the default connector retains ADR-003's per-request,
   one-use child-token boundary.
+
+## Amendment — connector metadata responses
+
+Connector `config` is a closed, typed allow-list of non-secret fields; unknown
+keys are rejected with HTTP 422. PostgreSQL continues to store the internal
+platform `credential_ref`, but API responses never expose it or credential
+values and instead report only `has_credential`. `role_id` is a non-secret
+AppRole identifier; secret IDs and login tokens remain write-only credentials.

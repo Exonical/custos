@@ -11,6 +11,47 @@ import (
 	"time"
 )
 
+func assertConnectorCredentialIndicator(t *testing.T, connector map[string]any, want bool) {
+	t.Helper()
+	if got, ok := connector["has_credential"].(bool); !ok || got != want {
+		t.Fatalf("has_credential = %#v, want %t", connector["has_credential"], want)
+	}
+	for _, field := range []string{"credential_ref", "credential"} {
+		if _, found := connector[field]; found {
+			t.Fatalf("connector response exposed %s", field)
+		}
+	}
+	if config, ok := connector["config"].(map[string]any); ok {
+		for _, field := range []string{"credential_ref", "credential", "secret_id", "token", "jwt"} {
+			if _, found := config[field]; found {
+				t.Fatalf("connector config exposed %s", field)
+			}
+		}
+		if auth, ok := config["auth"].(map[string]any); ok {
+			for _, field := range []string{"secret_id", "token", "jwt", "jwt_audience"} {
+				if _, found := auth[field]; found {
+					t.Fatalf("connector auth config exposed %s", field)
+				}
+			}
+		}
+	}
+}
+
+func assertConnectorConfig(t *testing.T, connector map[string]any) {
+	t.Helper()
+	config, ok := connector["config"].(map[string]any)
+	if !ok {
+		t.Fatalf("connector config = %#v, want object", connector["config"])
+	}
+	if config["address"] != "https://openbao-byo.e2e:8250" || config["namespace"] != "customer" || config["mount"] != "kv" {
+		t.Fatalf("connector config round-trip = %#v", config)
+	}
+	auth, ok := config["auth"].(map[string]any)
+	if !ok || auth["method"] != "token" {
+		t.Fatalf("connector auth config round-trip = %#v", config["auth"])
+	}
+}
+
 // TestE2E drives the ordered scenario from docs/e2e.md against the
 // running stack. State is shared between subtests intentionally.
 func TestE2E(t *testing.T) {
@@ -273,6 +314,30 @@ func TestE2E(t *testing.T) {
 		}, tokAdmin, nil)
 		want(t, status, conn, http.StatusCreated, "create BYO connector")
 		connID, _ := conn["id"].(string)
+		assertConnectorCredentialIndicator(t, conn, true)
+		assertConnectorConfig(t, conn)
+		status, fetchedConnector := api(t, http.MethodGet, "/tenants/acme/secret-connectors/"+connID, nil, tokAdmin, nil)
+		want(t, status, fetchedConnector, http.StatusOK, "get BYO connector")
+		assertConnectorCredentialIndicator(t, fetchedConnector, true)
+		assertConnectorConfig(t, fetchedConnector)
+		status, connectorList := api(t, http.MethodGet, "/tenants/acme/secret-connectors", nil, tokAdmin, nil)
+		want(t, status, connectorList, http.StatusOK, "list connectors")
+		var sawBYO, sawDefault bool
+		for _, item := range connectorList["items"].([]any) {
+			listed := item.(map[string]any)
+			switch listed["name"] {
+			case "byo" + runSfx:
+				assertConnectorCredentialIndicator(t, listed, true)
+				assertConnectorConfig(t, listed)
+				sawBYO = true
+			case "default":
+				assertConnectorCredentialIndicator(t, listed, false)
+				sawDefault = true
+			}
+		}
+		if !sawBYO || !sawDefault {
+			t.Fatalf("connector list missing BYO/default entries: %+v", connectorList["items"])
+		}
 		status, tested = api(t, http.MethodPost,
 			"/tenants/acme/secret-connectors/"+connID+"/test", nil, tokAdmin, nil)
 		want(t, status, tested, http.StatusOK, "test BYO connector")

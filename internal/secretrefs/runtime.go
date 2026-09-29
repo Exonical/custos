@@ -44,10 +44,9 @@ func (f *ConnectorFactory) Open(ctx context.Context, s secrets.ConnectorSpec, cr
 		Namespace string `json:"namespace"`
 		Mount     string `json:"mount"`
 		Auth      struct {
-			Method      string `json:"method"`
-			RoleID      string `json:"role_id"`
-			Role        string `json:"role"`
-			JWTAudience string `json:"jwt_audience"`
+			Method string `json:"method"`
+			RoleID string `json:"role_id"`
+			Role   string `json:"role"`
 		} `json:"auth"`
 	}
 	b, _ := json.Marshal(s.Config)
@@ -141,7 +140,7 @@ func (r *Runtime) Close() error {
 // CheckCandidate validates connectivity/authentication without caching it.
 func (r *Runtime) CheckCandidate(ctx context.Context, c Connector, credential *secrets.Value) error {
 	spec := secrets.ConnectorSpec{ID: c.ID, TenantID: c.TenantID, Kind: c.Kind,
-		Version: c.Version, Config: c.Config, CredentialRef: c.CredentialRef}
+		Version: c.Version, Config: c.Config.runtimeConfig(), CredentialRef: c.CredentialRef}
 	conn, err := r.factory.Open(ctx, spec, func(ctx context.Context) (secrets.Value, error) {
 		if credential != nil {
 			return secrets.NewValue(credential.Reveal()), nil
@@ -183,7 +182,7 @@ func (r *Runtime) connector(ctx context.Context, c Connector) (secrets.Connector
 		return x.c, nil
 	}
 	r.mu.Unlock()
-	spec := secrets.ConnectorSpec{ID: c.ID, TenantID: c.TenantID, Kind: c.Kind, Version: c.Version, Config: c.Config, CredentialRef: c.CredentialRef}
+	spec := secrets.ConnectorSpec{ID: c.ID, TenantID: c.TenantID, Kind: c.Kind, Version: c.Version, Config: c.Config.runtimeConfig(), CredentialRef: c.CredentialRef}
 	conn, err := r.factory.Open(ctx, spec, func(ctx context.Context) (secrets.Value, error) {
 		if c.CredentialRef == nil {
 			return secrets.Value{}, fmt.Errorf("connector has no credential reference")

@@ -13,6 +13,7 @@ import (
 	"github.com/Exonical/custos/internal/audit"
 	"github.com/Exonical/custos/internal/authn"
 	"github.com/Exonical/custos/internal/authz"
+	"github.com/Exonical/custos/internal/platform/apperr"
 	"github.com/Exonical/custos/internal/secretrefs"
 	"github.com/Exonical/custos/internal/secrets"
 	"github.com/Exonical/custos/internal/tenants"
@@ -218,7 +219,7 @@ func setupFlaky(t *testing.T) (*secretrefs.Service, *flakyRepo, *fakeStore, auth
 func TestCreateConnectorRefetchErrorPropagatesWithoutRollback(t *testing.T) {
 	svc, repo, store, p, tc := setupFlaky(t)
 	c, err := svc.CreateConnector(context.Background(), p, tc, secretrefs.CreateConnector{
-		Name: "ext", Kind: "openbao", Config: map[string]any{}, Credential: map[string]string{"token": "[REDACTED]"},
+		Name: "ext", Kind: "openbao", Config: secretrefs.ConnectorConfig{}, Credential: map[string]string{"token": "[REDACTED]"},
 	})
 	if !errors.Is(err, errRead) {
 		t.Fatalf("err = %v, want %v", err, errRead)
@@ -228,6 +229,19 @@ func TestCreateConnectorRefetchErrorPropagatesWithoutRollback(t *testing.T) {
 	}
 	if repo.deletedConnectors != 0 || len(store.deletes) != 0 {
 		t.Fatalf("rollback ran: repo deletes=%d, store deletes=%v", repo.deletedConnectors, store.deletes)
+	}
+}
+
+func TestUpdateDefaultConnectorConfigRemainsImmutable(t *testing.T) {
+	tc := tenantContext()
+	repo := &fakeRepo{connector: secretrefs.Connector{ID: uuid.New(), TenantID: tc.Tenant.ID, Name: "default", Kind: "platform-openbao", State: "active"}}
+	var logs bytes.Buffer
+	svc := newService(repo, &fakeStore{}, nil, &logs)
+	config := secretrefs.ConnectorConfig{}
+	_, err := svc.UpdateConnector(context.Background(), authn.Principal{UserID: uuid.New()}, tc, "default", secretrefs.UpdateConnector{Config: &config})
+	var domainErr *apperr.Error
+	if !errors.As(err, &domainErr) || domainErr.Code != "DEFAULT_CONNECTOR_IMMUTABLE" {
+		t.Fatalf("UpdateConnector() error = %v, want DEFAULT_CONNECTOR_IMMUTABLE", err)
 	}
 }
 
@@ -248,7 +262,7 @@ func TestUpdateConnectorRefetchErrorPropagates(t *testing.T) {
 func TestCreateReferenceRefetchErrorPropagates(t *testing.T) {
 	svc, repo, _, p, tc := setupFlaky(t)
 	id := uuid.New()
-	repo.connectors["ext"] = secretrefs.Connector{ID: id, TenantID: tc.Tenant.ID, Name: "ext", Kind: "openbao", State: "active", Config: map[string]any{"mount": "kv"}}
+	repo.connectors["ext"] = secretrefs.Connector{ID: id, TenantID: tc.Tenant.ID, Name: "ext", Kind: "openbao", State: "active", Config: secretrefs.ConnectorConfig{Mount: "kv"}}
 	x, err := svc.CreateReference(context.Background(), p, tc, secretrefs.CreateReference{
 		Name: "ref", Connector: "ext", Path: "app/db", Key: "password", Kind: "generic",
 	})

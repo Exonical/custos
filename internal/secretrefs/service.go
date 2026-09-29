@@ -88,7 +88,7 @@ func (s *Service) deleteCredential(ctx context.Context, connectorID uuid.UUID, r
 type CreateConnector struct {
 	Name       string            `json:"name"`
 	Kind       string            `json:"kind"`
-	Config     map[string]any    `json:"config"`
+	Config     ConnectorConfig   `json:"config"`
 	Credential map[string]string `json:"credential,omitempty"`
 }
 
@@ -96,7 +96,7 @@ type CreateConnector struct {
 type UpdateConnector struct {
 	Name       *string           `json:"name,omitempty"`
 	State      *string           `json:"state,omitempty"`
-	Config     map[string]any    `json:"config,omitempty"`
+	Config     *ConnectorConfig  `json:"config,omitempty"`
 	Credential map[string]string `json:"credential,omitempty"`
 	Version    int64             `json:"version"`
 }
@@ -178,7 +178,7 @@ func (s *Service) EnsureDefault(ctx context.Context, tenantID, createdBy uuid.UU
 	if err := s.platform.EnsureTenantNamespace(ctx, tenantID.String()); err != nil {
 		return Connector{}, err
 	}
-	c := Connector{ID: uuid.Must(uuid.NewV7()), TenantID: tenantID, Name: "default", Kind: "platform-openbao", State: "active", Config: map[string]any{}, CreatedBy: createdBy}
+	c := Connector{ID: uuid.Must(uuid.NewV7()), TenantID: tenantID, Name: "default", Kind: "platform-openbao", State: "active", Config: ConnectorConfig{}, CreatedBy: createdBy}
 	if err := s.repo.CreateConnector(ctx, tenants.TenantScope(tenantID), c); err != nil {
 		if existing, e := s.repo.GetConnector(ctx, tenants.TenantScope(tenantID), tenantID, "default"); e == nil {
 			return existing, nil
@@ -279,7 +279,7 @@ func (s *Service) UpdateConnector(ctx context.Context, p authn.Principal, tc ten
 		c.State = *in.State
 	}
 	if in.Config != nil {
-		c.Config = in.Config
+		c.Config = *in.Config
 	}
 	c.Version = in.Version
 	var credential *secrets.Value
@@ -424,9 +424,9 @@ func (s *Service) CreateReference(ctx context.Context, p authn.Principal, tc ten
 		namespace = s.platformNS + "/tenants/" + tc.Tenant.ID.String()
 		mount = "kv"
 	} else {
-		namespace, _ = c.Config["namespace"].(string)
+		namespace = c.Config.Namespace
 		if mount == "" {
-			mount, _ = c.Config["mount"].(string)
+			mount = c.Config.Mount
 		}
 	}
 	if mount == "" {

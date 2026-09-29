@@ -69,17 +69,19 @@ A `SecretConnector` selects the manager used by tenant references:
   platform OpenBao is configured. It uses the platform address, CA, workload
   auth, tenant namespace, and child-token isolation described above.
 - `openbao` connects to a tenant-managed OpenBao/Vault-compatible endpoint.
-  Its non-secret configuration contains address, pinned CA, namespace, mount,
-  and auth shape. M6-A supports static token, AppRole (`role_id` plus a
-  separately stored `secret_id`), and JWT (`role` plus a separately stored
-  workload JWT). The factory remains additive for future AWS, Azure, and GCP
-  secret-manager kinds.
+  Its typed, non-secret configuration is restricted to address, pinned CA,
+  namespace, mount, and auth selectors (`method`, AppRole `role_id`, or JWT
+  `role`). Unknown configuration keys return HTTP 422. M6-A supports static
+  token, AppRole (`role_id` plus a separately stored `secret_id`), and JWT
+  (`role` plus a separately stored workload JWT). The factory remains additive
+  for future AWS, Azure, and GCP secret-manager kinds.
 
 BYO credentials supplied during create/rotate are written directly to the
-platform tenant namespace at `kv/connectors/<connector-id>`. PostgreSQL stores
-only the platform `credential_ref`; API responses never echo the credential.
-Consequently, BYO connector creation requires platform OpenBao and otherwise
-returns `PLATFORM_SECRETS_REQUIRED`.
+platform tenant namespace at `kv/connectors/<connector-id>`. PostgreSQL retains
+only the internal platform `credential_ref`; connector API responses never
+return that reference or credential and expose only `has_credential`. The
+credential remains write-only in the API. Consequently, BYO connector creation
+requires platform OpenBao and otherwise returns `PLATFORM_SECRETS_REQUIRED`.
 
 Connector addresses are tenant-controlled. Create, update, test, and resolution
 use the same `platform/safehttp` transport as Slurm: TLS 1.3 minimum, optional

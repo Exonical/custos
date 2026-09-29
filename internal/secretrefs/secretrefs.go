@@ -11,6 +11,50 @@ import (
 	"github.com/Exonical/custos/internal/tenants"
 )
 
+// ConnectorAuthConfig contains only non-secret OpenBao login selectors.
+type ConnectorAuthConfig struct {
+	Method string `json:"method"`
+	RoleID string `json:"role_id,omitempty"`
+	Role   string `json:"role,omitempty"`
+}
+
+// ConnectorConfig is the allow-listed, non-secret connector configuration.
+type ConnectorConfig struct {
+	Address   string               `json:"address,omitempty"`
+	CAPEM     string               `json:"ca_pem,omitempty"`
+	Namespace string               `json:"namespace,omitempty"`
+	Mount     string               `json:"mount,omitempty"`
+	Auth      *ConnectorAuthConfig `json:"auth,omitempty"`
+}
+
+// runtimeConfig adapts the validated public config to the provider port.
+func (c ConnectorConfig) runtimeConfig() map[string]any {
+	out := map[string]any{}
+	if c.Address != "" {
+		out["address"] = c.Address
+	}
+	if c.CAPEM != "" {
+		out["ca_pem"] = c.CAPEM
+	}
+	if c.Namespace != "" {
+		out["namespace"] = c.Namespace
+	}
+	if c.Mount != "" {
+		out["mount"] = c.Mount
+	}
+	if c.Auth != nil {
+		auth := map[string]any{"method": c.Auth.Method}
+		if c.Auth.RoleID != "" {
+			auth["role_id"] = c.Auth.RoleID
+		}
+		if c.Auth.Role != "" {
+			auth["role"] = c.Auth.Role
+		}
+		out["auth"] = auth
+	}
+	return out
+}
+
 // Connector is non-secret metadata for a tenant secret manager.
 type Connector struct {
 	ID            uuid.UUID
@@ -18,7 +62,7 @@ type Connector struct {
 	Name          string
 	Kind          string
 	State         string
-	Config        map[string]any
+	Config        ConnectorConfig
 	CredentialRef *secrets.Reference
 	CreatedBy     uuid.UUID
 	CreatedAt     time.Time

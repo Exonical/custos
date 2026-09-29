@@ -250,7 +250,7 @@ func TestAPIJobs(t *testing.T) {
 	ownerID := uuid.MustParse(ur)
 	connector := secretrefs.Connector{ID: uuid.Must(uuid.NewV7()), TenantID: tid,
 		Name: "default", Kind: "platform-openbao", State: "active",
-		Config: map[string]any{}, CreatedBy: ownerID}
+		Config: secretrefs.ConnectorConfig{}, CreatedBy: ownerID}
 	if err := secretRepo.CreateConnector(context.Background(), tenants.TenantScope(tid), connector); err != nil {
 		t.Fatal(err)
 	}

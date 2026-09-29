@@ -3,6 +3,7 @@ package postgres_test
 import (
 	"context"
 	"os"
+	"reflect"
 	"testing"
 
 	"github.com/google/uuid"
@@ -13,6 +14,7 @@ import (
 	"github.com/Exonical/custos/internal/platform/db/dbtest"
 	"github.com/Exonical/custos/internal/secretrefs"
 	secretpg "github.com/Exonical/custos/internal/secretrefs/postgres"
+	"github.com/Exonical/custos/internal/secrets"
 	"github.com/Exonical/custos/internal/tenants"
 )
 
@@ -45,7 +47,7 @@ func TestRLSAndProjectTenantTrigger(t *testing.T) {
 	ta, ua, pa := seed(t, admin)
 	tb, _, pb := seed(t, admin)
 	repo := secretpg.New(admin)
-	ca := secretrefs.Connector{ID: uuid.Must(uuid.NewV7()), TenantID: ta, Name: "default", Kind: "platform-openbao", State: "active", Config: map[string]any{}, CreatedBy: ua}
+	ca := secretrefs.Connector{ID: uuid.Must(uuid.NewV7()), TenantID: ta, Name: "default", Kind: "platform-openbao", State: "active", Config: secretrefs.ConnectorConfig{}, CreatedBy: ua}
 	if err := repo.CreateConnector(ctx, tenants.PlatformScope(), ca); err != nil {
 		t.Fatal(err)
 	}
@@ -86,5 +88,38 @@ func TestRLSAndProjectTenantTrigger(t *testing.T) {
 	good.Name = "good"
 	if err := secretpg.New(app).CreateReference(ctx, tenants.TenantScope(ta), good); err != nil {
 		t.Fatalf("own project rejected: %v", err)
+	}
+}
+
+func TestConnectorConfigRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	dsn := dbtest.URL(t)
+	admin, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer admin.Close()
+	tid, uid, _ := seed(t, admin)
+	repo := secretpg.New(admin)
+	connector := secretrefs.Connector{
+		ID: uuid.New(), TenantID: tid, Name: "byo", Kind: "openbao", State: "active", CreatedBy: uid,
+		Config: secretrefs.ConnectorConfig{
+			Address: "https://vault.example.test", CAPEM: "public-ca-pem", Namespace: "customer", Mount: "kv",
+			Auth: &secretrefs.ConnectorAuthConfig{Method: "approle", RoleID: "role-1"},
+		},
+		CredentialRef: &secrets.Reference{Provider: "openbao", Namespace: "custos/tenants/" + tid.String(), Mount: "kv", Path: "connectors/" + uuid.NewString(), Key: "credential"},
+	}
+	if err := repo.CreateConnector(ctx, tenants.PlatformScope(), connector); err != nil {
+		t.Fatal(err)
+	}
+	got, err := repo.GetConnector(ctx, tenants.PlatformScope(), tid, connector.ID.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got.Config, connector.Config) {
+		t.Fatalf("config round-trip = %#v, want %#v", got.Config, connector.Config)
+	}
+	if !reflect.DeepEqual(got.CredentialRef, connector.CredentialRef) {
+		t.Fatalf("credential_ref round-trip = %#v, want %#v", got.CredentialRef, connector.CredentialRef)
 	}
 }

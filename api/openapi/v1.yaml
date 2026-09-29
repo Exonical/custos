@@ -2654,7 +2654,11 @@ paths:
     get:
       operationId: listAllocations
       security: [{bearerAuth: []}]
-      responses: {"200": {description: Project allocations, content: {application/json: {schema: {type: object}}}}}
+      responses:
+        "200": {description: Project allocations, content: {application/json: {schema: {$ref: "#/components/schemas/AllocationList"}}}}
+        "401": {description: Unauthenticated, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+        "403": {description: Requires allocation.read, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+        "404": {description: Project not found, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
     post:
       operationId: createAllocation
       security: [{bearerAuth: []}]
@@ -2685,7 +2689,11 @@ paths:
       operationId: listAccountingAllocations
       security: [{bearerAuth: []}]
       parameters: [{$ref: "#/components/parameters/TenantSlug"}]
-      responses: {"200": {description: Visible allocations with consumption and remaining amounts, content: {application/json: {schema: {type: object}}}}}
+      responses:
+        "200": {description: Visible allocations with consumption and remaining amounts, content: {application/json: {schema: {$ref: "#/components/schemas/AccountingAllocationList"}}}}
+        "401": {description: Unauthenticated, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+        "403": {description: Requires allocation.read, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+        "404": {description: Tenant not found, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
 
   /clusters/{cluster}/policy-sync:
     get:
@@ -2714,7 +2722,10 @@ paths:
       summary: List tenant secret connectors
       security: [{bearerAuth: []}]
       responses:
-        "200": {description: Connector list, content: {application/json: {schema: {type: object}}}}
+        "200": {description: Connector list, content: {application/json: {schema: {$ref: "#/components/schemas/SecretConnectorList"}}}}
+        "401": {description: Unauthenticated, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+        "403": {description: Requires secret.connector.read, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+        "404": {description: Tenant not found, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
     post:
       operationId: createSecretConnector
       summary: Create a tenant secret connector
@@ -2722,7 +2733,10 @@ paths:
       requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/CreateSecretConnector"}}}}
       responses:
         "201": {description: Connector created, content: {application/json: {schema: {$ref: "#/components/schemas/SecretConnector"}}}}
-        "422": {description: Invalid or unavailable provider, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+        "401": {description: Unauthenticated, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+        "403": {description: Requires secret.connector.manage, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+        "404": {description: Tenant not found, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+        "422": {description: Invalid connector configuration or unavailable provider, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
 
   /tenants/{tenant}/secret-connectors/{connector}:
     parameters:
@@ -2731,16 +2745,31 @@ paths:
     get:
       operationId: getSecretConnector
       security: [{bearerAuth: []}]
-      responses: {"200": {description: Connector, content: {application/json: {schema: {$ref: "#/components/schemas/SecretConnector"}}}}}
+      responses:
+        "200": {description: Connector, content: {application/json: {schema: {$ref: "#/components/schemas/SecretConnector"}}}}
+        "401": {description: Unauthenticated, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+        "403": {description: Requires secret.connector.read, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+        "404": {description: Connector not found, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
     patch:
       operationId: updateSecretConnector
       security: [{bearerAuth: []}]
-      requestBody: {required: true, content: {application/json: {schema: {type: object}}}}
-      responses: {"200": {description: Connector updated, content: {application/json: {schema: {$ref: "#/components/schemas/SecretConnector"}}}}}
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/UpdateSecretConnector"}}}}
+      responses:
+        "200": {description: Connector updated, content: {application/json: {schema: {$ref: "#/components/schemas/SecretConnector"}}}}
+        "401": {description: Unauthenticated, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+        "403": {description: Requires secret.connector.manage, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+        "404": {description: Connector not found, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+        "409": {description: Version conflict or connector is immutable, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+        "422": {description: Invalid configuration or connector state, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
     delete:
       operationId: deleteSecretConnector
       security: [{bearerAuth: []}]
-      responses: {"204": {description: Connector deleted}, "409": {description: Connector is in use}}
+      responses:
+        "204": {description: Connector deleted}
+        "401": {description: Unauthenticated, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+        "403": {description: Requires secret.connector.manage, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+        "404": {description: Connector not found, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+        "409": {description: Connector is in use, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
 
   /tenants/{tenant}/secret-connectors/{connector}/test:
     parameters:
@@ -2757,7 +2786,11 @@ paths:
     get:
       operationId: listSecretReferences
       security: [{bearerAuth: []}]
-      responses: {"200": {description: Reference list, content: {application/json: {schema: {type: object}}}}}
+      responses:
+        "200": {description: Reference list, content: {application/json: {schema: {$ref: "#/components/schemas/SecretReferenceList"}}}}
+        "401": {description: Unauthenticated, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+        "403": {description: Requires secret.reference.read, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+        "404": {description: Tenant not found, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
     post:
       operationId: createSecretReference
       security: [{bearerAuth: []}]
@@ -2819,7 +2852,12 @@ paths:
         - {name: from, in: query, required: true, schema: {type: string, format: date-time}}
         - {name: to, in: query, required: true, schema: {type: string, format: date-time}}
         - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 50}}
-      responses: {"200": {description: Top consumers, content: {application/json: {schema: {type: object}}}}}
+      responses:
+        "200": {description: Top consumers, content: {application/json: {schema: {$ref: "#/components/schemas/AccountingTopList"}}}}
+        "400": {description: Invalid range, metric, or grouping, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+        "401": {description: Unauthenticated, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+        "403": {description: Requires accounting.read.self, accounting.read.project, or accounting.read.tenant, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+        "404": {description: Tenant not found, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
 
   /clusters/{cluster}/accounting:
     parameters: [{name: cluster, in: path, required: true, schema: {type: string}}]
@@ -3631,7 +3669,7 @@ components:
         after: {type: object, additionalProperties: true}
     Allocation:
       type: object
-      required: [id, tenant_id, project_id, binding_id, name, unit, limit_amount, period_start, period_end, enforcement, consumed_amount, version]
+      required: [id, tenant_id, project_id, binding_id, name, unit, limit_amount, period_start, period_end, enforcement, consumed_amount, consumed_as_of, version, created_at, updated_at]
       properties:
         id: {type: string, format: uuid}
         tenant_id: {type: string, format: uuid}
@@ -3648,6 +3686,13 @@ components:
         version: {type: integer}
         created_at: {type: string, format: date-time}
         updated_at: {type: string, format: date-time}
+
+    AllocationList:
+      type: object
+      required: [items]
+      properties:
+        items: {type: array, items: {$ref: "#/components/schemas/Allocation"}}
+
     CreateAllocation:
       type: object
       required: [binding_id, name, unit, limit_amount, period_start, period_end, enforcement]
@@ -3687,34 +3732,80 @@ components:
           pattern: "^[A-Z_][A-Z0-9_]*$"
           description: Env-mode variable name; defaults to upper-snake handle.
 
+    ConnectorAuthConfig:
+      type: object
+      additionalProperties: false
+      required: [method]
+      properties:
+        method: {type: string, enum: [token, approle, jwt]}
+        role_id: {type: string, description: Non-secret AppRole identifier.}
+        role: {type: string, description: Non-secret JWT role selector.}
+
+    ConnectorConfig:
+      type: object
+      description: Allow-listed non-secret connector configuration. Credentials are supplied separately.
+      additionalProperties: false
+      properties:
+        address: {type: string}
+        ca_pem: {type: string, description: Pinned public CA certificate.}
+        namespace: {type: string}
+        mount: {type: string}
+        auth: {$ref: "#/components/schemas/ConnectorAuthConfig"}
+
     SecretConnector:
       type: object
-      required: [id, tenant_id, name, kind, state, config, version]
+      required: [id, tenant_id, name, kind, state, config, has_credential, version, created_at, updated_at]
       properties:
         id: {type: string, format: uuid}
         tenant_id: {type: string, format: uuid}
         name: {type: string}
         kind: {type: string, enum: [platform-openbao, openbao]}
         state: {type: string, enum: [active, disabled]}
-        config: {type: object, additionalProperties: true}
-        credential_ref: {$ref: "#/components/schemas/SecretRef"}
+        config: {$ref: "#/components/schemas/ConnectorConfig"}
+        has_credential: {type: boolean, description: True only when a BYO connector credential is stored.}
         version: {type: integer, format: int64}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+
+    SecretConnectorList:
+      type: object
+      required: [items]
+      properties:
+        items: {type: array, items: {$ref: "#/components/schemas/SecretConnector"}}
 
     CreateSecretConnector:
       type: object
+      additionalProperties: false
       required: [name, kind, config, credential]
       properties:
         name: {type: string}
         kind: {type: string, enum: [openbao]}
-        config: {type: object, additionalProperties: true}
+        config: {$ref: "#/components/schemas/ConnectorConfig"}
         credential:
           type: object
           additionalProperties: {type: string}
           writeOnly: true
 
+    UpdateSecretConnector:
+      type: object
+      additionalProperties: false
+      required: [version]
+      properties:
+        name: {type: string}
+        state: {type: string, enum: [active, disabled]}
+        config:
+          anyOf:
+            - {$ref: "#/components/schemas/ConnectorConfig"}
+            - {type: "null"}
+        credential:
+          type: object
+          additionalProperties: {type: string}
+          writeOnly: true
+        version: {type: integer, format: int64}
+
     SecretReference:
       type: object
-      required: [id, tenant_id, name, connector_id, namespace, mount, path, key, kind, allowed_uses, version]
+      required: [id, tenant_id, owner_id, project_id, name, connector_id, namespace, mount, path, key, secret_version, kind, allowed_uses, version, created_at, updated_at]
       properties:
         id: {type: string, format: uuid}
         tenant_id: {type: string, format: uuid}
@@ -3730,6 +3821,14 @@ components:
         kind: {type: string, enum: [ssh_key, slurm_token, api_token, generic, storage_credential]}
         allowed_uses: {type: array, items: {type: string}}
         version: {type: integer, format: int64}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+
+    SecretReferenceList:
+      type: object
+      required: [items]
+      properties:
+        items: {type: array, items: {$ref: "#/components/schemas/SecretReference"}}
 
     CreateSecretReference:
       type: object
@@ -4070,6 +4169,36 @@ components:
       properties:
         items: {type: array, items: {$ref: "#/components/schemas/AccountingUsageRow"}}
         next_cursor: {type: string}
+
+    AccountingTopRow:
+      type: object
+      required: [key, value]
+      properties:
+        key: {type: string}
+        value: {type: integer, format: int64}
+
+    AccountingTopList:
+      type: object
+      required: [items]
+      properties:
+        items: {type: array, items: {$ref: "#/components/schemas/AccountingTopRow"}}
+
+    AccountingAllocationItem:
+      type: object
+      required: [allocation, consumed, remaining, percent_used, as_of, active]
+      properties:
+        allocation: {$ref: "#/components/schemas/Allocation"}
+        consumed: {type: number, format: double}
+        remaining: {type: number, format: double}
+        percent_used: {type: number, format: double}
+        as_of: {type: [string, "null"], format: date-time}
+        active: {type: boolean}
+
+    AccountingAllocationList:
+      type: object
+      required: [items]
+      properties:
+        items: {type: [array, "null"], items: {$ref: "#/components/schemas/AccountingAllocationItem"}}
 
     Job:
       type: object

@@ -25,6 +25,47 @@ func testMux() *http.ServeMux {
 	return mux
 }
 
+func responseSchemaRef(t *testing.T, doc map[string]any, path, status string) string {
+	t.Helper()
+	paths, ok := doc["paths"].(map[string]any)
+	if !ok {
+		t.Fatal("no paths object")
+	}
+	pathItem, ok := paths[path].(map[string]any)
+	if !ok {
+		t.Fatalf("path %q missing", path)
+	}
+	operation, ok := pathItem["get"].(map[string]any)
+	if !ok {
+		t.Fatalf("GET %q missing", path)
+	}
+	responses, ok := operation["responses"].(map[string]any)
+	if !ok {
+		t.Fatalf("GET %q has no responses", path)
+	}
+	response, ok := responses[status].(map[string]any)
+	if !ok {
+		t.Fatalf("GET %q has no %s response", path, status)
+	}
+	content, ok := response["content"].(map[string]any)
+	if !ok {
+		t.Fatalf("GET %q %s response has no content", path, status)
+	}
+	media, ok := content["application/json"].(map[string]any)
+	if !ok {
+		t.Fatalf("GET %q %s response has no JSON content", path, status)
+	}
+	schema, ok := media["schema"].(map[string]any)
+	if !ok {
+		t.Fatalf("GET %q %s response has no schema", path, status)
+	}
+	ref, ok := schema["$ref"].(string)
+	if !ok {
+		t.Fatalf("GET %q %s response has no schema ref", path, status)
+	}
+	return ref
+}
+
 func TestOpenAPIJSON(t *testing.T) {
 	srv := httptest.NewServer(testMux())
 	defer srv.Close()
@@ -53,6 +94,51 @@ func TestOpenAPIJSON(t *testing.T) {
 		if _, ok := paths[p]; !ok {
 			t.Fatalf("path %q missing; have %v", p, paths)
 		}
+	}
+	contracts := map[string]string{
+		"/tenants/{tenant}/projects/{project}/allocations": "#/components/schemas/AllocationList",
+		"/tenants/{tenant}/secret-connectors":              "#/components/schemas/SecretConnectorList",
+		"/tenants/{tenant}/secret-references":              "#/components/schemas/SecretReferenceList",
+		"/tenants/{tenant}/accounting/top":                 "#/components/schemas/AccountingTopList",
+		"/tenants/{tenant}/accounting/allocations":         "#/components/schemas/AccountingAllocationList",
+	}
+	for path, schema := range contracts {
+		if got := responseSchemaRef(t, doc, path, "200"); got != schema {
+			t.Errorf("GET %s 200 schema = %q, want %q", path, got, schema)
+		}
+		if got := responseSchemaRef(t, doc, path, "403"); got != "#/components/schemas/Error" {
+			t.Errorf("GET %s 403 schema = %q, want Error", path, got)
+		}
+	}
+	components, ok := doc["components"].(map[string]any)
+	if !ok {
+		t.Fatal("no components object")
+	}
+	schemas, ok := components["schemas"].(map[string]any)
+	if !ok {
+		t.Fatal("no schemas object")
+	}
+	connector, ok := schemas["SecretConnector"].(map[string]any)
+	if !ok {
+		t.Fatal("SecretConnector schema missing")
+	}
+	connectorProperties, ok := connector["properties"].(map[string]any)
+	if !ok {
+		t.Fatal("SecretConnector has no properties")
+	}
+	if _, ok := connectorProperties["credential_ref"]; ok {
+		t.Fatal("SecretConnector exposes credential_ref")
+	}
+	if _, ok := connectorProperties["has_credential"]; !ok {
+		t.Fatal("SecretConnector has no has_credential property")
+	}
+	connectorConfig, ok := schemas["ConnectorConfig"].(map[string]any)
+	if !ok || connectorConfig["additionalProperties"] != false {
+		t.Fatal("ConnectorConfig must reject unknown fields")
+	}
+	connectorAuth, ok := schemas["ConnectorAuthConfig"].(map[string]any)
+	if !ok || connectorAuth["additionalProperties"] != false {
+		t.Fatal("ConnectorAuthConfig must reject unknown fields")
 	}
 
 	// ETag is stable and honored.
