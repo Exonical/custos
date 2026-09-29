@@ -1877,12 +1877,15 @@ export interface components {
             /** Format: decimal */
             consumed_amount: number;
             /** Format: date-time */
-            consumed_as_of?: string | null;
+            consumed_as_of: string | null;
             version: number;
             /** Format: date-time */
-            created_at?: string;
+            created_at: string;
             /** Format: date-time */
-            updated_at?: string;
+            updated_at: string;
+        };
+        AllocationList: {
+            items: components["schemas"]["Allocation"][];
         };
         CreateAllocation: {
             /** Format: uuid */
@@ -1919,6 +1922,23 @@ export interface components {
             /** @description Env-mode variable name; defaults to upper-snake handle. */
             envName?: string;
         };
+        ConnectorAuthConfig: {
+            /** @enum {string} */
+            method: "token" | "approle" | "jwt";
+            /** @description Non-secret AppRole identifier. */
+            role_id?: string;
+            /** @description Non-secret JWT role selector. */
+            role?: string;
+        };
+        /** @description Allow-listed non-secret connector configuration. Credentials are supplied separately. */
+        ConnectorConfig: {
+            address?: string;
+            /** @description Pinned public CA certificate. */
+            ca_pem?: string;
+            namespace?: string;
+            mount?: string;
+            auth?: components["schemas"]["ConnectorAuthConfig"];
+        };
         SecretConnector: {
             /** Format: uuid */
             id: string;
@@ -1929,23 +1949,38 @@ export interface components {
             kind: "platform-openbao" | "openbao";
             /** @enum {string} */
             state: "active" | "disabled";
-            config: {
-                [key: string]: unknown;
-            };
-            credential_ref?: components["schemas"]["SecretRef"];
+            config: components["schemas"]["ConnectorConfig"];
+            /** @description True only when a BYO connector credential is stored. */
+            has_credential: boolean;
             /** Format: int64 */
             version: number;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        SecretConnectorList: {
+            items: components["schemas"]["SecretConnector"][];
         };
         CreateSecretConnector: {
             name: string;
             /** @enum {string} */
             kind: "openbao";
-            config: {
-                [key: string]: unknown;
-            };
+            config: components["schemas"]["ConnectorConfig"];
             credential: {
                 [key: string]: string;
             };
+        };
+        UpdateSecretConnector: {
+            name?: string;
+            /** @enum {string} */
+            state?: "active" | "disabled";
+            config?: components["schemas"]["ConnectorConfig"] | null;
+            credential?: {
+                [key: string]: string;
+            };
+            /** Format: int64 */
+            version: number;
         };
         SecretReference: {
             /** Format: uuid */
@@ -1953,9 +1988,9 @@ export interface components {
             /** Format: uuid */
             tenant_id: string;
             /** Format: uuid */
-            owner_id?: string | null;
+            owner_id: string | null;
             /** Format: uuid */
-            project_id?: string | null;
+            project_id: string | null;
             name: string;
             /** Format: uuid */
             connector_id: string;
@@ -1963,12 +1998,19 @@ export interface components {
             mount: string;
             path: string;
             key: string;
-            secret_version?: number | null;
+            secret_version: number | null;
             /** @enum {string} */
             kind: "ssh_key" | "slurm_token" | "api_token" | "generic" | "storage_credential";
             allowed_uses: string[];
             /** Format: int64 */
             version: number;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        SecretReferenceList: {
+            items: components["schemas"]["SecretReference"][];
         };
         CreateSecretReference: {
             name: string;
@@ -2166,6 +2208,29 @@ export interface components {
         AccountingUsageList: {
             items: components["schemas"]["AccountingUsageRow"][];
             next_cursor?: string;
+        };
+        AccountingTopRow: {
+            key: string;
+            /** Format: int64 */
+            value: number;
+        };
+        AccountingTopList: {
+            items: components["schemas"]["AccountingTopRow"][];
+        };
+        AccountingAllocationItem: {
+            allocation: components["schemas"]["Allocation"];
+            /** Format: double */
+            consumed: number;
+            /** Format: double */
+            remaining: number;
+            /** Format: double */
+            percent_used: number;
+            /** Format: date-time */
+            as_of: string | null;
+            active: boolean;
+        };
+        AccountingAllocationList: {
+            items: components["schemas"]["AccountingAllocationItem"][] | null;
         };
         Job: {
             /** Format: uuid */
@@ -5840,7 +5905,9 @@ export interface operations {
     archiveWorkflow: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-Expected-Version"?: number;
+            };
             path: {
                 /** @description Tenant slug or uuid. */
                 tenant: components["parameters"]["TenantSlug"];
@@ -7242,7 +7309,34 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>;
+                    "application/json": components["schemas"]["AllocationList"];
+                };
+            };
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Requires allocation.read */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Project not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
                 };
             };
         };
@@ -7388,7 +7482,34 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>;
+                    "application/json": components["schemas"]["AccountingAllocationList"];
+                };
+            };
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Requires allocation.read */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Tenant not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
                 };
             };
         };
@@ -7475,7 +7596,34 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>;
+                    "application/json": components["schemas"]["SecretConnectorList"];
+                };
+            };
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Requires secret.connector.read */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Tenant not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
                 };
             };
         };
@@ -7505,7 +7653,34 @@ export interface operations {
                     "application/json": components["schemas"]["SecretConnector"];
                 };
             };
-            /** @description Invalid or unavailable provider */
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Requires secret.connector.manage */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Tenant not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Invalid connector configuration or unavailable provider */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -7538,6 +7713,33 @@ export interface operations {
                     "application/json": components["schemas"]["SecretConnector"];
                 };
             };
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Requires secret.connector.read */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Connector not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     deleteSecretConnector: {
@@ -7560,12 +7762,41 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Requires secret.connector.manage */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Connector not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
             /** @description Connector is in use */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };
@@ -7582,7 +7813,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": Record<string, never>;
+                "application/json": components["schemas"]["UpdateSecretConnector"];
             };
         };
         responses: {
@@ -7593,6 +7824,51 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SecretConnector"];
+                };
+            };
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Requires secret.connector.manage */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Connector not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Version conflict or connector is immutable */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Invalid configuration or connector state */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
                 };
             };
         };
@@ -7639,7 +7915,34 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>;
+                    "application/json": components["schemas"]["SecretReferenceList"];
+                };
+            };
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Requires secret.reference.read */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Tenant not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
                 };
             };
         };
@@ -7840,7 +8143,43 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>;
+                    "application/json": components["schemas"]["AccountingTopList"];
+                };
+            };
+            /** @description Invalid range */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Requires accounting.read.self */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Tenant not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
                 };
             };
         };

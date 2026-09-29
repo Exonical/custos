@@ -5,7 +5,17 @@ import { createMockData, userNameFromAccessToken } from "./data.mjs";
 
 /** @typedef {import("../lib/api/schema").components["schemas"]["Me"]} Me */
 /** @typedef {import("../lib/api/schema").components["schemas"]["ProjectList"]} ProjectList */
+/** @typedef {import("../lib/api/schema").components["schemas"]["AllocationList"]} AllocationList */
+/** @typedef {import("../lib/api/schema").components["schemas"]["SecretConnectorList"]} SecretConnectorList */
+/** @typedef {import("../lib/api/schema").components["schemas"]["SecretReferenceList"]} SecretReferenceList */
+/** @typedef {import("../lib/api/schema").components["schemas"]["AccountingTopList"]} AccountingTopList */
+/** @typedef {import("../lib/api/schema").components["schemas"]["AccountingAllocationList"]} AccountingAllocationList */
+/** @typedef {import("../lib/api/schema").components["schemas"]["ProjectMembershipList"]} ProjectMembershipList */
+/** @typedef {import("../lib/api/schema").components["schemas"]["ClusterBindingList"]} ClusterBindingList */
 /** @typedef {import("../lib/api/schema").components["schemas"]["ClusterSummaryList"]} ClusterSummaryList */
+/** @typedef {import("../lib/api/schema").components["schemas"]["PartitionList"]} PartitionList */
+/** @typedef {import("../lib/api/schema").components["schemas"]["AccountingUsageList"]} AccountingUsageList */
+/** @typedef {import("../lib/api/schema").components["schemas"]["AccountingUsageRow"]} AccountingUsageRow */
 /** @typedef {import("../lib/api/schema").components["schemas"]["Job"]} Job */
 /** @typedef {import("../lib/api/schema").components["schemas"]["JobList"]} JobList */
 /** @typedef {import("../lib/api/schema").components["schemas"]["HealthStatus"]} HealthStatus */
@@ -107,6 +117,81 @@ function sendJobPage(source, tenant, project, query, requestIdValue, response) {
   send(response, 200, page);
 }
 
+/** @template T @param {T[]} source @param {URLSearchParams} query @param {string} requestIdValue @param {http.ServerResponse} response @returns {{items:T[],next_cursor:string|null}|undefined} */
+function cursorPage(source, query, requestIdValue, response) {
+  const cursorText = query.get("cursor");
+  let offset = 0;
+  if (cursorText) {
+    try {
+      const decoded = Buffer.from(cursorText, "base64url").toString("utf8");
+      if (!/^\\d+$/.test(decoded)) throw new Error("cursor");
+      offset = Number(decoded);
+    } catch {
+      sendError(response, 400, "INVALID_CURSOR", "The list cursor is invalid", requestIdValue);
+      return undefined;
+    }
+  }
+  const requestedLimit = Number(query.get("limit") ?? 50);
+  const limit = Number.isInteger(requestedLimit) && requestedLimit > 0 ? Math.min(requestedLimit, 200) : 50;
+  const items = source.slice(offset, offset + limit);
+  const nextOffset = offset + items.length;
+  return { items, next_cursor: nextOffset < source.length ? Buffer.from(String(nextOffset)).toString("base64url") : null };
+}
+
+/** @param {number[]} values @param {number} quantile */
+function percentile(values, quantile) {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((left, right) => left - right);
+  const index = (sorted.length - 1) * quantile;
+  const low = Math.floor(index);
+  const high = Math.ceil(index);
+  return sorted[low] + (sorted[high] - sorted[low]) * (index - low);
+}
+
+/** @param {ReturnType<typeof createMockData>["usageRecords"][TenantSlug]} source @param {string} groupBy @returns {AccountingUsageRow[]} */
+function groupUsageRows(source, groupBy) {
+  /** @type {Map<string, { jobs:number, failed:number, cpu_seconds:number, gpu_seconds:number, node_seconds:number, mem_gb_seconds:number, wait_seconds:number[], run_seconds:number[] }>} */
+  const groups = new Map();
+  for (const record of source) {
+    const key = groupBy === "user" ? record.user_id
+      : groupBy === "project" ? record.project_id
+        : groupBy === "cluster" ? record.cluster_id
+          : groupBy === "account" ? record.account
+            : groupBy === "partition" ? record.partition
+              : record.day;
+    let group = groups.get(key);
+    if (!group) {
+      group = { jobs: 0, failed: 0, cpu_seconds: 0, gpu_seconds: 0, node_seconds: 0, mem_gb_seconds: 0, wait_seconds: [], run_seconds: [] };
+      groups.set(key, group);
+    }
+    group.jobs += record.jobs;
+    group.failed += record.failed;
+    group.cpu_seconds += record.cpu_seconds;
+    group.gpu_seconds += record.gpu_seconds;
+    group.node_seconds += record.node_seconds;
+    group.mem_gb_seconds += record.mem_gb_seconds;
+    group.wait_seconds.push(...record.wait_seconds);
+    group.run_seconds.push(...record.run_seconds);
+  }
+  return [...groups.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([key, group]) => ({
+    key,
+    jobs: group.jobs,
+    failed: group.failed,
+    cpu_hours: group.cpu_seconds / 3600,
+    gpu_hours: group.gpu_seconds / 3600,
+    node_hours: group.node_seconds / 3600,
+    mem_gb_hours: group.mem_gb_seconds / 3600,
+    wait_hours: group.wait_seconds.reduce((sum, value) => sum + value, 0) / 3600,
+    run_hours: group.run_seconds.reduce((sum, value) => sum + value, 0) / 3600,
+    wait_p50: percentile(group.wait_seconds, 0.5),
+    wait_p90: percentile(group.wait_seconds, 0.9),
+    wait_p99: percentile(group.wait_seconds, 0.99),
+    run_p50: percentile(group.run_seconds, 0.5),
+    run_p90: percentile(group.run_seconds, 0.9),
+    run_p99: percentile(group.run_seconds, 0.99),
+  }));
+}
+
 const server = http.createServer(async (request, response) => {
   if (latencyMs) await new Promise((resolve) => setTimeout(resolve, latencyMs));
   const url = new URL(request.url ?? "/", `http://127.0.0.1:${port}`);
@@ -135,24 +220,135 @@ const server = http.createServer(async (request, response) => {
   }
 
   const tenantProjects = url.pathname.match(/^\/api\/v1\/tenants\/([^/]+)\/projects$/);
+  const projectDetail = url.pathname.match(/^\/api\/v1\/tenants\/([^/]+)\/projects\/([^/]+)$/);
+  const projectMembers = url.pathname.match(/^\/api\/v1\/tenants\/([^/]+)\/projects\/([^/]+)\/members$/);
+  const projectBindings = url.pathname.match(/^\/api\/v1\/tenants\/([^/]+)\/projects\/([^/]+)\/cluster-bindings$/);
+  const projectAllocations = url.pathname.match(/^\/api\/v1\/tenants\/([^/]+)\/projects\/([^/]+)\/allocations$/);
   const tenantClusters = url.pathname.match(/^\/api\/v1\/tenants\/([^/]+)\/clusters$/);
+  const clusterDetail = url.pathname.match(/^\/api\/v1\/tenants\/([^/]+)\/clusters\/([^/]+)$/);
+  const clusterPartitions = url.pathname.match(/^\/api\/v1\/tenants\/([^/]+)\/clusters\/([^/]+)\/partitions$/);
   const tenantJobs = url.pathname.match(/^\/api\/v1\/tenants\/([^/]+)\/jobs$/);
   const projectJobs = url.pathname.match(/^\/api\/v1\/tenants\/([^/]+)\/projects\/([^/]+)\/jobs(?:\/([^/]+)(?:\/(execution-spec|cancel))?)?$/);
-  const tenantPath = tenantProjects?.[1] ?? tenantClusters?.[1] ?? tenantJobs?.[1] ?? projectJobs?.[1];
+  const secretConnectors = url.pathname.match(/^\/api\/v1\/tenants\/([^/]+)\/secret-connectors$/);
+  const secretReferences = url.pathname.match(/^\/api\/v1\/tenants\/([^/]+)\/secret-references$/);
+  const accountingUsage = url.pathname.match(/^\/api\/v1\/tenants\/([^/]+)\/accounting\/usage$/);
+  const accountingTop = url.pathname.match(/^\/api\/v1\/tenants\/([^/]+)\/accounting\/top$/);
+  const accountingAllocations = url.pathname.match(/^\/api\/v1\/tenants\/([^/]+)\/accounting\/allocations$/);
+  const tenantPath = url.pathname.match(/^\/api\/v1\/tenants\/([^/]+)(?:\/|$)/)?.[1];
   const tenant = tenantPath && isTenantSlug(tenantPath) ? tenantPath : undefined;
   if (tenantPath && (!tenant || !user.me.memberships.some((membership) => membership.slug === tenant))) {
     return sendError(response, 404, "NOT_FOUND", "Tenant not found", id);
   }
 
   if (tenantProjects && request.method === "GET" && tenant) {
+    const page = cursorPage(data.projects[tenant], url.searchParams, id, response);
+    if (!page) return;
     /** @type {ProjectList} */
-    const page = { items: data.projects[tenant], next_cursor: null };
-    return send(response, 200, page);
+    const projectPage = page;
+    return send(response, 200, projectPage);
+  }
+  if (projectDetail && request.method === "GET" && tenant) {
+    const projectRef = projectDetail[2];
+    const project = data.projects[tenant].find((item) => item.slug === projectRef || item.id === projectRef);
+    return project ? send(response, 200, project) : sendError(response, 404, "NOT_FOUND", "Project not found", id);
+  }
+  if (projectMembers && request.method === "GET" && tenant) {
+    const projectRef = projectMembers[2];
+    const project = data.projects[tenant].find((item) => item.slug === projectRef || item.id === projectRef);
+    if (!project) return sendError(response, 404, "NOT_FOUND", "Project not found", id);
+    const page = cursorPage(data.projectMembers[project.id] ?? [], url.searchParams, id, response);
+    if (!page) return;
+    /** @type {ProjectMembershipList} */
+    const memberPage = page;
+    return send(response, 200, memberPage);
+  }
+  if (projectBindings && request.method === "GET" && tenant) {
+    const projectRef = projectBindings[2];
+    const project = data.projects[tenant].find((item) => item.slug === projectRef || item.id === projectRef);
+    if (!project) return sendError(response, 404, "NOT_FOUND", "Project not found", id);
+    /** @type {ClusterBindingList} */
+    const bindingList = { items: data.clusterBindings[tenant].filter((binding) => binding.project_id === project.id) };
+    return send(response, 200, bindingList);
+  }
+  if (projectAllocations && request.method === "GET" && tenant) {
+    const projectRef = projectAllocations[2];
+    const project = data.projects[tenant].find((item) => item.slug === projectRef || item.id === projectRef);
+    if (!project) return sendError(response, 404, "NOT_FOUND", "Project not found", id);
+    /** @type {AllocationList} */
+    const allocationList = { items: data.projectAllocations[project.id] ?? [] };
+    return send(response, 200, allocationList);
   }
   if (tenantClusters && request.method === "GET" && tenant) {
     /** @type {ClusterSummaryList} */
     const clusters = { items: data.clusters[tenant] };
     return send(response, 200, clusters);
+  }
+  if (clusterDetail && request.method === "GET" && tenant) {
+    const clusterRef = clusterDetail[2];
+    const cluster = data.clusters[tenant].find((item) => item.name === clusterRef || item.id === clusterRef);
+    return cluster ? send(response, 200, cluster) : sendError(response, 404, "NOT_FOUND", "Cluster not found", id);
+  }
+  if (clusterPartitions && request.method === "GET" && tenant) {
+    const clusterRef = clusterPartitions[2];
+    const cluster = data.clusters[tenant].find((item) => item.name === clusterRef || item.id === clusterRef);
+    if (!cluster) return sendError(response, 404, "NOT_FOUND", "Cluster not found", id);
+    /** @type {PartitionList} */
+    const partitionList = { items: data.partitions[cluster.id] ?? [] };
+    return send(response, 200, partitionList);
+  }
+  if (secretConnectors && request.method === "GET" && tenant) {
+    const membership = user.me.memberships.find((item) => item.slug === tenant);
+    const canReadConnectors = user.me.platform_roles.includes("platform-admin") || membership?.roles.includes("tenant-admin");
+    if (!canReadConnectors) return sendError(response, 403, "FORBIDDEN", "Requires secret.connector.read", id);
+    /** @type {SecretConnectorList} */
+    const connectorList = { items: data.connectors[tenant] };
+    return send(response, 200, connectorList);
+  }
+  if (secretReferences && request.method === "GET" && tenant) {
+    const membership = user.me.memberships.find((item) => item.slug === tenant);
+    const isManager = user.me.platform_roles.includes("platform-admin") || membership?.roles.includes("tenant-admin");
+    const references = isManager ? data.references[tenant] : data.references[tenant].filter((item) => item.owner_id === user.me.user_id);
+    /** @type {SecretReferenceList} */
+    const referenceList = { items: references };
+    return send(response, 200, referenceList);
+  }
+  if (accountingAllocations && request.method === "GET" && tenant) {
+    /** @type {AccountingAllocationList} */
+    const allocationList = { items: data.tenantAllocations[tenant] };
+    return send(response, 200, allocationList);
+  }
+  if (accountingTop && request.method === "GET" && tenant) {
+    const metric = url.searchParams.get("metric");
+    const by = url.searchParams.get("by");
+    if (!metric || !["cpu_seconds", "gpu_seconds", "jobs"].includes(metric) || !by || !["user", "project"].includes(by)) {
+      return sendError(response, 400, "ACCOUNTING_TOP_INVALID", "Invalid top query", id);
+    }
+    const fromText = url.searchParams.get("from");
+    const toText = url.searchParams.get("to");
+    const fromTime = fromText ? Date.parse(fromText) : Number.NaN;
+    const toTime = toText ? Date.parse(toText) : Number.NaN;
+    if (!Number.isFinite(fromTime) || !Number.isFinite(toTime) || toTime <= fromTime) {
+      return sendError(response, 400, "ACCOUNTING_RANGE_INVALID", "from and to are required", id);
+    }
+    if (toTime - fromTime > 400 * 86_400_000) {
+      return sendError(response, 400, "ACCOUNTING_RANGE_TOO_LARGE", "Accounting range must not exceed 400 days", id);
+    }
+    const membership = user.me.memberships.find((item) => item.slug === tenant);
+    const tenantWide = user.me.platform_roles.includes("platform-admin") || membership?.roles.includes("tenant-admin") === true;
+    const records = data.usageRecords[tenant].filter((record) => {
+      const day = Date.parse(`${record.day}T00:00:00.000Z`);
+      return day >= fromTime && day < toTime && (tenantWide || record.user_id === user.me.user_id);
+    });
+    const rows = groupUsageRows(records, by).map((row) => ({
+      key: row.key,
+      value: metric === "jobs" ? row.jobs : Math.trunc((metric === "cpu_seconds" ? row.cpu_hours : row.gpu_hours) * 3_600),
+    }));
+    rows.sort((left, right) => right.value - left.value || left.key.localeCompare(right.key));
+    const requestedLimit = Number(url.searchParams.get("limit") ?? 50);
+    const limit = Number.isInteger(requestedLimit) && requestedLimit > 0 ? Math.min(requestedLimit, 50) : 50;
+    /** @type {AccountingTopList} */
+    const topList = { items: rows.slice(0, limit) };
+    return send(response, 200, topList);
   }
   if (tenantJobs && request.method === "GET" && tenant) {
     return sendJobPage(data.jobs[tenant], tenant, "", url.searchParams, id, response);
@@ -187,6 +383,54 @@ const server = http.createServer(async (request, response) => {
       return send(response, 202, canceled);
     }
     if (!operation && request.method === "GET") return send(response, 200, job);
+  }
+
+  if (accountingUsage && request.method === "GET" && tenant) {
+    const groupBy = url.searchParams.get("group_by");
+    if (!groupBy || !["user", "project", "cluster", "account", "partition", "day"].includes(groupBy)) {
+      return sendError(response, 400, "ACCOUNTING_GROUP_INVALID", "Invalid group_by", id);
+    }
+    const fromText = url.searchParams.get("from");
+    const toText = url.searchParams.get("to");
+    const fromTime = fromText ? Date.parse(fromText) : Number.NaN;
+    const toTime = toText ? Date.parse(toText) : Number.NaN;
+    if (!Number.isFinite(fromTime) || !Number.isFinite(toTime) || toTime <= fromTime) {
+      return sendError(response, 400, "ACCOUNTING_RANGE_INVALID", "from and to are required", id);
+    }
+    if (toTime - fromTime > 400 * 86_400_000) {
+      return sendError(response, 400, "ACCOUNTING_RANGE_TOO_LARGE", "Accounting range must not exceed 400 days", id);
+    }
+    let afterKey = "";
+    const cursorText = url.searchParams.get("cursor");
+    if (cursorText) {
+      try {
+        afterKey = Buffer.from(cursorText, "base64url").toString("utf8");
+        if (!/^[A-Za-z0-9._:-]+$/.test(afterKey)) throw new Error("cursor");
+      } catch {
+        return sendError(response, 400, "INVALID_CURSOR", "The usage cursor is invalid", id);
+      }
+    }
+    const membership = user.me.memberships.find((item) => item.slug === tenant);
+    const tenantWide = user.me.platform_roles.includes("platform-admin") || membership?.roles.includes("tenant-admin") === true;
+    let usageRecords = data.usageRecords[tenant].filter((record) => {
+      const day = Date.parse(`${record.day}T00:00:00.000Z`);
+      return day >= fromTime && day < toTime && (tenantWide || record.user_id === user.me.user_id);
+    });
+    const projectFilter = url.searchParams.get("project");
+    const clusterFilter = url.searchParams.get("cluster");
+    if (projectFilter) usageRecords = usageRecords.filter((record) => record.project_id === projectFilter);
+    if (clusterFilter) usageRecords = usageRecords.filter((record) => record.cluster_id === clusterFilter);
+    const grouped = groupUsageRows(usageRecords, groupBy).filter((row) => row.key > afterKey);
+    const requestedLimit = Number(url.searchParams.get("limit") ?? 100);
+    const limit = Number.isInteger(requestedLimit) && requestedLimit > 0 ? Math.min(requestedLimit, 200) : 100;
+    const items = grouped.slice(0, limit);
+    const last = items.at(-1);
+    /** @type {AccountingUsageList} */
+    const usagePage = {
+      items,
+      next_cursor: last && grouped.length > items.length ? Buffer.from(last.key).toString("base64url") : "",
+    };
+    return send(response, 200, usagePage);
   }
 
   return sendError(response, 404, "NOT_FOUND", "Resource not found", id);

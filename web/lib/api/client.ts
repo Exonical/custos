@@ -17,7 +17,27 @@ export class ApiError extends Error {
 
 export type Me = components["schemas"]["Me"];
 export type TenantClusterList = components["schemas"]["ClusterSummaryList"];
+export type TenantCluster = components["schemas"]["ClusterSummary"];
+export type PartitionRecord = components["schemas"]["PartitionRecord"];
+export type PartitionList = components["schemas"]["PartitionList"];
+export type Project = components["schemas"]["Project"];
 export type ProjectList = components["schemas"]["ProjectList"];
+export type ProjectMembership = components["schemas"]["ProjectMembership"];
+export type ProjectMembershipList = components["schemas"]["ProjectMembershipList"];
+export type ClusterBinding = components["schemas"]["ClusterBinding"];
+export type ClusterBindingList = components["schemas"]["ClusterBindingList"];
+export type Allocation = components["schemas"]["Allocation"];
+export type AllocationList = components["schemas"]["AllocationList"];
+export type SecretConnector = components["schemas"]["SecretConnector"];
+export type SecretConnectorList = components["schemas"]["SecretConnectorList"];
+export type SecretReference = components["schemas"]["SecretReference"];
+export type SecretReferenceList = components["schemas"]["SecretReferenceList"];
+export type AccountingUsageList = components["schemas"]["AccountingUsageList"];
+export type AccountingUsageRow = components["schemas"]["AccountingUsageRow"];
+export type AccountingTopRow = components["schemas"]["AccountingTopRow"];
+export type AccountingTopList = components["schemas"]["AccountingTopList"];
+export type AccountingAllocationItem = components["schemas"]["AccountingAllocationItem"];
+export type AccountingAllocationList = components["schemas"]["AccountingAllocationList"];
 export type Job = components["schemas"]["Job"];
 export type JobList = components["schemas"]["JobList"];
 export type ExecutionSpec = Record<string, unknown>;

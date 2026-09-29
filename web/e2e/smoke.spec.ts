@@ -31,6 +31,70 @@ test("login, jobs, CSRF-protected cancellation, and logout", async ({ page, base
   await expect(page).toHaveURL(/\/t\/acme$/);
   await expect(page.getByRole("heading", { name: "Acme Research" })).toBeVisible();
 
+  if (selectedUser === "admin") {
+    await page.goto("/t/acme/projects");
+    await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible();
+    const projectSearch = page.getByRole("textbox", { name: "Filter this page by project name or slug" });
+    await projectSearch.fill("Genomics");
+    await expect(page).toHaveURL(/q=Genomics/);
+    await expect(page.getByRole("link", { name: "Project One" })).toHaveCount(0);
+    await projectSearch.fill("");
+    await expect(page).not.toHaveURL(/q=/);
+    await page.getByRole("link", { name: "Project One" }).click();
+    await expect(page.getByRole("tab", { name: "Members" })).toBeVisible();
+    await page.getByRole("tab", { name: "Cluster bindings" }).click();
+    await expect(page.getByText("E2E Cluster").first()).toBeVisible();
+    await page.getByRole("tab", { name: "Allocations" }).click();
+    await expect(page.getByText("CPU budget")).toBeVisible();
+    await expect(page.getByRole("meter")).toHaveCount(2);
+
+    await page.goto("/t/acme/clusters");
+    await expect(page.getByRole("heading", { name: "Clusters" })).toBeVisible();
+    const clusterSearch = page.getByRole("textbox", { name: "Filter this page by cluster name or slug" });
+    await clusterSearch.fill("hopper");
+    await expect(page).toHaveURL(/q=hopper/);
+    await expect(page.getByRole("link", { name: "E2E Cluster" })).toHaveCount(0);
+    await clusterSearch.fill("");
+    await page.getByRole("link", { name: "E2E Cluster" }).click();
+    await expect(page.getByRole("tab", { name: "Partitions" })).toBeVisible();
+    await expect(page.getByText("compute").first()).toBeVisible();
+
+    await page.goto("/t/acme/secrets");
+    await expect(page.getByRole("tab", { name: "Connectors" })).toBeVisible();
+    await expect(page.getByText("research-vault")).toBeVisible();
+    await expect(page.getByText("Platform default · OpenBao")).toBeVisible();
+    await expect(page.getByRole("cell", { name: "Present" })).toBeVisible();
+    await page.getByRole("tab", { name: "References" }).click();
+    await expect(page.getByText("research-dataset")).toBeVisible();
+    await expect(page.getByText("projects/p1/datasets · read-token")).toBeVisible();
+
+    await page.goto("/t/acme/usage");
+    await expect(page.getByRole("heading", { name: "Usage by day" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Top consumers · by user" })).toBeVisible();
+    await page.getByRole("combobox", { name: "Group by" }).click();
+    await page.getByRole("option", { name: "Project" }).click();
+    await expect(page).toHaveURL(/group_by=project/);
+    await page.getByRole("combobox", { name: "Top metric" }).click();
+    await page.getByRole("option", { name: "GPU hours" }).click();
+    await expect(page).toHaveURL(/metric=gpu_seconds/);
+    await page.getByRole("combobox", { name: "Top by" }).click();
+    await page.getByRole("option", { name: "Project" }).click();
+    await expect(page).toHaveURL(/by=project/);
+    await page.getByRole("button", { name: "30d" }).click();
+    await expect(page).toHaveURL(/range=30d/);
+    await expect(page).toHaveURL(/from=.*to=/);
+    await page.goto("/t/acme/usage");
+    await expect(page.getByRole("columnheader", { name: "CPU hours" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Top consumers · by user" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Tenant allocations" })).toBeVisible();
+    await expect(page.getByText("CPU budget")).toBeVisible();
+  }
+
+  if (selectedUser === "alice") {
+    await page.goto("/t/acme/secrets?tab=connectors");
+    await expect(page.getByRole("heading", { name: "You don't have access to this view" })).toBeVisible();
+  }
+
   await page.goto("/t/acme/jobs");
   await expect(page.getByRole("heading", { name: "Jobs" })).toBeVisible();
   const nextPage = page.getByRole("button", { name: "Next page" });

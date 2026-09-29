@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { tableFeatures, useTable, type ColumnDef } from "@tanstack/react-table";
 import type { Job, ProjectList, TenantClusterList } from "@/lib/api/client";
+import { formatUtcDateTime } from "@/lib/format";
 import { StateBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,16 +18,12 @@ const jobTableFeatures = tableFeatures({});
 type JobTableFeatures = typeof jobTableFeatures;
 const stateValues = ["all", "SUBMITTING", "QUEUED", "RUNNING", "COMPLETED", "FAILED", "CANCELED"] as const;
 
-function formatTime(value: string): string {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "—" : new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short", timeZone: "UTC" }).format(date);
-}
-
-function buildPageUrl(pathname: string, project: string, state: string, cursor = "") {
+function buildPageUrl(pathname: string, project: string, state: string, cursor = "", search = "") {
   const params = new URLSearchParams();
   if (project !== "all") params.set("project", project);
   if (state !== "all") params.set("state", state);
   if (cursor) params.set("cursor", cursor);
+  if (search.trim()) params.set("q", search.trim());
   return `${pathname}${params.size ? `?${params.toString()}` : ""}`;
 }
 
@@ -38,6 +35,7 @@ export function JobsTable({
   selectedProject,
   selectedState,
   cursor,
+  search,
   nextCursor,
 }: {
   tenant: string;
@@ -47,13 +45,14 @@ export function JobsTable({
   selectedProject: string;
   selectedState: string;
   cursor: string;
+  search: string;
   nextCursor: string | null;
 }) {
   const router = useRouter();
   const pathname = usePathname();
   const projectFilter = selectedProject || "all";
   const stateFilter = stateValues.includes(selectedState as (typeof stateValues)[number]) && selectedState ? selectedState : "all";
-  const [searchTerm, setSearchTerm] = useState("");
+  const [searchTerm, setSearchTerm] = useState(search);
   const [cursorHistory, setCursorHistory] = useState<string[]>([]);
 
   const clusterById = useMemo(() => new Map(clusters.map((cluster) => [cluster.id, cluster])), [clusters]);
@@ -95,21 +94,26 @@ export function JobsTable({
         return <span className="font-mono text-xs tracking-[0.04em]" title={row.original.cluster_id}>{label}</span>;
       },
     },
-    { accessorKey: "created_at", header: "Created", cell: ({ row }) => <span className="font-mono text-xs tabular-nums">{formatTime(row.original.created_at)}</span> },
+    { accessorKey: "created_at", header: "Created", cell: ({ row }) => <span className="font-mono text-xs tabular-nums">{formatUtcDateTime(row.original.created_at)}</span> },
   ], [clusterById, projects, tenant]);
 
   const table = useTable({ features: jobTableFeatures, data: filteredJobs, columns });
 
   function updateFilters(project: string, state: string) {
     setCursorHistory([]);
-    router.push(buildPageUrl(pathname, project, state));
+    router.push(buildPageUrl(pathname, project, state, "", searchTerm));
+  }
+
+  function updateSearch(value: string) {
+    setSearchTerm(value);
+    router.replace(buildPageUrl(pathname, projectFilter, stateFilter, cursor, value), { scroll: false });
   }
 
   function nextPage() {
     if (!nextCursor) return;
     const history = [...cursorHistory, cursor];
     setCursorHistory(history);
-    router.push(buildPageUrl(pathname, projectFilter, stateFilter, nextCursor));
+    router.push(buildPageUrl(pathname, projectFilter, stateFilter, nextCursor, searchTerm));
   }
 
   function previousPage() {
@@ -117,7 +121,7 @@ export function JobsTable({
     const history = cursorHistory.slice(0, -1);
     const previousCursor = cursorHistory[cursorHistory.length - 1] ?? "";
     setCursorHistory(history);
-    router.push(buildPageUrl(pathname, projectFilter, stateFilter, previousCursor));
+    router.push(buildPageUrl(pathname, projectFilter, stateFilter, previousCursor, searchTerm));
   }
 
   return (
@@ -126,7 +130,7 @@ export function JobsTable({
       <div className="flex flex-wrap items-end gap-3 border-y border-border py-4">
         <div className="grid min-w-56 flex-1 gap-2">
           <Label htmlFor="jobs-search">Search</Label>
-          <Input id="jobs-search" aria-label="Filter this page by job name" placeholder="Filter this page…" value={searchTerm} onChange={(event) => { setSearchTerm(event.target.value); }} className="h-8 min-w-0" />
+          <Input id="jobs-search" aria-label="Filter this page by job name" placeholder="Filter this page…" value={searchTerm} onChange={(event) => { updateSearch(event.target.value); }} className="h-8 min-w-0" />
         </div>
         <div className="grid min-w-40 gap-2">
           <Label htmlFor="jobs-project">Project</Label>

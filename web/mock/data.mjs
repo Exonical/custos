@@ -2,7 +2,16 @@
 
 /** @typedef {import("../lib/api/schema").components["schemas"]["Me"]} Me */
 /** @typedef {import("../lib/api/schema").components["schemas"]["Project"]} Project */
+/** @typedef {import("../lib/api/schema").components["schemas"]["ProjectMembership"]} ProjectMembership */
+/** @typedef {import("../lib/api/schema").components["schemas"]["ClusterBinding"]} ClusterBinding */
 /** @typedef {import("../lib/api/schema").components["schemas"]["ClusterSummary"]} ClusterSummary */
+/** @typedef {import("../lib/api/schema").components["schemas"]["PartitionRecord"]} PartitionRecord */
+/** @typedef {import("../lib/api/schema").components["schemas"]["SecretConnector"]} SecretConnector */
+/** @typedef {import("../lib/api/schema").components["schemas"]["SecretReference"]} SecretReference */
+/** @typedef {import("../lib/api/schema").components["schemas"]["Allocation"]} Allocation */
+/** @typedef {import("../lib/api/schema").components["schemas"]["AccountingAllocationItem"]} AccountingAllocationItem */
+/** @typedef {import("../lib/api/schema").components["schemas"]["AccountingTopRow"]} AccountingTopRow */
+/** @typedef {{day:string,user_id:string,project_id:string,cluster_id:string,account:string,partition:string,jobs:number,failed:number,cpu_seconds:number,gpu_seconds:number,node_seconds:number,mem_gb_seconds:number,wait_seconds:number[],run_seconds:number[]}} UsageDailyRecord */
 /** @typedef {import("../lib/api/schema").components["schemas"]["Job"]} Job */
 /** @typedef {import("../lib/api/schema").components["schemas"]["MembershipRef"]} MembershipRef */
 /** @typedef {import("../lib/api/schema").components["schemas"]["ProjectMembershipRef"]} ProjectMembershipRef */
@@ -11,7 +20,7 @@
 /** @typedef {"p1" | "genomics" | "climate" | "cfd"} ProjectSlug */
 /** @typedef {"cluster-e2e" | "hopper" | "titan"} ClusterName */
 /** @typedef {{ sub: string, name: string, email: string, me: Me }} MockUser */
-/** @typedef {{ users: Record<MockUserName, MockUser>, projects: Record<TenantSlug, Project[]>, clusters: Record<TenantSlug, ClusterSummary[]>, jobs: Record<TenantSlug, Job[]>, executionSpecs: Map<string, Record<string, never>> }} MockData */
+/** @typedef {{ users: Record<MockUserName, MockUser>, projects: Record<TenantSlug, Project[]>, projectMembers: Record<string, ProjectMembership[]>, clusters: Record<TenantSlug, ClusterSummary[]>, clusterBindings: Record<TenantSlug, ClusterBinding[]>, partitions: Record<string, PartitionRecord[]>, connectors: Record<TenantSlug, SecretConnector[]>, references: Record<TenantSlug, SecretReference[]>, projectAllocations: Record<string, Allocation[]>, tenantAllocations: Record<TenantSlug, AccountingAllocationItem[]>, jobs: Record<TenantSlug, Job[]>, usageRecords: Record<TenantSlug, UsageDailyRecord[]>, executionSpecs: Map<string, Record<string, never>> }} MockData */
 
 /** @type {Record<TenantSlug, string>} */
 const tenantIds = {
@@ -231,16 +240,240 @@ function makeJobs(startedAt, users, seed) {
   return jobs;
 }
 
+/** @param {number} startedAt @param {Record<MockUserName, MockUser>} users @returns {Record<string, ProjectMembership[]>} */
+function makeProjectMembers(startedAt, users) {
+  /** @type {Record<string, ProjectMembership[]>} */
+  const members = {};
+  for (const user of Object.values(users)) {
+    for (const [index, membership] of (user.me.project_memberships ?? []).entries()) {
+      const createdAt = iso(startedAt - (index + 1) * 86_400_000);
+      /** @type {ProjectMembership} */
+      const record = {
+        project_id: membership.project_id,
+        user_id: user.me.user_id,
+        roles: /** @type {ProjectMembership["roles"]} */ (membership.roles),
+        source: "manual",
+        created_at: createdAt,
+        updated_at: createdAt,
+      };
+      (members[record.project_id] ??= []).push(record);
+    }
+  }
+  return members;
+}
+
+/** @param {number} startedAt @param {Record<TenantSlug, Project[]>} projects @param {Record<TenantSlug, ClusterSummary[]>} clusters @returns {Record<TenantSlug, ClusterBinding[]>} */
+function makeClusterBindings(startedAt, projects, clusters) {
+  /** @type {Record<TenantSlug, ClusterBinding[]>} */
+  const bindings = { acme: [], globex: [] };
+  let index = 0;
+  for (const tenant of /** @type {TenantSlug[]} */ (["acme", "globex"])) {
+    for (const project of projects[tenant]) {
+      const availableClusters = tenant === "acme" && project.slug === "p1"
+        ? clusters.acme
+        : tenant === "acme" && project.slug === "climate"
+          ? clusters.acme.filter((cluster) => cluster.name === "hopper")
+          : clusters[tenant];
+      for (const cluster of availableClusters) {
+        const checkedAt = iso(startedAt - index * 60_000);
+        const isDrifting = cluster.state === "degraded";
+        /** @type {ClusterBinding} */
+        const binding = {
+          id: generatedUuid(5_000 + index),
+          project_id: project.id,
+          cluster_id: cluster.id,
+          slurm_account: `${tenant}-${project.slug}`,
+          default_partition: cluster.partitions[0] ?? "default",
+          allowed_partitions: cluster.partitions,
+          default_qos: "normal",
+          allowed_qos: ["normal", "high"],
+          enabled: true,
+          version: 1,
+          created_at: iso(startedAt - 30 * 86_400_000),
+          updated_at: checkedAt,
+          drift_state: isDrifting ? "drift" : "ok",
+          drift_checked_at: checkedAt,
+          ...(isDrifting ? { drift: [{ code: "PARTITION_DRIFT", detail: "Cluster partition state differs from the assigned binding." }] } : {}),
+        };
+        bindings[tenant].push(binding);
+        index += 1;
+      }
+    }
+  }
+  return bindings;
+}
+
+/** @param {number} startedAt @param {Record<TenantSlug, ClusterSummary[]>} clusters @returns {Record<string, PartitionRecord[]>} */
+function makePartitions(startedAt, clusters) {
+  /** @type {Record<string, PartitionRecord[]>} */
+  const partitions = {};
+  for (const clusterList of Object.values(clusters)) {
+    for (const cluster of clusterList) {
+      partitions[cluster.id] = cluster.partitions.map((name, index) => ({
+        name,
+        attributes: {},
+        synced_at: iso(startedAt - index * 30_000),
+      }));
+    }
+  }
+  return partitions;
+}
+
+/** @param {Record<TenantSlug, Job[]>} jobs @param {Record<TenantSlug, Project[]>} projects @param {Record<TenantSlug, ClusterSummary[]>} clusters @param {number} seed @returns {Record<TenantSlug, UsageDailyRecord[]>} */
+function makeUsageRecords(jobs, projects, clusters, seed) {
+  const random = seededRandom(seed + 97);
+  /** @type {Record<TenantSlug, UsageDailyRecord[]>} */
+  const records = { acme: [], globex: [] };
+  for (const tenant of /** @type {TenantSlug[]} */ (["acme", "globex"])) {
+    for (const job of jobs[tenant]) {
+      if (!job.ended_at) continue;
+      const ended = Date.parse(job.ended_at);
+      const started = Date.parse(job.started_at ?? job.submitted_at ?? job.created_at);
+      const submitted = Date.parse(job.submitted_at ?? job.created_at);
+      const runSeconds = Math.max(0, Math.floor((ended - started) / 1_000));
+      const waitSeconds = Math.max(0, Math.floor((started - submitted) / 1_000));
+      const project = projects[tenant].find((candidate) => candidate.id === job.project_id);
+      const cluster = clusters[tenant].find((candidate) => candidate.id === job.cluster_id);
+      const cpuHours = typeof job.resource_usage?.cpu_hours === "number" ? job.resource_usage.cpu_hours : 0.5 + random() * 8;
+      const peakRss = typeof job.resource_usage?.max_rss_bytes === "number" ? job.resource_usage.max_rss_bytes : 1_000_000_000;
+      const partition = cluster?.name === "hopper" || cluster?.name === "titan" ? "gpu" : "compute";
+      records[tenant].push({
+        day: new Date(ended).toISOString().slice(0, 10),
+        user_id: job.created_by,
+        project_id: job.project_id,
+        cluster_id: job.cluster_id,
+        account: `${tenant}-${project?.slug ?? "account"}`,
+        partition,
+        jobs: 1,
+        failed: job.state === "FAILED" ? 1 : 0,
+        cpu_seconds: Math.round(cpuHours * 3_600),
+        gpu_seconds: partition === "gpu" ? Math.round(random() * 3_600) : 0,
+        node_seconds: runSeconds,
+        mem_gb_seconds: Math.round((peakRss / 1_000_000_000) * runSeconds),
+        wait_seconds: [waitSeconds],
+        run_seconds: [runSeconds],
+      });
+    }
+  }
+  return records;
+}
+
+/** @param {number} startedAt @returns {Record<TenantSlug, SecretConnector[]>} */
+function makeConnectors(startedAt) {
+  /** @type {Record<TenantSlug, SecretConnector[]>} */
+  return {
+    acme: [
+      { id: generatedUuid(6_000), tenant_id: tenantIds.acme, name: "default", kind: "platform-openbao", state: "active", config: {}, has_credential: false, version: 1, created_at: iso(startedAt - 30 * 86_400_000), updated_at: iso(startedAt - 30 * 86_400_000) },
+      { id: generatedUuid(6_001), tenant_id: tenantIds.acme, name: "research-vault", kind: "openbao", state: "active", config: { address: "https://vault.acme.example.test", namespace: "customers/acme", mount: "kv", auth: { method: "approle", role_id: "acme-research-role" } }, has_credential: true, version: 1, created_at: iso(startedAt - 14 * 86_400_000), updated_at: iso(startedAt - 14 * 86_400_000) },
+    ],
+    globex: [
+      { id: generatedUuid(6_002), tenant_id: tenantIds.globex, name: "default", kind: "platform-openbao", state: "active", config: {}, has_credential: false, version: 1, created_at: iso(startedAt - 30 * 86_400_000), updated_at: iso(startedAt - 30 * 86_400_000) },
+      { id: generatedUuid(6_003), tenant_id: tenantIds.globex, name: "globex-vault", kind: "openbao", state: "active", config: { address: "https://vault.globex.example.test", namespace: "customers/globex", mount: "kv", auth: { method: "jwt", role: "globex-custos" } }, has_credential: true, version: 1, created_at: iso(startedAt - 10 * 86_400_000), updated_at: iso(startedAt - 10 * 86_400_000) },
+    ],
+  };
+}
+
+/** @param {number} startedAt @param {Record<TenantSlug, SecretConnector[]>} connectors @param {Record<MockUserName, MockUser>} users @returns {Record<TenantSlug, SecretReference[]>} */
+function makeReferences(startedAt, connectors, users) {
+  /** @type {Record<TenantSlug, SecretReference[]>} */
+  return {
+    acme: [
+      { id: generatedUuid(6_100), tenant_id: tenantIds.acme, owner_id: users.alice.me.user_id, project_id: projectIds.p1, name: "research-dataset", connector_id: connectors.acme[0].id, namespace: `custos/tenants/${tenantIds.acme}`, mount: "kv", path: "projects/p1/datasets", key: "read-token", secret_version: null, kind: "generic", allowed_uses: ["workflow_env"], version: 1, created_at: iso(startedAt - 8 * 86_400_000), updated_at: iso(startedAt - 8 * 86_400_000) },
+      { id: generatedUuid(6_101), tenant_id: tenantIds.acme, owner_id: null, project_id: projectIds.genomics, name: "external-archive", connector_id: connectors.acme[1].id, namespace: "customers/acme", mount: "kv", path: "research/archive", key: "api-token", secret_version: 3, kind: "api_token", allowed_uses: ["workflow_env"], version: 2, created_at: iso(startedAt - 4 * 86_400_000), updated_at: iso(startedAt - 2 * 86_400_000) },
+    ],
+    globex: [
+      { id: generatedUuid(6_102), tenant_id: tenantIds.globex, owner_id: null, project_id: projectIds.cfd, name: "cfd-storage", connector_id: connectors.globex[0].id, namespace: `custos/tenants/${tenantIds.globex}`, mount: "kv", path: "projects/cfd/storage", key: "object", secret_version: null, kind: "storage_credential", allowed_uses: ["workflow_env"], version: 1, created_at: iso(startedAt - 3 * 86_400_000), updated_at: iso(startedAt - 3 * 86_400_000) },
+    ],
+  };
+}
+
+/** @param {number} startedAt @param {Record<TenantSlug, Project[]>} projects @param {Record<TenantSlug, ClusterBinding[]>} bindings @returns {Record<string, Allocation[]>} */
+function makeProjectAllocations(startedAt, projects, bindings) {
+  /** @type {Record<string, Allocation[]>} */
+  const allocations = {};
+  let index = 0;
+  for (const tenant of /** @type {TenantSlug[]} */ (["acme", "globex"])) {
+    for (const project of projects[tenant]) {
+      const binding = bindings[tenant].find((item) => item.project_id === project.id);
+      if (!binding) continue;
+      const budgets = tenant === "acme" && project.slug === "p1"
+        ? [
+            { name: "CPU budget", unit: "cpu_hours", limit: 500, consumed: 425.5, enforcement: "hard" },
+            { name: "GPU budget", unit: "gpu_hours", limit: 100, consumed: 112.5, enforcement: "soft" },
+          ]
+        : [{ name: `${project.name} CPU`, unit: "cpu_hours", limit: 1_000, consumed: 420 + index * 30, enforcement: "hard" }];
+      allocations[project.id] = budgets.map((budget) => {
+        const now = iso(startedAt - 60_000);
+        /** @type {Allocation} */
+        const allocation = {
+          id: generatedUuid(7_000 + index),
+          tenant_id: tenantIds[tenant],
+          project_id: project.id,
+          binding_id: binding.id,
+          name: budget.name,
+          unit: /** @type {Allocation["unit"]} */ (budget.unit),
+          limit_amount: budget.limit,
+          period_start: iso(startedAt - 30 * 86_400_000),
+          period_end: iso(startedAt + 30 * 86_400_000),
+          enforcement: /** @type {Allocation["enforcement"]} */ (budget.enforcement),
+          consumed_amount: budget.consumed,
+          consumed_as_of: now,
+          version: 1,
+          created_at: iso(startedAt - 20 * 86_400_000),
+          updated_at: now,
+        };
+        index += 1;
+        return allocation;
+      });
+    }
+  }
+  return allocations;
+}
+
+/** @param {number} startedAt @param {Record<TenantSlug, Project[]>} projects @param {Record<string, Allocation[]>} projectAllocations @returns {Record<TenantSlug, AccountingAllocationItem[]>} */
+function makeTenantAllocations(startedAt, projects, projectAllocations) {
+  /** @type {Record<TenantSlug, AccountingAllocationItem[]>} */
+  const result = { acme: [], globex: [] };
+  for (const tenant of /** @type {TenantSlug[]} */ (["acme", "globex"])) {
+    for (const project of projects[tenant]) {
+      for (const allocation of projectAllocations[project.id] ?? []) {
+        const consumed = allocation.consumed_amount;
+        const remaining = allocation.limit_amount - consumed;
+        const percent = allocation.limit_amount > 0 ? (100 * consumed) / allocation.limit_amount : 0;
+        /** @type {AccountingAllocationItem} */
+        const item = {
+          allocation,
+          consumed,
+          remaining,
+          percent_used: percent,
+          as_of: allocation.consumed_as_of ?? iso(startedAt),
+          active: startedAt >= Date.parse(allocation.period_start) && startedAt < Date.parse(allocation.period_end),
+        };
+        result[tenant].push(item);
+      }
+    }
+  }
+  return result;
+}
+
 /** @param {number} startedAt @param {string} issuer @param {number} seed @returns {MockData} */
 export function createMockData(startedAt = Date.now(), issuer = "http://127.0.0.1:4300/realms/custos", seed = 20260927) {
   const users = createMockUsers(issuer);
   const projects = makeProjects(startedAt);
   const clusters = makeClusters();
   const jobs = makeJobs(startedAt, users, seed);
+  const projectMembers = makeProjectMembers(startedAt, users);
+  const clusterBindings = makeClusterBindings(startedAt, projects, clusters);
+  const partitions = makePartitions(startedAt, clusters);
+  const connectors = makeConnectors(startedAt);
+  const references = makeReferences(startedAt, connectors, users);
+  const projectAllocations = makeProjectAllocations(startedAt, projects, clusterBindings);
+  const tenantAllocations = makeTenantAllocations(startedAt, projects, projectAllocations);
+  const usageRecords = makeUsageRecords(jobs, projects, clusters, seed);
   /** @type {Map<string, Record<string, never>>} */
   const executionSpecs = new Map();
   for (const tenantJobs of Object.values(jobs)) {
     for (const job of tenantJobs) executionSpecs.set(job.id, {});
   }
-  return { users, projects, clusters, jobs, executionSpecs };
+  return { users, projects, projectMembers, clusters, clusterBindings, partitions, connectors, references, projectAllocations, tenantAllocations, jobs, usageRecords, executionSpecs };
 }

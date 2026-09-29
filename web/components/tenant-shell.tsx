@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createContext, useContext, useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
-import { ChevronDown, ChevronsUpDown, Gauge, HardDrive, Layers3, Menu } from "lucide-react";
+import { ChartNoAxesColumn, ChevronDown, ChevronsUpDown, FolderKanban, Gauge, HardDrive, KeyRound, Layers3, Menu, Server } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -35,6 +35,14 @@ export function TenantDisplayName({ fallback }: { fallback: string }) {
   const tenant = useContext(TenantContext);
   return <>{tenant?.name || fallback}</>;
 }
+
+const routeSections = {
+  jobs: { label: "Jobs", icon: HardDrive },
+  projects: { label: "Projects", icon: FolderKanban },
+  clusters: { label: "Clusters", icon: Server },
+  secrets: { label: "Secrets", icon: KeyRound },
+  usage: { label: "Usage", icon: ChartNoAxesColumn },
+} as const;
 
 type WorkspaceLink = Readonly<{ label: string; href?: string; icon: typeof Layers3 }>;
 type WorkspaceSection = Readonly<{ label: string; items: readonly WorkspaceLink[] }>;
@@ -135,15 +143,15 @@ function WorkspaceNavigation({
     {
       label: "RESOURCES",
       items: [
-        { label: "Projects", icon: Layers3 },
-        { label: "Secrets", icon: Layers3 },
-        { label: "Usage", icon: Layers3 },
+        { label: "Projects", href: `/t/${tenant.slug}/projects`, icon: FolderKanban },
+        { label: "Secrets", href: `/t/${tenant.slug}/secrets`, icon: KeyRound },
+        { label: "Usage", href: `/t/${tenant.slug}/usage`, icon: ChartNoAxesColumn },
       ],
     },
     {
       label: "INFRASTRUCTURE",
       items: [
-        { label: "Clusters", icon: Layers3 },
+        { label: "Clusters", href: `/t/${tenant.slug}/clusters`, icon: Server },
         { label: "Policies", icon: Layers3 },
       ],
     },
@@ -232,10 +240,13 @@ export function TenantShell({
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [breadcrumbStore] = useState(createBreadcrumbEntityStore);
   const breadcrumbEntity = useSyncExternalStore(breadcrumbStore.subscribe, breadcrumbStore.getSnapshot, breadcrumbStore.getServerSnapshot);
-  const isJobs = pathname.startsWith(`/t/${tenant.slug}/jobs`);
-  const sectionLabel = isJobs ? "Jobs" : "Dashboard";
-  const sectionHref = isJobs ? `/t/${tenant.slug}/jobs` : `/t/${tenant.slug}`;
-  const SectionIcon = isJobs ? HardDrive : Gauge;
+  const routeSection = pathname.split("/").filter(Boolean)[2];
+  const section = routeSection && Object.hasOwn(routeSections, routeSection)
+    ? routeSections[routeSection as keyof typeof routeSections]
+    : undefined;
+  const sectionLabel = section ? section.label : "Dashboard";
+  const sectionHref = section && routeSection ? `/t/${tenant.slug}/${routeSection}` : `/t/${tenant.slug}`;
+  const SectionIcon = section ? section.icon : Gauge;
   const initials = userLabel.split(/\s+/).map((part) => part[0]).filter(Boolean).slice(0, 2).join("").toUpperCase();
   const selectTenant = (slug: string) => { router.push(`/t/${encodeURIComponent(slug)}`); };
 

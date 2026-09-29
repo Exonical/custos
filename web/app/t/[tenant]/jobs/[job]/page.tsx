@@ -9,26 +9,11 @@ import { StateBadge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { createApiClient, toApiError, type Job } from "@/lib/api/client";
+import { formatDurationBetween, formatUtcDateTime } from "@/lib/format";
 import { requireServerSession } from "@/lib/session/server";
 
 function pretty(value: unknown): string {
   return JSON.stringify(value, null, 2);
-}
-
-function formatTime(value: string | null | undefined): string {
-  if (!value) return "—";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "—" : new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short", timeZone: "UTC" }).format(date);
-}
-
-function formatDuration(startedAt: string | null | undefined, endedAt: string | null | undefined): string {
-  if (!startedAt || !endedAt) return "—";
-  const durationSeconds = Math.floor((Date.parse(endedAt) - Date.parse(startedAt)) / 1000);
-  if (!Number.isFinite(durationSeconds) || durationSeconds < 0) return "—";
-  const hours = Math.floor(durationSeconds / 3600);
-  const minutes = Math.floor((durationSeconds % 3600) / 60);
-  const seconds = durationSeconds % 60;
-  return hours > 0 ? `${String(hours)}h ${String(minutes)}m` : minutes > 0 ? `${String(minutes)}m ${String(seconds)}s` : `${String(seconds)}s`;
 }
 
 export default async function JobDetailPage({
@@ -75,10 +60,10 @@ export default async function JobDetailPage({
     { label: "PROJECT", value: projectLabel },
     { label: "CLUSTER", value: clusterLabel, title: current.cluster_id },
     { label: "SLURM JOB ID", value: current.slurm_job_id?.toString() ?? "—" },
-    { label: "CREATED", value: formatTime(current.created_at) },
-    { label: "STARTED", value: formatTime(current.started_at) },
-    { label: "FINISHED", value: formatTime(current.ended_at) },
-    { label: "DURATION", value: formatDuration(current.started_at, current.ended_at) },
+    { label: "CREATED", value: formatUtcDateTime(current.created_at) },
+    { label: "STARTED", value: formatUtcDateTime(current.started_at) },
+    { label: "FINISHED", value: formatUtcDateTime(current.ended_at) },
+    { label: "DURATION", value: formatDurationBetween(current.started_at, current.ended_at) },
   ];
 
   return (
