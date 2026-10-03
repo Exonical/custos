@@ -1,0 +1,14 @@
+inputSet:
+  name: Build_custos_1791071543537-pr-trigger-input-set
+  identifier: Build_custos_1791071543537prtriggerinputset
+  orgIdentifier: default
+  projectIdentifier: default_project
+  pipeline:
+    identifier: Build_custos_1791071543537
+    properties:
+      ci:
+        codebase:
+          build:
+            type: PR
+            spec:
+              number: <+trigger.prNumber>
