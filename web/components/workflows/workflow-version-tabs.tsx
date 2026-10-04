@@ -21,10 +21,12 @@ export function WorkflowVersionTabs({
   spec,
   layout,
   selectedTab,
+  downloadContext,
 }: {
   spec: NormalizedWorkflowSpec;
   layout?: unknown;
   selectedTab: WorkflowVersionTab;
+  downloadContext?: { tenant: string; workflow: string; version: string };
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -46,7 +48,7 @@ export function WorkflowVersionTabs({
         <TabsTrigger value="parameters">Parameters</TabsTrigger>
       </TabsList>
       <TabsContent value="graph" className="min-w-0 p-3">
-        <WorkflowGraph spec={spec} layout={layout} selectedTask={taskName} onSelectTask={setTaskName} />
+        <WorkflowGraph spec={spec} layout={layout} selectedTask={taskName} onSelectTask={setTaskName} taskDownload={downloadContext} />
       </TabsContent>
       <TabsContent value="yaml" className="min-w-0 p-3">
         <WorkflowYamlEditor value={stringifyWorkflowYaml(spec)} />

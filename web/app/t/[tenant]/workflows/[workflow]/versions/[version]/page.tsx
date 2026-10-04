@@ -4,6 +4,7 @@ import { ArrowLeft } from "lucide-react";
 import { ApiAccessDenied } from "@/components/api-access-denied";
 import { ApiErrorNotice } from "@/components/api-error-notice";
 import { BreadcrumbEntity } from "@/components/tenant-shell";
+import { DownloadWorkflowYamlButton } from "@/components/workflows/download-buttons";
 import { WorkflowVersionTabs, type WorkflowVersionTab } from "@/components/workflows/workflow-version-tabs";
 import { StateBadge } from "@/components/ui/badge";
 import { createApiClient, parseWorkflowVersion, toApiError } from "@/lib/api/client";
@@ -63,7 +64,16 @@ export default async function WorkflowVersionPage({
             <p className="mt-1 font-mono text-[10px] text-muted-foreground" title={version.specHash}>{shortHash}</p>
           </div>
         </div>
-        <StateBadge state={version.state} />
+        <div className="flex flex-wrap items-start gap-3">
+          <StateBadge state={version.state} />
+          <DownloadWorkflowYamlButton
+            tenant={tenant}
+            workflow={workflow.id}
+            version={version.id}
+            workflowName={workflow.name}
+            versionNumber={version.number}
+          />
+        </div>
       </header>
 
       <section aria-label="Workflow version metadata" className="grid grid-cols-2 gap-px border border-border bg-border sm:grid-cols-4">
@@ -81,7 +91,13 @@ export default async function WorkflowVersionPage({
       </section>
 
       <section className="border border-border bg-card">
-        <WorkflowVersionTabs key={selectedTab} spec={spec} layout={version.layout} selectedTab={selectedTab} />
+        <WorkflowVersionTabs
+          key={selectedTab}
+          spec={spec}
+          layout={version.layout}
+          selectedTab={selectedTab}
+          downloadContext={{ tenant, workflow: workflow.id, version: version.id }}
+        />
       </section>
     </div>
   );

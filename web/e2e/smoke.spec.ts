@@ -196,6 +196,36 @@ test("login, workflows, executions, jobs, CSRF-protected mutations, and logout",
     await expect(page).toHaveURL(/\/t\/acme\/workflows\/[0-9a-f-]+$/);
     await expect(page.getByRole("heading", { name: "Smoke MPI template", level: 1 })).toBeVisible();
     await expect(page.getByRole("link", { name: "v1", exact: true })).toBeVisible();
+
+    await page.goto("/t/acme/workflows");
+    await page.getByRole("link", { name: "Import sbatch" }).click();
+    await expect(page.getByRole("heading", { name: "Import sbatch" })).toBeVisible();
+    await page.getByLabel("Workflow name (optional)").fill("smoke-import");
+    await page.locator('input[type="file"]').setInputFiles({
+      name: "smoke-import.sbatch",
+      mimeType: "text/x-shellscript",
+      buffer: Buffer.from("#!/bin/bash\n#SBATCH --job-name=smoke-import\n#SBATCH --nodes=1\n#SBATCH --ntasks=1\n#SBATCH --time=00:05:00\necho smoke\n"),
+    });
+    await page.getByRole("button", { name: "Import", exact: true }).click();
+    await expect(page.getByRole("cell", { name: "smoke-import.sbatch" })).toBeVisible();
+    await expect(page.locator(".monaco-editor .view-lines")).toContainText("smoke-import");
+    await expect(page.getByText("No workflow is created until", { exact: false })).toBeVisible();
+    await page.getByRole("button", { name: "Create workflow" }).click();
+    await expect(page).toHaveURL(/\/t\/acme\/workflows\/[0-9a-f-]+$/);
+    await expect(page.getByRole("heading", { name: "smoke-import", level: 1 })).toBeVisible();
+    await page.getByRole("link", { name: "v1", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Download YAML" })).toBeVisible();
+    const yamlDownloadPromise = page.waitForEvent("download");
+    await page.getByRole("button", { name: "Download YAML" }).click();
+    const yamlDownload = await yamlDownloadPromise;
+    expect(yamlDownload.suggestedFilename()).toMatch(/\.yaml$/);
+    await page.locator(".workflow-canvas .react-flow__node").filter({ hasText: "smoke-import" }).click();
+    await expect(page.getByRole("button", { name: "Download sbatch" })).toBeVisible();
+    const sbatchDownloadPromise = page.waitForEvent("download");
+    await page.getByRole("button", { name: "Download sbatch" }).click();
+    const sbatchDownload = await sbatchDownloadPromise;
+    expect(sbatchDownload.suggestedFilename()).toMatch(/\.sbatch$/);
+
     expect(workflowConsoleIssues).toEqual([]);
 
     await page.goto("/t/acme/secrets?tab=connectors");

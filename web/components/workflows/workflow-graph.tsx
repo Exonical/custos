@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { Background, BackgroundVariant, Controls, Handle, MarkerType, Position, ReactFlow, type NodeProps } from "@xyflow/react";
 import type { TaskExecution } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
+import { DownloadTaskSbatchButton } from "@/components/workflows/download-buttons";
 import { aggregateTaskExecutions, buildWorkflowGraph, type WorkflowNode } from "@/lib/workflow/graph";
 import { taskKind, type NormalizedWorkflowSpec } from "@/lib/workflow/normalize";
 
@@ -104,6 +105,7 @@ export function WorkflowGraph({
   taskExecutions = [],
   selectedTask,
   onSelectTask,
+  taskDownload,
   showProperties = true,
 }: {
   spec: NormalizedWorkflowSpec;
@@ -111,6 +113,7 @@ export function WorkflowGraph({
   taskExecutions?: readonly TaskExecution[];
   selectedTask?: string | null;
   onSelectTask?: (taskName: string) => void;
+  taskDownload?: { tenant: string; workflow: string; version: string };
   showProperties?: boolean;
 }) {
   const [internalSelectedTask, setInternalSelectedTask] = useState<string | null>(null);
@@ -118,6 +121,8 @@ export function WorkflowGraph({
   const currentSelected = selectedTask === undefined ? internalSelectedTask : selectedTask;
   const graph = useMemo(() => buildWorkflowGraph(spec, layout, aggregates, currentSelected), [spec, layout, aggregates, currentSelected]);
   const selected = spec.spec.tasks.find((task) => task.name === currentSelected);
+  const selectedKind = selected ? taskKind(selected) : undefined;
+  const selectedIsExecutable = selected !== undefined && (selectedKind === undefined || selectedKind === "shell");
   const selectTask = (taskName: string) => {
     if (onSelectTask) onSelectTask(taskName);
     else setInternalSelectedTask(taskName);
@@ -158,6 +163,9 @@ export function WorkflowGraph({
               </div>
             ))}
           </dl> : <p className="font-mono text-[10px] text-muted-foreground">Select a task to inspect its properties.</p>}
+          {selected && taskDownload && selectedIsExecutable ? (
+            <DownloadTaskSbatchButton {...taskDownload} taskName={selected.name} />
+          ) : null}
         </aside>
       ) : null}
     </div>

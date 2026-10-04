@@ -1,6 +1,7 @@
 // @ts-check
 import { createHash, randomUUID } from "node:crypto";
 import http from "node:http";
+import { stringify } from "yaml";
 import { createMockData, userNameFromAccessToken } from "./data.mjs";
 import { loadWorkflowTemplates, templateSummary } from "./templates.mjs";
 
@@ -45,6 +46,16 @@ function send(response, status, body) {
   response.end(JSON.stringify(body));
 }
 
+/** @param {http.ServerResponse} response @param {number} status @param {string} body @param {string} contentType @param {Record<string,string>} [extraHeaders] */
+function sendText(response, status, body, contentType, extraHeaders = {}) {
+  response.writeHead(status, {
+    "content-type": contentType,
+    "cache-control": "no-store",
+    ...extraHeaders,
+  });
+  response.end(body);
+}
+
 /** @param {http.ServerResponse} response @param {number} status @param {string} code @param {string} message @param {string} requestId */
 function sendError(response, status, code, message, requestId) {
   /** @type {ApiErrorBody} */
@@ -58,14 +69,14 @@ function sendEmpty(response, status) {
   response.end();
 }
 
-/** @param {http.IncomingMessage} request @returns {Promise<{raw: Buffer, value: unknown}>} */
-async function readJsonBody(request) {
+/** @param {http.IncomingMessage} request @param {number} [maxBytes] @returns {Promise<{raw: Buffer, value: unknown}>} */
+async function readJsonBody(request, maxBytes = 1_048_576) {
   const chunks = [];
   let length = 0;
   for await (const chunk of request) {
     const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
     length += bytes.byteLength;
-    if (length > 1_048_576) throw new RangeError("body too large");
+    if (length > maxBytes) throw new RangeError("body too large");
     chunks.push(bytes);
   }
   const raw = Buffer.concat(chunks);
@@ -75,6 +86,106 @@ async function readJsonBody(request) {
 /** @param {unknown} value @returns {Record<string, unknown> | undefined} */
 function objectRecord(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value) ? /** @type {Record<string, unknown>} */ (value) : undefined;
+}
+
+/** @param {string} value @param {string} fallback */
+function workflowSlug(value, fallback) {
+  const slug = value.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 63).replace(/-+$/g, "");
+  return slug || fallback;
+}
+
+/** @param {string} value */
+function integerDirective(value) {
+  const number = Number(value);
+  return Number.isInteger(number) && number > 0 ? number : undefined;
+}
+
+/** @param {string} content @param {string} filename @param {number} index */
+function importSbatchScript(content, filename, index) {
+  /** @type {Record<string, unknown>} */
+  const resources = {};
+  /** @type {string[]} */
+  const imported = [];
+  let jobName = "";
+  let partition;
+  const originalLines = content.split(/\r\n|\n|\r/);
+  const rewrittenLines = originalLines.map((line) => {
+    const directive = line.match(/^\s*#SBATCH\s+--([a-z0-9-]+)(?:=(.*)|\s+(.*))?\s*$/i);
+    if (!directive) return line;
+    const option = directive[1].toLowerCase();
+    const value = (directive[2] ?? directive[3] ?? "").trim().replace(/^(['"])(.*)\1$/, "$2");
+    switch (option) {
+      case "job-name":
+        jobName = value;
+        imported.push("job-name");
+        break;
+      case "nodes": {
+        const number = integerDirective(value);
+        if (number) resources.nodes = number;
+        imported.push("nodes");
+        break;
+      }
+      case "ntasks": {
+        const number = integerDirective(value);
+        if (number) resources.tasks = number;
+        imported.push("tasks");
+        break;
+      }
+      case "ntasks-per-node": {
+        const number = integerDirective(value);
+        if (number) resources.tasksPerNode = number;
+        imported.push("tasksPerNode");
+        break;
+      }
+      case "cpus-per-task": {
+        const number = integerDirective(value);
+        if (number) resources.cpusPerTask = number;
+        imported.push("cpusPerTask");
+        break;
+      }
+      case "time":
+        if (value) resources.walltime = value;
+        imported.push("walltime");
+        break;
+      case "mem":
+        if (value) resources.memory = value;
+        imported.push("memory");
+        break;
+      case "partition":
+        partition = value;
+        imported.push("partition");
+        break;
+      case "gres": {
+        const gpu = value.match(/(?:^|,)gpu(?::[a-z0-9_.-]+)?:(\d+)/i) ?? value.match(/(?:^|,)gpu:(\d+)/i);
+        const count = integerDirective(gpu?.[1] ?? "");
+        if (count) resources.gpu = { count };
+        imported.push("gres");
+        break;
+      }
+      default:
+        return line;
+    }
+    return `# [custos] imported: ${line.trim()}`;
+  });
+  const taskName = workflowSlug(jobName || filename.replace(/\.[^.]*$/, ""), `task-${String(index + 1)}`);
+  const rewritten = rewrittenLines.join("\n");
+  const digestValue = `sha256:${createHash("sha256").update(rewritten).digest("hex")}`;
+  const language = /^#!.*(?:\/|^)(?:sh|dash)(?:\s|$)/i.test(rewritten.split(/\r?\n/, 1)[0] ?? "")
+    ? "sh"
+    : "bash";
+  const task = {
+    name: taskName,
+    launch: "sbatch",
+    ...(Object.keys(resources).length ? { resources } : {}),
+    script: { ref: digestValue, language },
+    ...(partition ? { partition } : {}),
+  };
+  return {
+    task,
+    filename,
+    imported: [...new Set(imported)],
+    digest: digestValue,
+  };
 }
 
 /** @param {http.IncomingMessage} request */
@@ -269,8 +380,10 @@ const server = http.createServer(async (request, response) => {
   const projectMembers = url.pathname.match(/^\/api\/v1\/tenants\/([^/]+)\/projects\/([^/]+)\/members$/);
   const projectBindings = url.pathname.match(/^\/api\/v1\/tenants\/([^/]+)\/projects\/([^/]+)\/cluster-bindings$/);
   const projectAllocations = url.pathname.match(/^\/api\/v1\/tenants\/([^/]+)\/projects\/([^/]+)\/allocations$/);
+  const tenantSbatchImport = url.pathname.match(/^\/api\/v1\/tenants\/([^/]+)\/workflow-imports\/sbatch$/);
   const tenantWorkflows = url.pathname.match(/^\/api\/v1\/tenants\/([^/]+)\/workflows$/);
   const workflowVersion = url.pathname.match(/^\/api\/v1\/tenants\/([^/]+)\/workflows\/([^/]+)\/versions\/([^/]+)$/);
+  const workflowTaskSbatch = url.pathname.match(/^\/api\/v1\/tenants\/([^/]+)\/workflows\/([^/]+)\/versions\/([^/]+)\/tasks\/([^/]+)\/sbatch$/);
   const workflowVersions = url.pathname.match(/^\/api\/v1\/tenants\/([^/]+)\/workflows\/([^/]+)\/versions$/);
   const workflowDetail = url.pathname.match(/^\/api\/v1\/tenants\/([^/]+)\/workflows\/([^/]+)$/);
   const tenantWorkflowExecutions = url.pathname.match(/^\/api\/v1\/tenants\/([^/]+)\/workflow-executions$/);
@@ -292,6 +405,65 @@ const server = http.createServer(async (request, response) => {
   const tenant = tenantPath && isTenantSlug(tenantPath) ? tenantPath : undefined;
   if (tenantPath && (!tenant || !user.me.memberships.some((membership) => membership.slug === tenant))) {
     return sendError(response, 404, "NOT_FOUND", "Tenant not found", id);
+  }
+
+  if (tenantSbatchImport && request.method === "POST" && tenant) {
+    let input;
+    try {
+      input = objectRecord((await readJsonBody(request, 2 * 1024 * 1024)).value);
+    } catch (error) {
+      const tooLarge = error instanceof RangeError;
+      return sendError(response, tooLarge ? 413 : 400, tooLarge ? "BODY_TOO_LARGE" : "MALFORMED", "Invalid sbatch import request", id);
+    }
+    if (!input || !Array.isArray(input.scripts) || input.scripts.length < 1 || input.scripts.length > 20) {
+      return sendError(response, 400, "MALFORMED", "scripts must contain 1–20 files", id);
+    }
+    if (input.name !== undefined && (typeof input.name !== "string" || input.name.length > 256)) {
+      return sendError(response, 400, "MALFORMED", "name must be at most 256 characters", id);
+    }
+    /** @type {ReturnType<typeof importSbatchScript>[]} */
+    const importedTasks = [];
+    for (let index = 0; index < input.scripts.length; index += 1) {
+      const entry = objectRecord(input.scripts[index]);
+      if (typeof entry?.filename !== "string" || typeof entry.content !== "string") {
+        return sendError(response, 400, "MALFORMED", `scripts[${String(index)}] requires filename and content`, id);
+      }
+      if (Buffer.byteLength(entry.content, "utf8") > 262_144) {
+        return sendError(response, 413, "SCRIPT_TOO_LARGE", `${entry.filename} exceeds 256 KiB`, id);
+      }
+      importedTasks.push(importSbatchScript(entry.content, entry.filename, index));
+    }
+    const usedNames = new Set();
+    for (const imported of importedTasks) {
+      const base = imported.task.name;
+      let candidate = base;
+      let suffix = 2;
+      while (usedNames.has(candidate)) {
+        candidate = `${base.slice(0, 58)}-${String(suffix++)}`;
+      }
+      imported.task.name = candidate;
+      usedNames.add(candidate);
+    }
+    const firstTask = importedTasks[0]?.task.name ?? "imported-workflow";
+    const workflowName = workflowSlug(typeof input.name === "string" && input.name.trim() ? input.name.trim() : firstTask, firstTask);
+    const spec = {
+      apiVersion: "custos.io/v1alpha1",
+      kind: "Workflow",
+      metadata: { name: workflowName },
+      spec: { tasks: importedTasks.map(({ task }) => task) },
+    };
+    const result = {
+      spec,
+      yaml: stringify(spec),
+      tasks: importedTasks.map(({ filename, task, digest, imported }) => ({
+        filename,
+        task: task.name,
+        scriptDigest: digest,
+        imported,
+        diagnostics: [],
+      })),
+    };
+    return send(response, 200, result);
   }
 
   if (tenantWorkflows && request.method === "POST" && tenant) {
@@ -386,11 +558,40 @@ const server = http.createServer(async (request, response) => {
     }));
     return send(response, 200, { versions });
   }
+  if (workflowTaskSbatch && request.method === "GET" && tenant) {
+    const workflowId = workflowTaskSbatch[2];
+    const versionId = workflowTaskSbatch[3];
+    const taskName = decodeURIComponent(workflowTaskSbatch[4]);
+    if (!data.workflows[tenant].some((item) => item.id === workflowId)) return sendError(response, 404, "WORKFLOW_UNKNOWN", "Workflow not found", id);
+    const version = (data.workflowVersions[workflowId] ?? []).find((item) => item.id === versionId);
+    if (!version) return sendError(response, 404, "VERSION_UNKNOWN", "Workflow version not found", id);
+    const task = version.spec.spec.tasks.find((item) => item.name === taskName);
+    if (!task) return sendError(response, 404, "TASK_UNKNOWN", "Workflow task not found", id);
+    if (task.image || task.multinode) {
+      return sendError(response, 422, "EXPORT_UNSUPPORTED", "This task uses a container image or multinode and cannot be exported as a standalone script", id);
+    }
+    const filename = `${task.name.replace(/[^A-Za-z0-9_.-]/g, "-")}.sbatch`;
+    const script = [
+      "#!/bin/bash",
+      `#SBATCH --job-name=${task.name}`,
+      `#SBATCH --nodes=${task.resources?.nodes ?? 1}`,
+      `#SBATCH --ntasks=${task.resources?.tasks ?? 1}`,
+      `# Mock sbatch export for ${task.name}`,
+      ...(task.script ? [`${typeof task.script === "string" ? task.script : ""}`] : [`exec ${task.command?.map((word) => `'${word.replaceAll("'", "'\\''")}'`).join(" ") ?? "true"}`]),
+      "",
+    ].join("\n");
+    return sendText(response, 200, script, "text/x-shellscript; charset=utf-8", {
+      "content-disposition": `attachment; filename="${filename}"`,
+    });
+  }
   if (workflowVersion && request.method === "GET" && tenant) {
     const workflowId = workflowVersion[2];
     const versionId = workflowVersion[3];
     if (!data.workflows[tenant].some((item) => item.id === workflowId)) return sendError(response, 404, "WORKFLOW_UNKNOWN", "Workflow not found", id);
     const version = (data.workflowVersions[workflowId] ?? []).find((item) => item.id === versionId);
+    if (version && request.headers.accept === "application/yaml") {
+      return sendText(response, 200, stringify(version.spec), "application/yaml; charset=utf-8");
+    }
     return version ? send(response, 200, version) : sendError(response, 404, "VERSION_UNKNOWN", "Workflow version not found", id);
   }
 

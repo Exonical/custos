@@ -149,6 +149,10 @@ and CSRF-protected Cancel; it does not include the full editor. Templates,
 Interactive, and Policies remain coming-soon entries. Tenant pages live under
 `/t/{tenant}/...`, mirroring the API. The browser UI never calls the API
 directly; Server Components use the server API client and mutations use the BFF.
+Workflow sbatch import at `/t/{tenant}/workflows/import` returns a read-only
+draft proposal; creating the workflow is a separate explicit action. Version
+pages download YAML and selected executable tasks offer standalone sbatch
+downloads through the BFF, which forwards `Accept` and `Content-Disposition`.
 The Job API currently exposes job reads, cancellation, and ExecutionSpec only;
 there are no Events or Logs endpoints, so the detail view shows a Details tab.
 

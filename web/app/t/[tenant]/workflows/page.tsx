@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { ApiAccessDenied } from "@/components/api-access-denied";
 import { ApiErrorNotice } from "@/components/api-error-notice";
 import { WorkflowListFilters } from "@/components/workflows/workflow-list-filters";
+import { buttonVariants } from "@/components/ui/button";
 import { StateBadge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { createApiClient, toApiError } from "@/lib/api/client";
@@ -66,7 +67,12 @@ export default async function WorkflowsPage({
   const projectById = new Map(projects.map((item) => [item.id, item.name]));
   return (
     <section className="space-y-5">
-      <h1 className="sr-only">Workflows</h1>
+      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4">
+        <h1 className="text-xl font-semibold">Workflows</h1>
+        <Link className={buttonVariants({ variant: "outline" })} href={`/t/${encodeURIComponent(tenant)}/workflows/import`}>
+          Import sbatch
+        </Link>
+      </header>
       <WorkflowListFilters projects={projects} project={project} includeArchived={includeArchived} />
       <section aria-label="Workflows" className="overflow-hidden border border-border bg-card">
         <Table containerClassName="max-h-[72vh]">
