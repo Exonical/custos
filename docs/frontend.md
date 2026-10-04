@@ -153,6 +153,8 @@ Workflow sbatch import at `/t/{tenant}/workflows/import` returns a read-only
 draft proposal; creating the workflow is a separate explicit action. Version
 pages download YAML and selected executable tasks offer standalone sbatch
 downloads through the BFF, which forwards `Accept` and `Content-Disposition`.
+Platform admins can edit per-cluster container-runtime and software-module
+settings from the cluster detail Settings tab using optimistic version checks.
 The Job API currently exposes job reads, cancellation, and ExecutionSpec only;
 there are no Events or Logs endpoints, so the detail view shows a Details tab.
 

@@ -5,6 +5,7 @@
 /** @typedef {import("../lib/api/schema").components["schemas"]["ProjectMembership"]} ProjectMembership */
 /** @typedef {import("../lib/api/schema").components["schemas"]["ClusterBinding"]} ClusterBinding */
 /** @typedef {import("../lib/api/schema").components["schemas"]["ClusterSummary"]} ClusterSummary */
+/** @typedef {import("../lib/api/schema").components["schemas"]["Cluster"]} Cluster */
 /** @typedef {import("../lib/api/schema").components["schemas"]["PartitionRecord"]} PartitionRecord */
 /** @typedef {import("../lib/api/schema").components["schemas"]["SecretConnector"]} SecretConnector */
 /** @typedef {import("../lib/api/schema").components["schemas"]["SecretReference"]} SecretReference */
@@ -26,7 +27,7 @@
 /** @typedef {"p1" | "genomics" | "climate" | "cfd"} ProjectSlug */
 /** @typedef {"cluster-e2e" | "hopper" | "titan"} ClusterName */
 /** @typedef {{ sub: string, name: string, email: string, me: Me }} MockUser */
-/** @typedef {{ users: Record<MockUserName, MockUser>, projects: Record<TenantSlug, Project[]>, projectMembers: Record<string, ProjectMembership[]>, clusters: Record<TenantSlug, ClusterSummary[]>, clusterBindings: Record<TenantSlug, ClusterBinding[]>, partitions: Record<string, PartitionRecord[]>, connectors: Record<TenantSlug, SecretConnector[]>, references: Record<TenantSlug, SecretReference[]>, projectAllocations: Record<string, Allocation[]>, tenantAllocations: Record<TenantSlug, AccountingAllocationItem[]>, workflows: Record<TenantSlug, Workflow[]>, workflowVersions: Record<string, WorkflowVersionFixture[]>, workflowExecutions: Record<TenantSlug, WorkflowExecutionFixture[]>, taskExecutions: Record<string, TaskExecution[]>, frozenTaskSpecs: Map<string, unknown>, idempotency: Map<string, {bodyHash: string, execution: WorkflowExecutionFixture}>, jobs: Record<TenantSlug, Job[]>, usageRecords: Record<TenantSlug, UsageDailyRecord[]>, executionSpecs: Map<string, Record<string, never>> }} MockData */
+/** @typedef {{ users: Record<MockUserName, MockUser>, projects: Record<TenantSlug, Project[]>, projectMembers: Record<string, ProjectMembership[]>, clusters: Record<TenantSlug, ClusterSummary[]>, platformClusters: Record<string, Cluster>, clusterBindings: Record<TenantSlug, ClusterBinding[]>, partitions: Record<string, PartitionRecord[]>, connectors: Record<TenantSlug, SecretConnector[]>, references: Record<TenantSlug, SecretReference[]>, projectAllocations: Record<string, Allocation[]>, tenantAllocations: Record<TenantSlug, AccountingAllocationItem[]>, workflows: Record<TenantSlug, Workflow[]>, workflowVersions: Record<string, WorkflowVersionFixture[]>, workflowExecutions: Record<TenantSlug, WorkflowExecutionFixture[]>, taskExecutions: Record<string, TaskExecution[]>, frozenTaskSpecs: Map<string, unknown>, idempotency: Map<string, {bodyHash: string, execution: WorkflowExecutionFixture}>, jobs: Record<TenantSlug, Job[]>, usageRecords: Record<TenantSlug, UsageDailyRecord[]>, executionSpecs: Map<string, Record<string, never>> }} MockData */
 
 /** @type {Record<TenantSlug, string>} */
 const tenantIds = {
@@ -131,6 +132,40 @@ function makeClusters() {
       { id: clusterIds.titan, name: "titan", display_name: "Titan", state: "degraded", slurm_version: "26.05.3", partitions: ["cpu", "long"], node_summary: { idle: 3, allocated: 21 }, defaults: {}, container_runtime: null },
     ],
   };
+}
+
+/** @param {Record<TenantSlug, ClusterSummary[]>} clusters @returns {Record<string, Cluster>} */
+function makePlatformClusters(clusters) {
+  const now = new Date().toISOString();
+  /** @type {Record<string, Cluster>} */
+  const result = {};
+  for (const cluster of Object.values(clusters).flat()) {
+    result[cluster.id] = {
+      id: cluster.id,
+      name: cluster.name,
+      display_name: cluster.display_name,
+      base_url: "https://slurm.mock.example",
+      api_version: "v0.0.45",
+      identity_mode: "service",
+      service_user: "custos",
+      policy_management: "inherit",
+      policy_parent_account: "root",
+      software_modules: [],
+      container_runtime: cluster.container_runtime?.type === "apptainer"
+        ? { type: "apptainer", binary: "apptainer", allowed_image_prefixes: [], require_digest: false, slurm_in_container: false, mpi_plugin: "pmix" }
+        : null,
+      token_ref: { provider: "file", path: `clusters/${cluster.name}/token` },
+      visibility: "assigned",
+      state: cluster.state,
+      consecutive_failures: 0,
+      last_sync_at: now,
+      capabilities_at: now,
+      version: 1,
+      created_at: now,
+      updated_at: now,
+    };
+  }
+  return result;
 }
 
 /** @param {string} issuer @returns {Record<MockUserName, MockUser>} */
@@ -768,6 +803,7 @@ export function createMockData(startedAt = Date.now(), issuer = "http://127.0.0.
   const users = createMockUsers(issuer);
   const projects = makeProjects(startedAt);
   const clusters = makeClusters();
+  const platformClusters = makePlatformClusters(clusters);
   const jobs = makeJobs(startedAt, users, seed);
   const projectMembers = makeProjectMembers(startedAt, users);
   const clusterBindings = makeClusterBindings(startedAt, projects, clusters);
@@ -785,7 +821,7 @@ export function createMockData(startedAt = Date.now(), issuer = "http://127.0.0.
     for (const job of tenantJobs) executionSpecs.set(job.id, {});
   }
   return {
-    users, projects, projectMembers, clusters, clusterBindings, partitions, connectors, references,
+    users, projects, projectMembers, clusters, platformClusters, clusterBindings, partitions, connectors, references,
     projectAllocations, tenantAllocations, workflows: workflowData.workflows, workflowVersions: workflowData.versions,
     workflowExecutions: executionData.executions, taskExecutions: executionData.tasks, frozenTaskSpecs: executionData.frozen,
     idempotency: new Map(), jobs, usageRecords, executionSpecs,

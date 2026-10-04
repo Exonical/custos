@@ -5,6 +5,7 @@ import { ApiAccessDenied } from "@/components/api-access-denied";
 import { ApiErrorNotice } from "@/components/api-error-notice";
 import { BreadcrumbEntity } from "@/components/tenant-shell";
 import { ClusterPartitionsTab } from "@/components/cluster-partitions-tab";
+import { ClusterSettingsForm } from "@/components/clusters/cluster-settings-form";
 import { RefreshJobButton } from "@/components/jobs/refresh-job-button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { createApiClient, toApiError } from "@/lib/api/client";
@@ -33,6 +34,21 @@ export default async function ClusterDetailPage({ params }: { params: Promise<{ 
   }
 
   const current = clusterResponse.data;
+  const clusterSettingsResponse = await api.GET("/clusters/{cluster}", { params: { path: { cluster: current.id } } });
+  if (clusterSettingsResponse.response.status === 401) redirect(`/auth/login?returnTo=${encodeURIComponent(returnTo)}`);
+  const meResponse = clusterSettingsResponse.response.status === 200
+    ? await api.GET("/me", {})
+    : undefined;
+  if (meResponse?.response.status === 401) redirect(`/auth/login?returnTo=${encodeURIComponent(returnTo)}`);
+  const showSettingsTab = clusterSettingsResponse.response.status !== 403;
+  const settingsError = clusterSettingsResponse.error
+    ? toApiError(clusterSettingsResponse.error, clusterSettingsResponse.response.status)
+    : meResponse?.error
+      ? toApiError(meResponse.error, meResponse.response.status)
+      : undefined;
+  const platformCluster = clusterSettingsResponse.data;
+  const platformMe = meResponse?.data;
+  const canManageSettings = platformMe?.platform_roles.includes("platform-admin") ?? false;
   const statusStyle = current.state === "active" ? "text-status-active" : current.state === "degraded" || current.state === "unreachable" ? "text-status-degraded" : "text-status-canceled";
   return (
     <div className="space-y-5">
@@ -70,10 +86,27 @@ export default async function ClusterDetailPage({ params }: { params: Promise<{ 
         <Tabs defaultValue="partitions">
           <TabsList variant="line" className="h-8 w-full justify-start border-b border-border px-3">
             <TabsTrigger value="partitions">Partitions</TabsTrigger>
+            {showSettingsTab ? <TabsTrigger value="settings">Settings</TabsTrigger> : null}
           </TabsList>
           <TabsContent value="partitions">
             <ClusterPartitionsTab partitions={partitionsResponse.data.items} />
           </TabsContent>
+          {showSettingsTab ? (
+            <TabsContent value="settings">
+              {settingsError || clusterSettingsResponse.response.status !== 200 || !platformCluster || !platformMe ? (
+                <ApiErrorNotice error={settingsError ?? toApiError(undefined, clusterSettingsResponse.response.status)} />
+              ) : (
+                <ClusterSettingsForm
+                  clusterId={current.id}
+                  version={platformCluster.version}
+                  containerRuntime={platformCluster.container_runtime}
+                  softwareModules={platformCluster.software_modules}
+                  csrfToken={session.csrfToken}
+                  editable={canManageSettings}
+                />
+              )}
+            </TabsContent>
+          ) : null}
         </Tabs>
       </section>
     </div>

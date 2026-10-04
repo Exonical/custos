@@ -375,6 +375,144 @@ const server = http.createServer(async (request, response) => {
     return template ? send(response, 200, template) : sendError(response, 404, "NOT_FOUND", "workflow template not found", id);
   }
 
+  const platformCluster = url.pathname.match(/^\/api\/v1\/clusters\/([^/]+)$/);
+  if (platformCluster && (request.method === "GET" || request.method === "PATCH")) {
+    if (!user.me.platform_roles.includes("platform-admin")) {
+      return sendError(response, 403, "FORBIDDEN", "Requires cluster.read or cluster.manage at platform scope", id);
+    }
+    const cluster = Object.values(data.platformClusters).find((item) => item.id === platformCluster[1] || item.name === platformCluster[1]);
+    if (!cluster) return sendError(response, 404, "NOT_FOUND", "Cluster not found", id);
+    if (request.method === "GET") return send(response, 200, cluster);
+
+    let input;
+    try {
+      input = objectRecord((await readJsonBody(request)).value);
+    } catch {
+      return sendError(response, 400, "MALFORMED", "Invalid cluster update body", id);
+    }
+    if (!input || typeof input.version !== "number" || !Number.isInteger(input.version)) {
+      return sendError(response, 422, "VALIDATION", "version is required", id);
+    }
+    if (input.version !== cluster.version) {
+      return sendError(response, 409, "VERSION_CONFLICT", "Cluster changed since it was loaded", id);
+    }
+
+    /** @type {{field:string,reason:string}[]} */
+    const details = [];
+    let nextRuntime = cluster.container_runtime;
+    if (Object.hasOwn(input, "container_runtime")) {
+      if (input.container_runtime === null) {
+        nextRuntime = null;
+      } else {
+        const runtime = objectRecord(input.container_runtime);
+        if (!runtime || (runtime.type !== "apptainer" && runtime.type !== "pyxis")) {
+          details.push({ field: "container_runtime.type", reason: "type must be apptainer or pyxis" });
+        } else {
+          if (runtime.binary !== undefined && typeof runtime.binary !== "string") {
+            details.push({ field: "container_runtime.binary", reason: "binary must be a string" });
+          }
+          const binary = typeof runtime.binary === "string" ? runtime.binary : "";
+          const prefixes = runtime.allowed_image_prefixes === undefined ? [] : runtime.allowed_image_prefixes;
+          const mpiPlugin = runtime.mpi_plugin === undefined || runtime.mpi_plugin === "" ? "pmix" : runtime.mpi_plugin;
+          if (runtime.type === "apptainer" && binary &&
+            (binary.length > 128 || !/^[A-Za-z0-9_.:@/=-]+$/.test(binary))) {
+            details.push({ field: "container_runtime.binary", reason: "binary is invalid" });
+          }
+          if (runtime.type === "pyxis" && binary) {
+            details.push({ field: "container_runtime.binary", reason: "binary is only valid for apptainer" });
+          }
+          if (!Array.isArray(prefixes) || prefixes.some((prefix) =>
+            typeof prefix !== "string" || prefix.length > 512 ||
+            !(/^(docker|oras):\/\/[A-Za-z0-9._/:@+-]+$|^\/[A-Za-z0-9._/+-]+$/).test(prefix) ||
+            prefix.split("/").includes(".."))) {
+            details.push({ field: "container_runtime.allowed_image_prefixes", reason: "one or more image prefixes are invalid" });
+          }
+          if (typeof mpiPlugin !== "string" || !/^[a-z0-9_]+$/.test(mpiPlugin)) {
+            details.push({ field: "container_runtime.mpi_plugin", reason: "mpi_plugin is invalid" });
+          }
+          for (const key of ["require_digest", "slurm_in_container"]) {
+            if (runtime[key] !== undefined && typeof runtime[key] !== "boolean") {
+              details.push({ field: `container_runtime.${key}`, reason: `${key} must be a boolean` });
+            }
+          }
+          if (Array.isArray(prefixes) && typeof mpiPlugin === "string") {
+            const normalizedRuntime = {
+              type: runtime.type,
+              ...(runtime.type === "apptainer" ? { binary: binary || "apptainer" } : {}),
+              allowed_image_prefixes: prefixes,
+              require_digest: runtime.require_digest === true,
+              slurm_in_container: runtime.slurm_in_container === true,
+              mpi_plugin: mpiPlugin,
+            };
+            nextRuntime = /** @type {typeof nextRuntime} */ (/** @type {unknown} */ (normalizedRuntime));
+          }
+        }
+      }
+    }
+
+    let nextSoftwareModules = cluster.software_modules ?? [];
+    if (Object.hasOwn(input, "software_modules")) {
+      const modules = input.software_modules;
+      if (!Array.isArray(modules)) {
+        details.push({ field: "software_modules", reason: "software_modules must be a list" });
+      } else {
+        const seen = new Set();
+        /** @type {import("../lib/api/schema").components["schemas"]["SoftwareModule"][]} */
+        const normalized = [];
+        modules.forEach((entry, index) => {
+          const moduleEntry = objectRecord(entry);
+          if (!moduleEntry) {
+            details.push({ field: `software_modules[${String(index)}]`, reason: "entry must be an object" });
+            return;
+          }
+          const name = typeof moduleEntry.name === "string" ? moduleEntry.name : "";
+          const version = typeof moduleEntry.version === "string" ? moduleEntry.version : "";
+          const moduleNames = moduleEntry.modules;
+          const prefix = `software_modules[${String(index)}]`;
+          if (!/^[A-Za-z0-9][A-Za-z0-9_.+-]{0,63}$/.test(name)) {
+            details.push({ field: `${prefix}.name`, reason: "name is invalid" });
+          }
+          if (version && !/^[A-Za-z0-9][A-Za-z0-9_.+-]{0,63}$/.test(version)) {
+            details.push({ field: `${prefix}.version`, reason: "version is invalid" });
+          }
+          if (moduleEntry.version !== undefined && typeof moduleEntry.version !== "string") {
+            details.push({ field: `${prefix}.version`, reason: "version must be a string" });
+          }
+          if (!Array.isArray(moduleNames) || moduleNames.length < 1 || moduleNames.length > 16 ||
+            moduleNames.some((value) => typeof value !== "string" || !/^[A-Za-z0-9][A-Za-z0-9_.+/@-]{0,127}$/.test(value))) {
+            details.push({ field: `${prefix}.modules`, reason: "modules must contain 1–16 valid names" });
+          }
+          const pair = `${name}\u0000${version}`;
+          if (seen.has(pair)) details.push({ field: `${prefix}.name`, reason: "name/version pair is duplicated" });
+          seen.add(pair);
+          if (Array.isArray(moduleNames) && moduleNames.every((value) => typeof value === "string")) {
+            normalized.push({ name, ...(version ? { version } : {}), modules: moduleNames });
+          }
+        });
+        nextSoftwareModules = normalized;
+      }
+    }
+
+    if (details.length > 0) {
+      return send(response, 422, {
+        error: { code: "CLUSTER_SETTINGS_INVALID", message: "Cluster settings are invalid", request_id: id, details },
+      });
+    }
+    const updated = {
+      ...cluster,
+      container_runtime: nextRuntime,
+      software_modules: nextSoftwareModules,
+      version: cluster.version + 1,
+      updated_at: new Date().toISOString(),
+    };
+    data.platformClusters[cluster.id] = updated;
+    for (const tenantClusters of Object.values(data.clusters)) {
+      const summary = tenantClusters.find((item) => item.id === cluster.id);
+      if (summary) summary.container_runtime = nextRuntime ? { type: nextRuntime.type } : null;
+    }
+    return send(response, 200, updated);
+  }
+
   const tenantProjects = url.pathname.match(/^\/api\/v1\/tenants\/([^/]+)\/projects$/);
   const projectDetail = url.pathname.match(/^\/api\/v1\/tenants\/([^/]+)\/projects\/([^/]+)$/);
   const projectMembers = url.pathname.match(/^\/api\/v1\/tenants\/([^/]+)\/projects\/([^/]+)\/members$/);

@@ -27,6 +27,8 @@ test("login, workflows, executions, jobs, CSRF-protected mutations, and logout",
   if (selectedUser === "bob") {
     await expect(page).toHaveURL(/\/select-tenant$/);
     await expect(page.getByText("You do not have a tenant membership yet.")).toBeVisible();
+    await page.goto("/t/acme/clusters/cluster-e2e");
+    await expect(page.getByRole("tab", { name: "Settings" })).toHaveCount(0);
     return;
   }
   if (selectedUser === "admin") {
@@ -65,6 +67,17 @@ test("login, workflows, executions, jobs, CSRF-protected mutations, and logout",
     await page.getByRole("link", { name: "E2E Cluster" }).click();
     await expect(page.getByRole("tab", { name: "Partitions" })).toBeVisible();
     await expect(page.getByText("compute").first()).toBeVisible();
+    await page.getByRole("tab", { name: "Settings" }).click();
+    await expect(page.getByRole("checkbox", { name: "Enable container runtime" })).toBeChecked();
+    await page.getByRole("combobox", { name: "Runtime type" }).click();
+    await page.getByRole("option", { name: "Pyxis" }).click();
+    await page.getByRole("button", { name: "Add module" }).click();
+    await page.getByLabel("Name").fill("openmpi");
+    await page.getByLabel("Version").fill("5");
+    await page.getByRole("textbox", { name: "Modules" }).fill("gcc/13 openmpi/5");
+    await page.getByRole("button", { name: "Save" }).click();
+    await expect(page.getByText("Saved", { exact: true })).toBeVisible();
+    await expect(page.getByText("pyxis", { exact: true }).first()).toBeVisible();
 
     await page.goto("/t/acme/secrets");
     await expect(page.getByRole("tab", { name: "Connectors" })).toBeVisible();
@@ -100,6 +113,10 @@ test("login, workflows, executions, jobs, CSRF-protected mutations, and logout",
   }
 
   if (selectedUser === "alice") {
+    await page.goto("/t/acme/clusters/cluster-e2e");
+    await expect(page.getByRole("tab", { name: "Partitions" })).toBeVisible();
+    await expect(page.getByRole("tab", { name: "Settings" })).toHaveCount(0);
+
     const workflowConsoleIssues: string[] = [];
     page.on("console", (message) => {
       const path = new URL(page.url()).pathname;

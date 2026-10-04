@@ -13,8 +13,12 @@ export function errorText(value: unknown, status: number, action: string): strin
 }
 
 export async function postJson(url: string, body: unknown, csrfToken: string) {
+  return sendJson("POST", url, body, csrfToken);
+}
+
+export async function sendJson(method: "POST" | "PATCH" | "PUT", url: string, body: unknown, csrfToken: string) {
   const response = await fetch(url, {
-    method: "POST",
+    method,
     credentials: "same-origin",
     cache: "no-store",
     headers: { Accept: "application/json", "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
