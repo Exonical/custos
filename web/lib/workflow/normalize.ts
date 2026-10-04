@@ -108,7 +108,7 @@ function normalizeResources(value: unknown): TaskResources | undefined {
     const number = finite(source[key]);
     if (number !== undefined) resources[key] = number;
   }
-  for (const key of ["memory", "walltime", "memoryPerNode", "constraints"] as const) {
+  for (const key of ["memory", "memoryPerCpu", "walltime", "memoryPerNode", "constraints"] as const) {
     const string = text(source[key]);
     if (string !== undefined) resources[key] = string;
   }
@@ -181,7 +181,26 @@ function normalizeTask(value: unknown): Task | undefined {
   if (placement) task.placement = placement;
   const image = record(source.image);
   const imageURI = text(image?.uri);
-  if (imageURI !== undefined) task.image = { uri: imageURI };
+  if (imageURI !== undefined) {
+    const normalizedImage: NonNullable<Task["image"]> = { uri: imageURI };
+    const pullSecret = record(image?.pullSecret);
+    if (pullSecret) {
+      const username = text(pullSecret.username);
+      const usernameSecret = text(pullSecret.usernameSecret);
+      normalizedImage.pullSecret = {
+        passwordSecret: text(pullSecret.passwordSecret) ?? "",
+        ...(username !== undefined ? { username } : {}),
+        ...(usernameSecret !== undefined ? { usernameSecret } : {}),
+      };
+    }
+    task.image = normalizedImage;
+  }
+  const service = record(source.service);
+  if (service) {
+    const normalizedService: NonNullable<Task["service"]> = {};
+    if (typeof service.autoStop === "boolean") normalizedService.autoStop = service.autoStop;
+    task.service = normalizedService;
+  }
   const multinode = record(source.multinode);
   const multinodeNodes = finite(multinode?.nodes);
   const implementation = text(multinode?.implementation);
@@ -267,10 +286,10 @@ function normalizeSecrets(value: unknown): Record<string, SecretUse> {
   for (const [handle, item] of Object.entries(source)) {
     const secret = record(item);
     const ref = text(secret?.ref);
-    if (!secret || !ref || (secret.use !== "env" && secret.use !== "wrapped_token")) continue;
+    if (!secret || ref === undefined || (secret.use !== "env" && secret.use !== "wrapped_token" && secret.use !== "image_pull")) continue;
     const normalized: SecretUse = { ref, use: secret.use };
     const envName = text(secret.envName);
-    if (envName !== undefined) normalized.envName = envName;
+    if (secret.use === "env" && envName !== undefined) normalized.envName = envName;
     secrets[handle] = normalized;
   }
   return secrets;

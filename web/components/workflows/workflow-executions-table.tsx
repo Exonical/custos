@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { Workflow, WorkflowExecution, WorkflowVersion } from "@/lib/api/client";
-import { StateBadge } from "@/components/ui/badge";
+import { Badge, StateBadge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatDurationBetween, formatUtcDateTime } from "@/lib/format";
 
@@ -51,7 +51,12 @@ export function WorkflowExecutionsTable({ tenant, executions, workflows, version
                 <TableCell>
                   {version ? <Link className="font-mono text-xs hover:text-primary" href={`/t/${encodeURIComponent(tenant)}/workflows/${encodeURIComponent(execution.workflowId)}/versions/${encodeURIComponent(version.id)}`}>v{version.number}</Link> : <span className="font-mono text-xs text-muted-foreground">—</span>}
                 </TableCell>
-                <TableCell><StateBadge state={execution.state} /></TableCell>
+                <TableCell>
+                  <div className="flex items-center gap-1.5">
+                    <StateBadge state={execution.state} />
+                    {execution.test ? <Badge variant="outline" className="border-primary/40 bg-primary/10 text-primary">TEST</Badge> : null}
+                  </div>
+                </TableCell>
                 <TableCell className="font-mono text-[10px] tabular-nums">{formatUtcDateTime(execution.createdAt)}</TableCell>
                 <TableCell className="font-mono text-[10px] tabular-nums">{formatUtcDateTime(execution.startedAt)}</TableCell>
                 <TableCell className="font-mono text-[10px] tabular-nums">{formatUtcDateTime(execution.endedAt)} · {formatDurationBetween(execution.startedAt, execution.endedAt)}</TableCell>

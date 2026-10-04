@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -9,7 +8,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { Project, WorkflowTemplate } from "@/lib/api/client";
-import { errorText, postJson } from "@/lib/api/bff-fetch";
+import {
+  createWorkflowWithDraft,
+  slugifyWorkflowMetadataName,
+  WORKFLOW_NAME_MAX_LENGTH,
+} from "@/lib/workflow/create";
+import { WorkflowCreationError } from "./workflow-creation-error";
 
 export function UseTemplateDialog({ tenant, template, projects, csrfToken }: {
   tenant: string;
@@ -20,16 +24,15 @@ export function UseTemplateDialog({ tenant, template, projects, csrfToken }: {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [project, setProject] = useState(projects[0]?.id ?? "");
-  const [name, setName] = useState(template.title);
+  const [name, setName] = useState(slugifyWorkflowMetadataName(template.title, "workflow"));
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<ReactNode>(null);
-  const tenantPath = `/api/bff/tenants/${encodeURIComponent(tenant)}`;
 
   function changeOpen(next: boolean) {
     setOpen(next);
     if (next) {
       setError(null);
-      setName(template.title);
+      setName(slugifyWorkflowMetadataName(template.title, "workflow"));
     }
   }
 
@@ -41,22 +44,18 @@ export function UseTemplateDialog({ tenant, template, projects, csrfToken }: {
     setSubmitting(true);
     setError(null);
     try {
-      const created = await postJson(`${tenantPath}/workflows`, { project, name: name.trim(), description: template.summary }, csrfToken);
-      const workflowId = created.status === 201 && created.payload && typeof created.payload === "object"
-        ? (created.payload as { id?: unknown }).id
-        : undefined;
-      if (typeof workflowId !== "string") {
-        setError(errorText(created.payload, created.status, "create workflows"));
-        return;
-      }
-      const workflowHref = `/t/${encodeURIComponent(tenant)}/workflows/${encodeURIComponent(workflowId)}`;
-      const version = await postJson(`${tenantPath}/workflows/${encodeURIComponent(workflowId)}/versions`, template.spec, csrfToken);
-      if (version.status !== 201) {
-        setError(<>The workflow was created, but its draft could not be saved: {errorText(version.payload, version.status, "create versions")} <Link className="text-primary underline" href={workflowHref}>Open the workflow</Link>.</>);
+      const result = await createWorkflowWithDraft(
+        tenant,
+        { project, name: name.trim(), description: template.summary },
+        template.spec,
+        csrfToken,
+      );
+      if (!result.ok) {
+        setError(<WorkflowCreationError tenant={tenant} failure={result.failure} />);
         return;
       }
       setOpen(false);
-      router.push(workflowHref);
+      router.push(`/t/${encodeURIComponent(tenant)}/workflows/${encodeURIComponent(result.workflowId)}`);
     } catch {
       setError("The request could not be sent. Check your connection and try again.");
     } finally {
@@ -86,7 +85,7 @@ export function UseTemplateDialog({ tenant, template, projects, csrfToken }: {
           </div>
           <div className="grid gap-1.5">
             <Label htmlFor="use-template-name">Workflow name</Label>
-            <Input id="use-template-name" value={name} maxLength={128} onChange={(event) => { setName(event.target.value); }} />
+            <Input id="use-template-name" value={name} maxLength={WORKFLOW_NAME_MAX_LENGTH} onChange={(event) => { setName(event.target.value); }} />
           </div>
           {error ? <p role="alert" className="border border-destructive/40 bg-destructive/10 p-2 font-mono text-xs text-destructive">{error}</p> : null}
           <div className="flex justify-end gap-2 border-t border-border pt-3">

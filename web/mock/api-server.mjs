@@ -114,8 +114,8 @@ function parseWorkflowBody(raw, contentType) {
   throw new TypeError("workflow spec Content-Type must be application/yaml or application/json");
 }
 
-/** @param {unknown} value @returns {{path:string,code:string,message:string}[]} */
-function validateMockWorkflow(value) {
+/** @param {unknown} value @param {TenantSlug} [tenant] @returns {{path:string,code:string,message:string}[]} */
+function validateMockWorkflow(value, tenant) {
   /** @type {{path:string,code:string,message:string}[]} */
   const errors = [];
   const document = objectRecord(value);
@@ -136,6 +136,11 @@ function validateMockWorkflow(value) {
   const names = new Map();
   /** @type {Map<string,string[]>} */
   const dependencies = new Map();
+  const secrets = objectRecord(spec?.secrets) ?? {};
+  /** @type {Set<string>} */
+  const usedImagePullHandles = new Set();
+  /** @type {Map<string,string>} */
+  const serviceNames = new Map();
   tasks.forEach((entry, index) => {
     const task = objectRecord(entry);
     const path = `spec.tasks[${String(index)}]`;
@@ -147,6 +152,90 @@ function validateMockWorkflow(value) {
       errors.push({ path: `${path}.name`, code: "NAME_DUPLICATE", message: `task name ${task.name} is duplicated` });
     } else {
       names.set(task.name, index);
+    }
+    if (task.service !== undefined && task.service !== null) {
+      const suffix = task.name.toUpperCase().replace(/[^A-Z0-9]/g, "_");
+      const previous = serviceNames.get(suffix);
+      if (previous) {
+        errors.push({ path: `${path}.name`, code: "SERVICE_NAME_COLLISION", message: `service name collides with ${previous} after normalization` });
+      } else {
+        serviceNames.set(suffix, task.name);
+      }
+      const resources = objectRecord(task.resources) ?? {};
+      if (typeof resources.walltime !== "string" || !resources.walltime.trim()) {
+        errors.push({ path: `${path}.resources.walltime`, code: "SERVICE_WALLTIME_REQUIRED", message: "service tasks require resources.walltime" });
+      }
+      if (["condition", "approval", "array"].includes(String(task.type))) {
+        errors.push({ path: `${path}.service`, code: "SERVICE_FIELD_UNSUPPORTED", message: "service tasks require a supported Slurm task kind" });
+      }
+      for (const field of ["array", "fanOut", "retry", "when", "outputs"]) {
+        if (task[field] !== undefined && task[field] !== null) {
+          errors.push({ path: `${path}.${field}`, code: "SERVICE_FIELD_UNSUPPORTED", message: `${field} is not supported on service tasks` });
+        }
+      }
+    }
+    const resources = objectRecord(task.resources) ?? {};
+    if (resources.memoryPerCpu !== undefined
+      && (resources.memory !== undefined || resources.memoryPerNode !== undefined)) {
+      errors.push({
+        path: `${path}.resources.memoryPerCpu`,
+        code: "MEMORY_CONFLICT",
+        message: "memoryPerCpu is mutually exclusive with memory and memoryPerNode",
+      });
+    }
+    const image = objectRecord(task.image);
+    const pullSecret = objectRecord(image?.pullSecret);
+    if (image?.pullSecret !== undefined && image.pullSecret !== null) {
+      const uri = typeof image.uri === "string" ? image.uri : "";
+      if (!uri) {
+        errors.push({ path: `${path}.image.pullSecret`, code: "PULL_SECRET_REQUIRES_IMAGE", message: "pullSecret requires image.uri" });
+      } else if (!uri.startsWith("docker://") && !uri.startsWith("oras://")) {
+        errors.push({ path: `${path}.image.pullSecret`, code: "PULL_SECRET_INVALID", message: "pullSecret requires a docker:// or oras:// image URI" });
+      }
+      if (!pullSecret) {
+        errors.push({ path: `${path}.image.pullSecret`, code: "PULL_SECRET_INVALID", message: "pullSecret must be an object" });
+      } else {
+        const literalUsername = typeof pullSecret.username === "string" && pullSecret.username
+          ? pullSecret.username
+          : undefined;
+        const usernameSecret = typeof pullSecret.usernameSecret === "string" && pullSecret.usernameSecret
+          ? pullSecret.usernameSecret
+          : undefined;
+        const passwordSecret = typeof pullSecret.passwordSecret === "string" && pullSecret.passwordSecret
+          ? pullSecret.passwordSecret
+          : undefined;
+        const hasLiteral = literalUsername !== undefined;
+        const hasUsernameSecret = usernameSecret !== undefined;
+        if (hasLiteral === hasUsernameSecret
+          || !passwordSecret) {
+          errors.push({ path: `${path}.image.pullSecret`, code: "PULL_SECRET_INVALID", message: "specify exactly one username or usernameSecret and a passwordSecret" });
+        }
+        if (literalUsername !== undefined && (literalUsername.length > 256 || /[\s\u0000-\u001f\u007f]/.test(literalUsername))) {
+          errors.push({ path: `${path}.image.pullSecret.username`, code: "PULL_SECRET_INVALID", message: "literal username must be at most 256 characters without whitespace or control characters" });
+        }
+        /** @type {string[]} */
+        const handles = [];
+        if (usernameSecret) handles.push(usernameSecret);
+        if (passwordSecret) handles.push(passwordSecret);
+      for (const handle of handles) {
+          const definition = objectRecord(secrets[handle]);
+          if (!definition || definition.use !== "image_pull") {
+            errors.push({ path: `${path}.image.pullSecret`, code: "PULL_SECRET_INVALID", message: `secret handle ${handle} must use image_pull` });
+          } else {
+            usedImagePullHandles.add(handle);
+            const reference = tenant
+              ? data.references[tenant]?.find((item) => item.name === definition.ref)
+              : undefined;
+            if (tenant && (!reference || reference.kind !== "generic"
+              || !Array.isArray(reference.allowed_uses) || !reference.allowed_uses.includes("image_pull"))) {
+              errors.push({ path: `spec.secrets.${handle}.ref`, code: "SECRET_USE_NOT_ALLOWED", message: `reference for ${handle} must allow image_pull` });
+            }
+          }
+        }
+        if (task.multinode || (typeof resources.nodes === "number" && resources.nodes > 1)) {
+          errors.push({ path: `${path}.image.pullSecret`, code: "PULL_SECRET_MULTINODE_UNSUPPORTED", message: "pull secrets are only supported on single-node tasks" });
+        }
+      }
     }
     if (task.launch !== undefined && task.launch !== "sbatch" && task.launch !== "srun") {
       errors.push({ path: `${path}.launch`, code: "LAUNCH_INVALID", message: "launch must be sbatch or srun" });
@@ -164,6 +253,35 @@ function validateMockWorkflow(value) {
     namesForTask.forEach((dependency) => {
       if (!tasks.some((candidate) => objectRecord(candidate)?.name === dependency)) {
         errors.push({ path: `${path}.dependsOn`, code: "DEPENDS_ON_UNKNOWN", message: `unknown dependency ${String(dependency)}` });
+      }
+    });
+  });
+
+  const workflowPlacement = objectRecord(spec?.placement);
+  /** @param {Record<string, unknown>} task */
+  const explicitCluster = (task) => {
+    const placement = objectRecord(task.placement);
+    return typeof placement?.cluster === "string" && placement.cluster
+      ? placement.cluster
+      : typeof workflowPlacement?.cluster === "string" ? workflowPlacement.cluster : "";
+  };
+  tasks.forEach((entry, taskIndex) => {
+    const dependent = objectRecord(entry);
+    if (!dependent) return;
+    const dependsOn = Array.isArray(dependent?.dependsOn) ? dependent.dependsOn : [];
+    dependsOn.forEach((dependencyName, dependencyIndex) => {
+      if (typeof dependencyName !== "string") return;
+      const serviceIndex = names.get(dependencyName);
+      const service = serviceIndex === undefined ? undefined : objectRecord(tasks[serviceIndex]);
+      if (!service?.service) return;
+      const serviceCluster = explicitCluster(service);
+      const dependentCluster = explicitCluster(dependent);
+      if (serviceCluster && dependentCluster && serviceCluster !== dependentCluster) {
+        errors.push({
+          path: `spec.tasks[${String(taskIndex)}].dependsOn[${String(dependencyIndex)}]`,
+          code: "SERVICE_CLUSTER_MISMATCH",
+          message: "service and dependent tasks must use the same Slurm cluster",
+        });
       }
     });
   });
@@ -189,6 +307,18 @@ function validateMockWorkflow(value) {
   }
   for (const name of names.keys()) visit(name);
   for (const path of cycles) errors.push({ path, code: "DEPENDENCY_CYCLE", message: "task dependencies contain a cycle" });
+  for (const [handle, definitionValue] of Object.entries(secrets)) {
+    const definition = objectRecord(definitionValue);
+    if (!definition) continue;
+    if (definition.use === "image_pull") {
+      if (definition.envName !== undefined) {
+        errors.push({ path: `spec.secrets.${handle}.envName`, code: "PULL_SECRET_INVALID", message: "image_pull handles cannot set envName" });
+      }
+      if (!usedImagePullHandles.has(handle)) {
+        errors.push({ path: `spec.secrets.${handle}`, code: "SECRET_USE_UNUSED", message: "image_pull handles must be referenced by a task pullSecret" });
+      }
+    }
+  }
   return errors;
 }
 
@@ -630,6 +760,7 @@ const server = http.createServer(async (request, response) => {
   const tenantSbatchImport = url.pathname.match(/^\/api\/v1\/tenants\/([^/]+)\/workflow-imports\/sbatch$/);
   const tenantWorkflows = url.pathname.match(/^\/api\/v1\/tenants\/([^/]+)\/workflows$/);
   const workflowVersion = url.pathname.match(/^\/api\/v1\/tenants\/([^/]+)\/workflows\/([^/]+)\/versions\/([^/]+)$/);
+  const workflowVersionLayout = url.pathname.match(/^\/api\/v1\/tenants\/([^/]+)\/workflows\/([^/]+)\/versions\/([^/]+)\/layout$/);
   const workflowVersionValidate = url.pathname.match(/^\/api\/v1\/tenants\/([^/]+)\/workflows\/([^/]+)\/versions\/validate$/);
   const workflowVersionPublish = url.pathname.match(/^\/api\/v1\/tenants\/([^/]+)\/workflows\/([^/]+)\/versions\/([^/]+)\/publish$/);
   const workflowVersionDeprecate = url.pathname.match(/^\/api\/v1\/tenants\/([^/]+)\/workflows\/([^/]+)\/versions\/([^/]+)\/deprecate$/);
@@ -725,10 +856,21 @@ const server = http.createServer(async (request, response) => {
     }
     const project = data.projects[tenant].find((item) => item.id === input?.project);
     const name = typeof input?.name === "string" ? input.name.trim() : "";
-    if (!project || !name || name.length > 128) {
+    if (!project || !name) {
       return sendError(response, 422, "VALIDATION", "project and name are required", id);
     }
-    if (data.workflows[tenant].some((item) => item.projectId === project.id && item.name === name && item.state === "active")) {
+    const membership = user.me.memberships.find((item) => item.slug === tenant);
+    const projectRoles = (user.me.project_memberships ?? [])
+      .filter((item) => item.project_id === project.id)
+      .flatMap((item) => item.roles);
+    const canCreate = user.me.platform_roles.includes("platform-admin")
+      || membership?.roles.some((role) => ["tenant-admin", "workflow-author"].includes(role))
+      || projectRoles.some((role) => ["project-admin", "project-member"].includes(role));
+    if (!canCreate) return sendError(response, 403, "FORBIDDEN", "Requires workflow.create", id);
+    if (name.length > 63 || !/^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/.test(name)) {
+      return sendError(response, 422, "WORKFLOW_NAME_INVALID", "name must be a lowercase DNS label of at most 63 characters", id);
+    }
+    if (data.workflows[tenant].some((item) => item.projectId === project.id && item.name === name)) {
       return sendError(response, 409, "WORKFLOW_NAME_TAKEN", "A workflow with this name already exists in the project", id);
     }
     const tenantId = user.me.memberships.find((membership) => membership.slug === tenant)?.tenant_id ?? "";
@@ -758,7 +900,7 @@ const server = http.createServer(async (request, response) => {
       return sendError(response, status, code, "Invalid workflow spec body", id);
     }
     const document = objectRecord(decoded.value);
-    const errors = [...decoded.errors, ...validateMockWorkflow(decoded.value)];
+    const errors = [...decoded.errors, ...validateMockWorkflow(decoded.value, tenant)];
     const details = errors.map((error) => ({ field: error.path, reason: `${error.code}: ${error.message}` }));
     if (details.length) {
       /** @type {ApiErrorBody} */
@@ -818,8 +960,32 @@ const server = http.createServer(async (request, response) => {
       if (error instanceof TypeError) return sendError(response, 415, "UNSUPPORTED_MEDIA_TYPE", "Expected application/yaml or application/json", id);
       return sendError(response, 400, "MALFORMED", "Invalid workflow spec body", id);
     }
-    const errors = [...decoded.errors, ...validateMockWorkflow(decoded.value)];
+    const errors = [...decoded.errors, ...validateMockWorkflow(decoded.value, tenant)];
     return send(response, 200, { valid: errors.length === 0, errors });
+  }
+  if (workflowVersionLayout && request.method === "PUT" && tenant) {
+    const workflowId = workflowVersionLayout[2];
+    const versionId = workflowVersionLayout[3];
+    const version = (data.workflowVersions[workflowId] ?? []).find((item) => item.id === versionId);
+    if (!version) return sendError(response, 404, "VERSION_UNKNOWN", "Workflow version not found", id);
+    if (version.state === "deprecated") return sendError(response, 409, "VERSION_IMMUTABLE", "Deprecated versions are immutable", id);
+    let input;
+    try {
+      input = objectRecord((await readJsonBody(request)).value);
+    } catch {
+      return sendError(response, 400, "MALFORMED", "Invalid layout JSON", id);
+    }
+    const expectedHeader = request.headers["x-expected-version"];
+    const expectedVersion = typeof expectedHeader === "string" ? Number(expectedHeader) : 0;
+    if (expectedVersion > 0 && expectedVersion !== version.version) {
+      return sendError(response, 409, "VERSION_CONFLICT", "Version changed since it was loaded", id);
+    }
+    if (!input || !objectRecord(input.nodes)) {
+      return sendError(response, 400, "MALFORMED", "layout must contain a nodes map", id);
+    }
+    version.layout = input;
+    version.version += 1;
+    return sendEmpty(response, 204);
   }
   if (workflowTaskSbatch && request.method === "GET" && tenant) {
     const workflowId = workflowTaskSbatch[2];
@@ -864,6 +1030,14 @@ const server = http.createServer(async (request, response) => {
     const version = (data.workflowVersions[workflowId] ?? []).find((item) => item.id === versionId);
     if (!version) return sendError(response, 404, "VERSION_UNKNOWN", "Workflow version not found", id);
     if (version.state !== "draft") return sendError(response, 409, "VERSION_IMMUTABLE", "Only draft versions can be updated", id);
+    const activeTest = data.workflowExecutions[tenant].find((execution) =>
+      execution.workflowVersionId === version.id
+      && execution.test === true
+      && ["QUEUED", "RUNNING"].includes(execution.state));
+    if (activeTest) {
+      return sendError(response, 409, "DRAFT_LOCKED",
+        `draft is locked by active test execution ${activeTest.id}`, id);
+    }
     const expectedHeader = request.headers["x-expected-version"];
     const expectedVersion = typeof expectedHeader === "string" ? Number(expectedHeader) : 0;
     if (expectedVersion > 0 && expectedVersion !== version.version) {
@@ -878,7 +1052,7 @@ const server = http.createServer(async (request, response) => {
       if (error instanceof TypeError) return sendError(response, 415, "UNSUPPORTED_MEDIA_TYPE", "Expected application/yaml or application/json", id);
       return sendError(response, 400, "MALFORMED", "Invalid workflow spec body", id);
     }
-    const validationErrors = [...decoded.errors, ...validateMockWorkflow(decoded.value)];
+    const validationErrors = [...decoded.errors, ...validateMockWorkflow(decoded.value, tenant)];
     if (validationErrors.length > 0) {
       return send(response, 422, {
         error: {
@@ -904,7 +1078,7 @@ const server = http.createServer(async (request, response) => {
     const version = (data.workflowVersions[workflowId] ?? []).find((item) => item.id === versionId);
     if (!version) return sendError(response, 404, "VERSION_UNKNOWN", "Workflow version not found", id);
     if (version.state !== "draft") return sendError(response, 409, "VERSION_IMMUTABLE", "Only draft versions can be published", id);
-    const errors = validateMockWorkflow(version.spec);
+    const errors = validateMockWorkflow(version.spec, tenant);
     if (errors.length > 0) {
       return send(response, 422, {
         error: {
@@ -1055,9 +1229,13 @@ const server = http.createServer(async (request, response) => {
       return sendError(response, error instanceof RangeError ? 413 : 400, error instanceof RangeError ? "BODY_TOO_LARGE" : "MALFORMED", "Malformed workflow execution request", id);
     }
     const requestBody = objectRecord(input);
-    if (!requestBody || Object.keys(requestBody).some((key) => !["workflow", "version", "parameters"].includes(key))) {
+    if (!requestBody || Object.keys(requestBody).some((key) => !["workflow", "version", "parameters", "test"].includes(key))) {
       return sendError(response, 400, "MALFORMED", "Malformed workflow execution request", id);
     }
+    if (requestBody.test !== undefined && typeof requestBody.test !== "boolean") {
+      return sendError(response, 400, "MALFORMED", "test must be a boolean", id);
+    }
+    const isTest = requestBody.test === true;
     if (typeof requestBody.workflow !== "string" || !/^[0-9a-f-]{36}$/i.test(requestBody.workflow)
       || (requestBody.version !== undefined && (typeof requestBody.version !== "string" || !/^[0-9a-f-]{36}$/i.test(requestBody.version)))) {
       return sendError(response, 400, "MALFORMED", "Workflow and version must be UUIDs", id);
@@ -1072,12 +1250,28 @@ const server = http.createServer(async (request, response) => {
     const canExecute = user.me.platform_roles.includes("platform-admin")
       || tenantRoles.some((role) => ["tenant-admin", "workflow-author", "researcher"].includes(role))
       || projectRoles.some((role) => ["project-admin", "project-member"].includes(role));
-    if (!canExecute) return sendError(response, 403, "FORBIDDEN", "Requires workflow.execute", id);
+    const canCreate = user.me.platform_roles.includes("platform-admin")
+      || tenantRoles.some((role) => ["tenant-admin", "workflow-author"].includes(role))
+      || projectRoles.some((role) => ["project-admin", "project-member"].includes(role));
+    if (isTest ? !canCreate || !canExecute : !canExecute) {
+      return sendError(response, 403, "FORBIDDEN", isTest
+        ? "Requires workflow.create and workflow.execute"
+        : "Requires workflow.execute", id);
+    }
+    if (isTest && typeof requestBody.version !== "string") {
+      return sendError(response, 422, "TEST_RUN_REQUIRES_DRAFT", "Test runs require an explicit draft version", id);
+    }
     const requestedVersion = typeof requestBody.version === "string" ? requestBody.version : workflow.latestPublishedVersionId;
     if (!requestedVersion) return sendError(response, 409, "NO_PUBLISHED_VERSION", "Workflow has no published version", id);
     const version = (data.workflowVersions[workflow.id] ?? []).find((item) => item.id === requestedVersion);
     if (!version) return sendError(response, 404, "VERSION_UNKNOWN", "Workflow version not found", id);
-    if (version.state !== "published") return sendError(response, 409, "VERSION_STATE", "Only published versions can be executed", id);
+    if (isTest && version.state !== "draft") {
+      return sendError(response, 422, "TEST_RUN_REQUIRES_DRAFT", "Test runs require a draft version", id);
+    }
+    if (!isTest && version.state === "draft") {
+      return sendError(response, 422, "DRAFT_REQUIRES_TEST_RUN", "Draft versions require test=true", id);
+    }
+    if (!isTest && version.state !== "published") return sendError(response, 409, "VERSION_STATE", "Only published versions can be executed", id);
     const key = `${tenant}:${idempotencyKey}`;
     const bodyHash = createHash("sha256").update(rawBody).digest("hex");
     const previous = data.idempotency.get(key);
@@ -1095,12 +1289,13 @@ const server = http.createServer(async (request, response) => {
       workflowVersionId: version.id,
       specHash: version.specHash,
       parameters,
+      test: isTest,
       strategy: version.spec.spec.execution?.strategy ?? "auto",
-      state: "PENDING",
+      state: isTest ? "RUNNING" : "PENDING",
       stateReason: "",
       requestedBy: user.me.user_id,
       createdAt: now,
-      startedAt: null,
+      startedAt: isTest ? now : null,
       endedAt: null,
       updatedAt: now,
       version: 1,
@@ -1119,7 +1314,7 @@ const server = http.createServer(async (request, response) => {
       for (let index = 0; index < count; index += 1) {
         rows.push({
           id: randomUUID(), executionId: execution.id, taskName: task.name, index, count, attempt: 1,
-          state: "PENDING", stateReason: "", jobId: null, validationId: null,
+          state: isTest ? "RUNNING" : "PENDING", stateReason: "", jobId: null, validationId: null,
           createdAt: now, updatedAt: now, version: 1,
         });
       }
@@ -1139,10 +1334,16 @@ const server = http.createServer(async (request, response) => {
     const workflowFilter = url.searchParams.get("workflow") ?? "";
     if (workflowFilter && !/^[0-9a-f-]{36}$/i.test(workflowFilter)) return sendError(response, 400, "MALFORMED", "workflow must be a uuid", id);
     const stateFilter = url.searchParams.get("state") ?? "";
+    const testValue = url.searchParams.get("test");
+    if (testValue !== null && testValue !== "true" && testValue !== "false") {
+      return sendError(response, 400, "TEST_FILTER_INVALID", "test must be true or false", id);
+    }
+    const testFilter = testValue === null ? undefined : testValue === "true";
     const source = data.workflowExecutions[tenant].filter((execution) =>
       (canReadTenant || execution.requestedBy === user.me.user_id)
       && (!workflowFilter || execution.workflowId === workflowFilter)
-      && (!stateFilter || execution.state === stateFilter));
+      && (!stateFilter || execution.state === stateFilter)
+      && (testFilter === undefined || Boolean(execution.test) === testFilter));
     const page = cursorPage(source, url.searchParams, id, response);
     if (!page) return;
     /** @type {{items: WorkflowExecutionFixture[], next_cursor: string | null}} */

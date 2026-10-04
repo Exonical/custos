@@ -1,17 +1,13 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import type { Workflow, WorkflowVersion } from "@/lib/api/client";
 import { detailText } from "@/lib/api/error-details";
-import { buildParameterSchema, parameterDefaults } from "@/lib/workflow/parameters";
 import type { WorkflowParameter } from "@/lib/workflow/normalize";
+import { WorkflowParameterFields, useWorkflowParameterForm, workflowParameterValues } from "./workflow-parameter-form";
 
 type ServerError = { error?: { code?: unknown; message?: unknown; details?: unknown } };
 
@@ -36,9 +32,7 @@ export function WorkflowRunDialog({ tenant, workflow, version, parameters, csrfT
   const [open, setOpen] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
   const idempotencyKey = useRef<string | null>(null);
-  const schema = useMemo(() => buildParameterSchema(parameters), [parameters]);
-  const defaults = useMemo(() => parameterDefaults(parameters), [parameters]);
-  const form = useForm({ resolver: zodResolver(schema), defaultValues: defaults });
+  const { form, defaults } = useWorkflowParameterForm(parameters);
 
   function changeOpen(next: boolean) {
     setOpen(next);
@@ -53,10 +47,7 @@ export function WorkflowRunDialog({ tenant, workflow, version, parameters, csrfT
 
   async function submit(values: Record<string, unknown>) {
     setServerError(null);
-    const valuesForRequest = Object.fromEntries(Object.entries(values).filter(([name, value]) => {
-      const parameter = parameters[name] as WorkflowParameter | undefined;
-      return !(value === "" && parameter?.required === false);
-    }));
+    const valuesForRequest = workflowParameterValues(values, parameters);
     try {
       const response = await fetch(`/api/bff/tenants/${encodeURIComponent(tenant)}/workflow-executions`, {
         method: "POST",
@@ -98,36 +89,7 @@ export function WorkflowRunDialog({ tenant, workflow, version, parameters, csrfT
           <DialogDescription className="text-xs text-muted-foreground">Published version {version.number} · parameters are validated by the server before execution.</DialogDescription>
         </DialogHeader>
         <form className="grid gap-4" onSubmit={(event) => { void form.handleSubmit(submit)(event); }}>
-          {Object.entries(parameters).map(([name, parameter]) => {
-            const fieldId = `workflow-parameter-${name}`;
-            const error = form.formState.errors[name]?.message;
-            if (parameter.type === "boolean") {
-              return (
-                <div key={name} className="grid gap-1.5">
-                  <label htmlFor={fieldId} className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.08em]">
-                    <input id={fieldId} type="checkbox" {...form.register(name)} className="size-4 accent-primary" />
-                    {name}{parameter.required ? " · required" : ""}
-                  </label>
-                  {typeof error === "string" ? <p role="alert" className="font-mono text-xs text-destructive">{error}</p> : null}
-                </div>
-              );
-            }
-            const numeric = parameter.type === "integer" || parameter.type === "number";
-            return (
-              <div key={name} className="grid gap-1.5">
-                <Label htmlFor={fieldId}>{name}{parameter.required ? " · required" : ""}</Label>
-                <Input
-                  id={fieldId}
-                  type={numeric ? "number" : "text"}
-                  step={parameter.type === "integer" ? "1" : parameter.type === "number" ? "any" : undefined}
-                  min={parameter.minimum}
-                  max={parameter.maximum}
-                  {...form.register(name)}
-                />
-                {typeof error === "string" ? <p role="alert" className="font-mono text-xs text-destructive">{error}</p> : null}
-              </div>
-            );
-          })}
+          <WorkflowParameterFields form={form} parameters={parameters} idPrefix="workflow-parameter" />
           {serverError ? <p role="alert" className="border border-destructive/40 bg-destructive/10 p-2 font-mono text-xs text-destructive">{serverError}</p> : null}
           <div className="flex justify-end gap-2 border-t border-border pt-3">
             <Button type="button" variant="outline" onClick={() => { changeOpen(false); }}>Close</Button>

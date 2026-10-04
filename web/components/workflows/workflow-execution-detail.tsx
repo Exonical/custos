@@ -8,7 +8,7 @@ import type { TaskExecution, Workflow, WorkflowExecution, WorkflowVersion } from
 import { CancelWorkflowExecutionButton } from "@/components/workflows/cancel-workflow-execution-button";
 import { WorkflowGraph } from "@/components/workflows/workflow-graph";
 import { Button } from "@/components/ui/button";
-import { StateBadge } from "@/components/ui/badge";
+import { Badge, StateBadge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatDurationBetween, formatUtcDateTime } from "@/lib/format";
 import { isTerminalWorkflowExecution } from "@/lib/workflow/graph";
@@ -122,7 +122,10 @@ export function WorkflowExecutionDetail({
             Executions
           </Link>
           <div>
-            <h1 className="truncate font-mono text-xl font-semibold">Execution {execution.id.slice(0, 8)}</h1>
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="truncate font-mono text-xl font-semibold">Execution {execution.id.slice(0, 8)}</h1>
+              {execution.test ? <Badge variant="outline" className="border-primary/40 bg-primary/10 text-primary">TEST</Badge> : null}
+            </div>
             <p className="mt-1 font-mono text-[10px] text-muted-foreground" title={execution.id}>{execution.id}</p>
           </div>
         </div>

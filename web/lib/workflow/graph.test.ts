@@ -22,6 +22,20 @@ describe("buildWorkflowGraph", () => {
     ]);
   });
 
+  it("labels service dependencies with dashed after-start edges", () => {
+    const serviceSpec = normalizeWorkflowSpec({
+      spec: {
+        tasks: [
+          { name: "db", service: { autoStop: true } },
+          { name: "client", dependsOn: ["db"] },
+        ],
+      },
+    });
+    const edge = buildWorkflowGraph(serviceSpec).edges[0];
+    expect(edge.label).toBe("after start");
+    expect(edge.style?.strokeDasharray).toBe("5 4");
+  });
+
   it("uses saved positions and dagre left-to-right positions for missing entries", () => {
     const graph = buildWorkflowGraph(spec, { nodes: { prepare: { x: 17, y: 23 } } });
     const prepare = graph.nodes.find((node) => node.id === "prepare");

@@ -5,6 +5,7 @@ import { ApiAccessDenied } from "@/components/api-access-denied";
 import { ApiErrorNotice } from "@/components/api-error-notice";
 import { BreadcrumbEntity } from "@/components/tenant-shell";
 import { WorkflowDetailTabs, type WorkflowDetailTab } from "@/components/workflows/workflow-detail-tabs";
+import { CreateWorkflowDraftButton } from "@/components/workflows/create-workflow-draft-button";
 import { WorkflowExecutionsTable } from "@/components/workflows/workflow-executions-table";
 import { WorkflowRunDialog } from "@/components/workflows/workflow-run-dialog";
 import { WorkflowVersionsTable } from "@/components/workflows/workflow-versions-table";
@@ -27,13 +28,16 @@ export default async function WorkflowDetailPage({
   searchParams,
 }: {
   params: Promise<{ tenant: string; workflow: string }>;
-  searchParams: Promise<{ tab?: string | string[]; state?: string | string[]; cursor?: string | string[] }>;
+  searchParams: Promise<{ tab?: string | string[]; state?: string | string[]; test?: string | string[]; cursor?: string | string[] }>;
 }) {
   const { tenant, workflow: workflowId } = await params;
   const query = await searchParams;
   const selectedTab: WorkflowDetailTab = first(query.tab) === "executions" ? "executions" : "versions";
   const stateValue = first(query.state);
   const state = states.includes(stateValue as WorkflowExecution["state"]) ? stateValue : "";
+  const testValue = first(query.test);
+  const test = testValue === "true" ? true : testValue === "false" ? false : undefined;
+  const testRuns = test === true ? "only" : test === false ? "exclude" : "all";
   const cursor = first(query.cursor);
   const returnTo = `/t/${encodeURIComponent(tenant)}/workflows/${encodeURIComponent(workflowId)}`;
   const session = await requireServerSession(returnTo);
@@ -43,7 +47,7 @@ export default async function WorkflowDetailPage({
     api.GET("/tenants/{tenant}/workflows/{workflow}/versions", { params: { path: { tenant, workflow: workflowId } } }),
     api.GET("/tenants/{tenant}/projects", { params: { path: { tenant }, query: { limit: 100 } } }),
     api.GET("/tenants/{tenant}/workflow-executions", {
-      params: { path: { tenant }, query: { workflow: workflowId, state: state || undefined, cursor: cursor || undefined, limit: 50 } },
+      params: { path: { tenant }, query: { workflow: workflowId, state: state || undefined, test, cursor: cursor || undefined, limit: 50 } },
     }),
   ]);
   if (workflowResponse.error) {
@@ -91,13 +95,19 @@ export default async function WorkflowDetailPage({
   const projects = projectsResponse.data.items;
   const projectName = projects.find((project) => project.id === workflow.projectId)?.name ?? workflow.projectId;
   const publishedSpec = latestVersion ? normalizeWorkflowSpec(latestVersion.spec) : null;
+  const versionsContent = versions.length === 0 ? (
+    <div className="grid min-h-64 place-items-center p-6 text-center">
+      <CreateWorkflowDraftButton tenant={tenant} workflowId={workflow.id} workflowName={workflow.name} csrfToken={session.csrfToken} />
+    </div>
+  ) : <WorkflowVersionsTable tenant={tenant} workflow={workflow.id} versions={versions} />;
   const executions = executionsResponse.data.items;
   const nextCursor = executionsResponse.data.next_cursor ?? null;
   const paginationQuery: Record<string, string> = { tab: "executions" };
   if (state) paginationQuery.state = state;
+  if (test !== undefined) paginationQuery.test = String(test);
   const executionsContent = (
     <div className="space-y-3">
-      <ExecutionListFilters showWorkflow={false} workflows={[workflow]} workflow={workflow.id} state={state} />
+      <ExecutionListFilters showWorkflow={false} workflows={[workflow]} workflow={workflow.id} state={state} testRuns={testRuns} />
       <WorkflowExecutionsTable tenant={tenant} executions={executions} workflows={[workflow]} versions={versions} />
       <CursorPagination
         pathname={`/t/${encodeURIComponent(tenant)}/workflows/${encodeURIComponent(workflow.id)}`}
@@ -145,7 +155,7 @@ export default async function WorkflowDetailPage({
         <WorkflowDetailTabs
           key={selectedTab}
           selectedTab={selectedTab}
-          versionsContent={<WorkflowVersionsTable tenant={tenant} workflow={workflow.id} versions={versions} />}
+          versionsContent={versionsContent}
           executionsContent={executionsContent}
         />
       </section>

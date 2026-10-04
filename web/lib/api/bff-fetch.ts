@@ -16,12 +16,18 @@ export async function postJson(url: string, body: unknown, csrfToken: string) {
   return sendJson("POST", url, body, csrfToken);
 }
 
-export async function sendJson(method: "POST" | "PATCH" | "PUT", url: string, body: unknown, csrfToken: string) {
+export async function sendJson(
+  method: "POST" | "PATCH" | "PUT",
+  url: string,
+  body: unknown,
+  csrfToken: string,
+  extraHeaders: Record<string, string> = {},
+) {
   const response = await fetch(url, {
     method,
     credentials: "same-origin",
     cache: "no-store",
-    headers: { Accept: "application/json", "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
+    headers: { Accept: "application/json", "Content-Type": "application/json", "X-CSRF-Token": csrfToken, ...extraHeaders },
     body: JSON.stringify(body),
   });
   const payload: unknown = await response.json().catch(() => null);

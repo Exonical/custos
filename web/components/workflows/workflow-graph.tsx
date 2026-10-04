@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Background, BackgroundVariant, Controls, Handle, MarkerType, Position, ReactFlow, type NodeProps } from "@xyflow/react";
+import { Box, Server } from "lucide-react";
 import type { TaskExecution } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
 import { DownloadTaskSbatchButton } from "@/components/workflows/download-buttons";
@@ -28,29 +29,49 @@ function stateClass(state: string): string {
   }
 }
 
-function TaskNodeView({ data }: NodeProps<WorkflowNode>) {
+export function WorkflowTaskNode({ data }: NodeProps<WorkflowNode>) {
   const task = data.task;
+  const isService = task.service !== undefined;
+  const nodes = task.multinode?.nodes ?? task.resources?.nodes ?? 1;
   const tags = [
+    nodes === 1 ? "1 node" : `${String(nodes)} nodes`,
+    task.launch === "srun" ? "srun" : undefined,
+    task.image ? "image" : undefined,
+    isService ? (task.service?.autoStop === false ? "runs to walltime" : "auto-stop") : undefined,
     task.fanOut?.count !== undefined ? `FAN-OUT ${String(task.fanOut.count)}` : undefined,
     task.array ? `ARRAY ${String(task.array.start)}–${String(task.array.end)}` : undefined,
-    task.multinode ? `MULTINODE ${task.multinode.implementation.toUpperCase()}` : undefined,
+    task.multinode ? `MULTINODE ${task.multinode.implementation}` : undefined,
     task.retry ? `RETRY ${String(task.retry.attempts)}` : undefined,
   ].filter((tag): tag is string => tag !== undefined);
   return (
-    <article className={cn("relative w-[232px] border bg-card px-3 py-2.5", stateClass(data.aggregate.state), data.selected && "ring-1 ring-primary")}>
+    <article className={cn(
+      "relative flex w-[272px] items-stretch border bg-card",
+      stateClass(data.aggregate.state),
+      data.selected && "border-primary ring-1 ring-primary",
+      data.validationErrors.length > 0 && "border-destructive ring-1 ring-destructive",
+    )}>
       <Handle type="target" position={Position.Left} className="!size-2 !border-0 !bg-primary" />
-      <header className="flex items-start justify-between gap-2">
-        <span className="min-w-0 truncate font-mono text-xs font-semibold">{task.name}</span>
-        <span className="shrink-0 font-mono text-[9px] uppercase text-muted-foreground">{taskKind(task) ?? task.launch}</span>
-      </header>
-      <p className="mt-2 font-mono text-[9px] uppercase tracking-[0.08em] text-muted-foreground">{data.aggregate.label}</p>
-      {tags.length > 0 ? <div className="mt-2 flex flex-wrap gap-1">{tags.map((tag) => <span key={tag} className="border border-border px-1 py-0.5 font-mono text-[8px] uppercase text-muted-foreground">{tag}</span>)}</div> : null}
+      <div className="grid w-10 shrink-0 place-items-center border-r border-border bg-muted/40 text-primary">
+        {isService ? <Server aria-hidden="true" className="size-4" /> : <Box aria-hidden="true" className="size-4" />}
+      </div>
+      <div className="min-w-0 flex-1 px-3 py-2.5">
+        <p className="font-mono text-[8px] uppercase tracking-[0.1em] text-muted-foreground">{isService ? "Service" : "Task"}</p>
+        <header className="mt-0.5 flex items-start justify-between gap-2">
+          <span className="min-w-0 truncate font-mono text-xs font-semibold">{task.name}</span>
+          <span className="shrink-0 font-mono text-[9px] uppercase text-muted-foreground">{task.launch ?? "sbatch"}</span>
+        </header>
+        <div className="mt-2 flex flex-wrap gap-1">
+          {tags.map((tag) => <span key={tag} className="border border-border px-1 py-0.5 font-mono text-[8px] uppercase text-muted-foreground">{tag}</span>)}
+          {data.validationErrors.length > 0 ? <span className="border border-destructive/50 bg-destructive/10 px-1 py-0.5 font-mono text-[8px] uppercase text-destructive">{String(data.validationErrors.length)} errors</span> : null}
+        </div>
+        <p className="mt-2 font-mono text-[8px] uppercase tracking-[0.08em] text-muted-foreground">{data.aggregate.label}</p>
+      </div>
       <Handle type="source" position={Position.Right} className="!size-2 !border-0 !bg-primary" />
     </article>
   );
 }
 
-const nodeTypes = { workflowTask: TaskNodeView };
+export const workflowNodeTypes = { workflowTask: WorkflowTaskNode };
 
 function display(value: unknown): string {
   if (value === null || value === undefined || value === "") return "—";
@@ -78,6 +99,7 @@ function taskProperties(spec: NormalizedWorkflowSpec, task: WorkflowNode["data"]
   const secrets = Object.entries(spec.spec.secrets).map(([handle, secret]) => ({ handle, ref: secret.ref, use: secret.use }));
   return [
     ["KIND", taskKind(task)],
+    ["SERVICE", task.service ? (task.service.autoStop === false ? "runs to walltime" : "auto-stop") : undefined],
     ["LAUNCH", taskKind(task) === "condition" ? undefined : task.launch],
     ["RESOURCES", task.resources],
     ["IMAGE", task.image?.uri],
@@ -138,7 +160,7 @@ export function WorkflowGraph({
         <ReactFlow
           nodes={graph.nodes}
           edges={graph.edges}
-          nodeTypes={nodeTypes}
+          nodeTypes={workflowNodeTypes}
           onNodeClick={(_, node) => { selectTask(node.id); }}
           nodesDraggable={false}
           nodesConnectable={false}

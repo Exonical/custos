@@ -18,20 +18,23 @@ export default async function ExecutionsPage({
   searchParams,
 }: {
   params: Promise<{ tenant: string }>;
-  searchParams: Promise<{ workflow?: string | string[]; state?: string | string[]; cursor?: string | string[] }>;
+  searchParams: Promise<{ workflow?: string | string[]; state?: string | string[]; test?: string | string[]; cursor?: string | string[] }>;
 }) {
   const { tenant } = await params;
   const query = await searchParams;
   const workflowFilter = first(query.workflow);
   const stateValue = first(query.state);
   const state = states.includes(stateValue as WorkflowExecution["state"]) ? stateValue : "";
+  const testValue = first(query.test);
+  const test = testValue === "true" ? true : testValue === "false" ? false : undefined;
+  const testRuns = test === true ? "only" : test === false ? "exclude" : "all";
   const cursor = first(query.cursor);
   const returnTo = `/t/${encodeURIComponent(tenant)}/executions`;
   const session = await requireServerSession(returnTo);
   const api = createApiClient(session.accessToken);
   const [executionResponse, workflowResponse] = await Promise.all([
     api.GET("/tenants/{tenant}/workflow-executions", {
-      params: { path: { tenant }, query: { workflow: workflowFilter || undefined, state: state || undefined, cursor: cursor || undefined, limit: 50 } },
+      params: { path: { tenant }, query: { workflow: workflowFilter || undefined, state: state || undefined, test, cursor: cursor || undefined, limit: 50 } },
     }),
     api.GET("/tenants/{tenant}/workflows", { params: { path: { tenant } } }),
   ]);
@@ -68,10 +71,11 @@ export default async function ExecutionsPage({
   const paginationQuery: Record<string, string> = {};
   if (workflowFilter) paginationQuery.workflow = workflowFilter;
   if (state) paginationQuery.state = state;
+  if (test !== undefined) paginationQuery.test = String(test);
   return (
     <section className="space-y-5">
       <h1 className="sr-only">Executions</h1>
-      <ExecutionListFilters workflows={workflows} workflow={workflowFilter} state={state} />
+      <ExecutionListFilters workflows={workflows} workflow={workflowFilter} state={state} testRuns={testRuns} />
       <WorkflowExecutionsTable tenant={tenant} executions={items} workflows={workflows} versions={versions} />
       <CursorPagination pathname={`/t/${encodeURIComponent(tenant)}/executions`} query={paginationQuery} cursor={cursor} nextCursor={executionResponse.data.next_cursor ?? null} countLabel={`${String(items.length)} executions`} />
     </section>

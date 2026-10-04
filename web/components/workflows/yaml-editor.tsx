@@ -16,12 +16,18 @@ export function WorkflowYamlEditor({
   onChange,
   markers = [],
   revealLine,
+  language = "yaml",
+  height = "34rem",
+  label = "Workflow specification YAML",
 }: {
   value: string;
   readOnly?: boolean;
   onChange?: (value: string) => void;
   markers?: WorkflowYamlMarker[];
   revealLine?: number;
+  language?: string;
+  height?: string;
+  label?: string;
 }) {
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
 
@@ -46,10 +52,10 @@ export function WorkflowYamlEditor({
   }, [revealLine]);
 
   return (
-    <div aria-label="Workflow specification YAML" className="min-w-0 overflow-hidden border border-border bg-card">
+    <div aria-label={label} className="min-w-0 overflow-hidden border border-border bg-card">
       <Editor
-        height="34rem"
-        language="yaml"
+        height={height}
+        language={language}
         theme="custos-dark"
         value={value}
         onChange={(nextValue) => { onChange?.(nextValue ?? ""); }}

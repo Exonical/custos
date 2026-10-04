@@ -131,6 +131,14 @@ test("login, workflows, executions, jobs, CSRF-protected mutations, and logout",
     });
     await page.goto("/t/acme/workflows");
     await expect(page.getByRole("heading", { name: "Workflows" })).toBeVisible();
+    await page.getByRole("button", { name: "New workflow" }).click();
+    const newWorkflowDialog = page.getByRole("dialog", { name: "New workflow" });
+    await newWorkflowDialog.getByLabel("Name").fill("smoke-hello-workflow");
+    await newWorkflowDialog.getByLabel(/Description/).fill("Blank workflow smoke test");
+    await newWorkflowDialog.getByRole("button", { name: "Create workflow" }).click();
+    await expect(page).toHaveURL(/\/t\/acme\/workflows\/[0-9a-f-]+\/versions\/[0-9a-f-]+\/edit$/);
+    await expect(page.locator(".workflow-canvas .react-flow__node").filter({ hasText: "hello" })).toBeVisible();
+    await page.goto("/t/acme/workflows");
     await expect(page.getByRole("link", { name: "Gaussian simulation" })).toBeVisible();
     const workflowUrl = await page.getByRole("link", { name: "Gaussian simulation" }).getAttribute("href");
     const draftWorkflowUrl = await page.getByRole("link", { name: "Draft-only workflow" }).getAttribute("href");
@@ -208,33 +216,44 @@ test("login, workflows, executions, jobs, CSRF-protected mutations, and logout",
     await expect(page.locator(".monaco-editor .view-lines")).toContainText("openmpi");
     await page.getByRole("button", { name: "Use template" }).click();
     await expect(page.getByRole("dialog", { name: "Use MPI (by task count)" })).toBeVisible();
-    await page.getByLabel("Workflow name").fill("Smoke MPI template");
+    await page.getByLabel("Workflow name").fill("smoke-mpi-template");
     await page.getByRole("button", { name: "Create workflow" }).click();
     await expect(page).toHaveURL(/\/t\/acme\/workflows\/[0-9a-f-]+$/);
-    await expect(page.getByRole("heading", { name: "Smoke MPI template", level: 1 })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "smoke-mpi-template", level: 1 })).toBeVisible();
     await expect(page.getByRole("link", { name: "v1", exact: true })).toBeVisible();
     await page.getByRole("link", { name: "v1", exact: true }).click();
     await page.getByRole("link", { name: "Edit draft" }).click();
     await expect(page.getByRole("heading", { name: "Edit draft", level: 1 })).toBeVisible();
-    await page.getByLabel("CPU").fill("3");
+    await page.getByRole("button", { name: "Task", exact: true }).click();
+    await page.getByRole("button", { name: "Task array" }).click();
+    await expect(page.locator(".workflow-canvas .react-flow__node").filter({ hasText: "task-1" })).toContainText("ARRAY 0–9");
     await page.getByRole("tab", { name: "YAML" }).click();
-    await expect(page.locator(".monaco-editor .view-lines")).toContainText("cpu: 3");
+    await page.getByRole("tab", { name: "Properties" }).click();
+    await page.getByRole("button", { name: "Default", exact: true }).click();
+    await page.getByRole("tab", { name: "Resources" }).click();
+    await page.getByLabel("CPU cores").fill("3");
+    await page.getByRole("tab", { name: "Task" }).click();
+    await page.getByLabel("Dependencies").selectOption("run");
+    await page.getByRole("tab", { name: "Resources" }).click();
+    await expect(page.getByLabel("CPU cores")).toHaveValue("3");
+    await page.getByRole("tab", { name: "Task" }).click();
+    await expect(page.getByRole("button", { name: "Remove dependency run" })).toBeVisible();
+    await page.getByRole("tab", { name: "YAML" }).click();
 
     const invalidEditorYaml = `apiVersion: custos.io/v1alpha1
 kind: Workflow
 metadata:
-  name: smoke-mpi-template
+  name: mpi-tasks
 spec:
   tasks:
-    - name: prep
-      launch: sbatch
-      resources:
-        cpu: 1
-        memory: 1Gi
-        walltime: 5m
-      script: |
-        #!/bin/bash
     - name: run
+      launch: srun
+      resources:
+        tasks: 40
+        cpusPerTask: 1
+        walltime: "00:00:30"
+      command: ["./a.out"]
+    - name: task-1
       launch: sbatch
       dependsOn:
         - missing-task
@@ -245,7 +264,7 @@ spec:
       script: |
         #!/bin/bash
 `;
-    const validEditorYaml = invalidEditorYaml.replace("missing-task", "prep");
+    const validEditorYaml = invalidEditorYaml.replace("missing-task", "run");
     const replaceEditorYaml = async (text: string) => {
       await page.context().grantPermissions(["clipboard-read", "clipboard-write"], { origin: baseURL ?? "http://localhost:3005" });
       await page.evaluate(async (value) => { await navigator.clipboard.writeText(value); }, text);
@@ -257,8 +276,8 @@ spec:
     await expect(page.getByText(/unknown dependency missing-task/)).toBeVisible();
     await replaceEditorYaml(validEditorYaml);
     await expect(page.getByRole("status").filter({ hasText: /^Valid$/ })).toBeVisible();
-    await page.getByRole("button", { name: "Save draft" }).click();
-    await expect(page.getByText("Draft saved.")).toBeVisible();
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(page.getByRole("status").filter({ hasText: "Saved" })).toBeVisible();
     await page.getByRole("button", { name: "Publish", exact: true }).click();
     await expect(page.getByRole("dialog", { name: "Publish workflow version?" })).toBeVisible();
     await page.getByRole("button", { name: "Confirm publish" }).click();
@@ -271,6 +290,47 @@ spec:
     await page.getByRole("button", { name: "New draft from this version" }).click();
     await expect(page).toHaveURL(/\/t\/acme\/workflows\/[0-9a-f-]+\/versions\/[0-9a-f-]+\/edit$/);
     await expect(page.getByRole("heading", { name: "Edit draft", level: 1 })).toBeVisible();
+    const serviceEditorUrl = page.url();
+    const serviceDraftMatch = serviceEditorUrl.match(/\/versions\/([0-9a-f-]+)\/edit$/);
+    expect(serviceDraftMatch?.[1]).toBeTruthy();
+    await page.getByRole("button", { name: "Task", exact: true }).click();
+    await page.getByRole("button", { name: "Service", exact: true }).click();
+    await page.locator("#editor-task-name").fill("smoke-service");
+    await expect(page.getByRole("switch", { name: "Auto stop" })).toBeChecked();
+    await page.getByRole("switch", { name: "Auto stop" }).click();
+    await expect(page.getByRole("switch", { name: "Auto stop" })).not.toBeChecked();
+    await page.locator(".workflow-canvas .react-flow__node").filter({ hasText: "task-1" }).click();
+    await page.getByRole("tab", { name: "Task" }).click();
+    await page.locator("#editor-dependency-select").selectOption("smoke-service");
+    await page.getByRole("tab", { name: "Resources" }).click();
+    await page.getByRole("button", { name: "Per CPU" }).click();
+    await page.getByLabel("Memory per CPU").fill("4");
+    await expect(page.getByRole("status").filter({ hasText: /^Valid$/ })).toBeVisible();
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(page.getByRole("status").filter({ hasText: "Saved" })).toBeVisible();
+    await page.getByRole("button", { name: "Start test run" }).click();
+    const testRunDialog = page.getByRole("dialog", { name: "Test smoke-mpi-template" });
+    await expect(testRunDialog).toBeVisible();
+    await testRunDialog.getByRole("button", { name: "Start test run" }).click();
+    await expect(page).toHaveURL(/\/t\/acme\/executions\/[0-9a-f-]+$/);
+    const testExecutionId = lastSegment(page.url());
+    await expect(page.getByText("TEST", { exact: true })).toBeVisible();
+
+    await page.goto(serviceEditorUrl);
+    await page.locator(".workflow-canvas .react-flow__node").filter({ hasText: "smoke-service" }).click();
+    await page.locator("#editor-task-name").fill("smoke-service-updated");
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(page.getByText(`This draft is locked while test run ${testExecutionId} is active`)).toBeVisible();
+    await expect(page.locator("#editor-task-name")).toHaveValue("smoke-service-updated");
+    await expect(page.getByRole("link", { name: "View active test run" })).toHaveAttribute("href", `/t/acme/executions/${testExecutionId}`);
+    const testExecutionPage = await page.context().newPage();
+    await testExecutionPage.goto(new URL(`/t/acme/executions/${testExecutionId}`, baseURL ?? "http://localhost:3005").toString());
+    await testExecutionPage.getByRole("button", { name: "Cancel execution" }).click();
+    await testExecutionPage.getByRole("button", { name: "Confirm cancel" }).click();
+    await expect(testExecutionPage.getByText("CANCELED").first()).toBeVisible();
+    await testExecutionPage.close();
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(page.getByRole("status").filter({ hasText: "Saved" })).toBeVisible();
 
     await page.goto("/t/acme/workflows");
     await page.getByRole("link", { name: "Import sbatch" }).click();

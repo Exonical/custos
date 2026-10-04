@@ -115,37 +115,42 @@ failed red, completed steel, and canceled gray. New UI must use these semantic
 tokens rather than raw Tailwind palette colors. There is no light theme or
 switcher for now.
 
-## Future workflow-editor contract (batch 2b)
+## Workflow editor (batch 2b)
 
-The following consistency rules are retained for the full workflow editor in
-batch 2b; the 2a routes are read-only except for Run and Cancel.
+The draft editor provides a React Flow canvas and Properties/YAML workspace.
+YAML is the source of truth; document edits preserve comments and key order,
+validation is debounced, and spec/layout saves use optimistic version checks.
+The editor supports Task and Service nodes, service `after start` edges,
+single-node image pull-secret handles, per-node/per-CPU memory, workflow secret
+handles, and draft test runs. Test runs require a clean, valid draft and lock
+its spec until the execution is terminal; layout edits remain independent.
+Executions display a TEST badge and expose a test-run filter.
 
 ### Visual ⇄ YAML consistency
 
-Single source of truth in the editor state is the **canonical spec
-object** (TypeScript type generated from the JSON Schema). Both views are
-projections:
+The canonical workflow document (typed from the JSON Schema) is the shared
+source for both views:
 
 - Visual view renders nodes from `spec.tasks` and edges from `dependsOn`;
   node positions come from a separate `layout` object.
-- YAML view is `yaml.stringify(spec)` with a stable key order; edits are
-  parsed back and schema-validated before replacing the spec (invalid YAML
-  keeps the last valid spec and shows errors inline; the visual tab is
-  disabled until valid).
+- YAML editing uses the YAML Document API so comments and key order survive
+  visual and text edits; invalid YAML remains visible with line diagnostics.
 - Backend `validate` endpoint is called (debounced) and its path-addressed
   errors are mapped onto nodes/fields.
-- Saving sends `{spec, layout}`; the backend hashes only `spec`.
+- Saving sends the spec and layout separately; only spec changes affect the
+  version hash. A `DRAFT_LOCKED` response keeps the edited YAML and links to
+  the active test execution.
 
-The BFF request-header allow-list does not currently forward
-`X-Expected-Version`, which draft save requires. Batch 2b must account for this;
-2a does not change the allow-list.
+Test execution creation uses the normal execution BFF route and its
+`Idempotency-Key`; the Run dialog for published versions retains its existing
+replay behavior.
 
 ## Pages (M8-A and workflow batch 2a)
 
 Implemented: tenant selection, Dashboard, Jobs, Projects, Clusters, Secrets,
-Usage, Workflows, and Executions. Workflow batch 2a provides read-only
-workflow/version graphs and YAML, execution/task details, parameterized Run,
-and CSRF-protected Cancel; it does not include the full editor. Templates,
+Usage, Workflows, and Executions. Workflow pages provide version graphs,
+execution/task details, parameterized Run, CSRF-protected Cancel, and the
+draft editor described above. Templates,
 Interactive, and Policies remain coming-soon entries. Tenant pages live under
 `/t/{tenant}/...`, mirroring the API. The browser UI never calls the API
 directly; Server Components use the server API client and mutations use the BFF.
@@ -155,8 +160,11 @@ pages download YAML and selected executable tasks offer standalone sbatch
 downloads through the BFF, which forwards `Accept` and `Content-Disposition`.
 Platform admins can edit per-cluster container-runtime and software-module
 settings from the cluster detail Settings tab using optimistic version checks.
-Draft workflow versions open a Graph/YAML editor at `/t/{tenant}/workflows/{workflow}/versions/{version}/edit`.
-The YAML remains the source of truth; validation is debounced, saves use optimistic version checks, and publish/deprecate actions follow the version lifecycle.
+Draft workflow versions open a split React Flow canvas and Properties/YAML editor at
+`/t/{tenant}/workflows/{workflow}/versions/{version}/edit`. YAML remains the
+source of truth; graph edits preserve document comments, validation is debounced,
+and draft save, publish, deprecate, and new-draft actions follow the version
+lifecycle with optimistic checks.
 The Job API currently exposes job reads, cancellation, and ExecutionSpec only;
 there are no Events or Logs endpoints, so the detail view shows a Details tab.
 

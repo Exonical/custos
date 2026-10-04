@@ -1,8 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import Link from "next/link";
-import { useMemo, useState, type ChangeEvent, type ReactNode } from "react";
+import { useMemo, useState, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,8 +14,14 @@ import { detailText } from "@/lib/api/error-details";
 import { errorText, postJson } from "@/lib/api/bff-fetch";
 import { sanitizeDownloadFilename } from "@/lib/download";
 import { normalizeWorkflowSpec } from "@/lib/workflow/normalize";
+import {
+  createWorkflowWithDraft,
+  WORKFLOW_NAME_MAX_LENGTH,
+  type WorkflowCreationFailure,
+} from "@/lib/workflow/create";
 import { validateSbatchImport, type SbatchImportScript } from "@/lib/workflow/sbatch-import";
 import type { components } from "@/lib/api/schema";
+import { WorkflowCreationError } from "./workflow-creation-error";
 
 type ImportResponse = components["schemas"]["WorkflowSbatchImportResponse"];
 type ImportedTask = components["schemas"]["WorkflowSbatchImportedTask"];
@@ -79,7 +84,7 @@ export function SbatchImport({ tenant, projects, csrfToken }: {
   const [projectId, setProjectId] = useState(projects[0]?.id ?? "");
   const [createName, setCreateName] = useState("");
   const [creating, setCreating] = useState(false);
-  const [createError, setCreateError] = useState<ReactNode>(null);
+  const [createError, setCreateError] = useState<WorkflowCreationFailure | null>(null);
   const tenantPath = `/api/bff/tenants/${encodeURIComponent(tenant)}`;
   const validation = useMemo(
     () => validateSbatchImport(workflowName, scripts.map(({ filename, content }) => ({ filename, content }))),
@@ -160,37 +165,25 @@ export function SbatchImport({ tenant, projects, csrfToken }: {
   async function createWorkflow() {
     if (!result) return;
     if (!projectId || !createName.trim()) {
-      setCreateError("Choose a project and enter a workflow name.");
+      setCreateError({ kind: "workflow", message: "Choose a project and enter a workflow name." });
       return;
     }
     setCreating(true);
     setCreateError(null);
     try {
-      const created = await postJson(`${tenantPath}/workflows`, {
-        project: projectId,
-        name: createName.trim(),
-      }, csrfToken);
-      const workflowId = created.status === 201 && created.payload && typeof created.payload === "object"
-        ? (created.payload as { id?: unknown }).id
-        : undefined;
-      if (typeof workflowId !== "string") {
-        setCreateError(errorText(created.payload, created.status, "create workflows"));
+      const created = await createWorkflowWithDraft(
+        tenant,
+        { project: projectId, name: createName.trim() },
+        result.spec,
+        csrfToken,
+      );
+      if (!created.ok) {
+        setCreateError(created.failure);
         return;
       }
-      const workflowHref = `/t/${encodeURIComponent(tenant)}/workflows/${encodeURIComponent(workflowId)}`;
-      const version = await postJson(`${tenantPath}/workflows/${encodeURIComponent(workflowId)}/versions`, result.spec, csrfToken);
-      if (version.status !== 201) {
-        setCreateError(
-          <>
-            The workflow was created, but its draft could not be saved: {errorText(version.payload, version.status, "create versions")}{" "}
-            <Link className="text-primary underline" href={workflowHref}>Open the workflow</Link>.
-          </>,
-        );
-        return;
-      }
-      router.push(workflowHref);
+      router.push(`/t/${encodeURIComponent(tenant)}/workflows/${encodeURIComponent(created.workflowId)}`);
     } catch {
-      setCreateError("The request could not be sent. Check your connection and try again.");
+      setCreateError({ kind: "network", message: "The request could not be sent. Check your connection and try again." });
     } finally {
       setCreating(false);
     }
@@ -318,9 +311,9 @@ export function SbatchImport({ tenant, projects, csrfToken }: {
             </div>
             <div className="grid gap-1.5">
               <Label htmlFor="sbatch-create-workflow-name">Workflow name</Label>
-              <Input id="sbatch-create-workflow-name" value={createName} maxLength={128} onChange={(event) => { setCreateName(event.target.value); }} />
+              <Input id="sbatch-create-workflow-name" value={createName} maxLength={WORKFLOW_NAME_MAX_LENGTH} onChange={(event) => { setCreateName(event.target.value); }} />
             </div>
-            {createError ? <p role="alert" className="border border-destructive/40 bg-destructive/10 p-2 font-mono text-xs text-destructive">{createError}</p> : null}
+            {createError ? <p role="alert" className="border border-destructive/40 bg-destructive/10 p-2 font-mono text-xs text-destructive"><WorkflowCreationError tenant={tenant} failure={createError} /></p> : null}
             <div className="flex justify-end border-t border-border pt-3">
               <Button type="submit" variant="default" disabled={creating || projects.length === 0}>
                 {creating ? "Creating…" : "Create workflow"}

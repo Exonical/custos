@@ -440,6 +440,7 @@ function makeReferences(startedAt, connectors, users) {
     acme: [
       { id: generatedUuid(6_100), tenant_id: tenantIds.acme, owner_id: users.alice.me.user_id, project_id: projectIds.p1, name: "research-dataset", connector_id: connectors.acme[0].id, namespace: `custos/tenants/${tenantIds.acme}`, mount: "kv", path: "projects/p1/datasets", key: "read-token", secret_version: null, kind: "generic", allowed_uses: ["workflow_env"], version: 1, created_at: iso(startedAt - 8 * 86_400_000), updated_at: iso(startedAt - 8 * 86_400_000) },
       { id: generatedUuid(6_101), tenant_id: tenantIds.acme, owner_id: null, project_id: projectIds.genomics, name: "external-archive", connector_id: connectors.acme[1].id, namespace: "customers/acme", mount: "kv", path: "research/archive", key: "api-token", secret_version: 3, kind: "api_token", allowed_uses: ["workflow_env"], version: 2, created_at: iso(startedAt - 4 * 86_400_000), updated_at: iso(startedAt - 2 * 86_400_000) },
+      { id: generatedUuid(6_103), tenant_id: tenantIds.acme, owner_id: users.alice.me.user_id, project_id: projectIds.p1, name: "container-registry", connector_id: connectors.acme[0].id, namespace: `custos/tenants/${tenantIds.acme}`, mount: "kv", path: "projects/p1/registry", key: "pull-token", secret_version: null, kind: "generic", allowed_uses: ["image_pull"], version: 1, created_at: iso(startedAt - 2 * 86_400_000), updated_at: iso(startedAt - 2 * 86_400_000) },
     ],
     globex: [
       { id: generatedUuid(6_102), tenant_id: tenantIds.globex, owner_id: null, project_id: projectIds.cfd, name: "cfd-storage", connector_id: connectors.globex[0].id, namespace: `custos/tenants/${tenantIds.globex}`, mount: "kv", path: "projects/cfd/storage", key: "object", secret_version: null, kind: "storage_credential", allowed_uses: ["workflow_env"], version: 1, created_at: iso(startedAt - 3 * 86_400_000), updated_at: iso(startedAt - 3 * 86_400_000) },
@@ -679,6 +680,7 @@ function makeWorkflowExecutionFixtures(startedAt, users, workflows, versions, jo
       projectId: workflow.projectId,
       workflowId: workflow.id,
       workflowVersionId: version.id,
+      test: false,
       specHash: version.specHash,
       parameters,
       strategy: version.spec.spec.execution?.strategy ?? "engine",

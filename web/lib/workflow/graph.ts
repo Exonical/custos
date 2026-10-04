@@ -4,8 +4,8 @@ import type { TaskExecution } from "@/lib/api/client";
 import type { Task } from "./spec";
 import type { NormalizedWorkflowSpec } from "./normalize";
 
-const nodeWidth = 232;
-const nodeHeight = 118;
+const nodeWidth = 272;
+const nodeHeight = 152;
 
 export type TaskAggregate = Readonly<{
   state: TaskExecution["state"] | "PENDING";
@@ -18,6 +18,7 @@ export type WorkflowNodeData = Readonly<{
   task: Task;
   aggregate: TaskAggregate;
   selected: boolean;
+  validationErrors: readonly string[];
 }>;
 
 export type WorkflowNode = Node<WorkflowNodeData, "workflowTask">;
@@ -111,9 +112,11 @@ export function buildWorkflowGraph(
   layout?: unknown,
   aggregates: Readonly<Record<string, TaskAggregate>> = {},
   selectedTask: string | null = null,
+  taskErrors: Readonly<Record<string, readonly string[]>> = {},
 ): { nodes: WorkflowNode[]; edges: Edge[] } {
   const tasks = spec.spec.tasks;
   const taskNames = new Set(tasks.map((task) => task.name));
+  const taskByName = new Map(tasks.map((task) => [task.name, task]));
   const graph = new dagre.graphlib.Graph().setDefaultEdgeLabel(() => ({}));
   graph.setGraph({ rankdir: "LR", nodesep: 52, ranksep: 86, marginx: 24, marginy: 24 });
   for (const task of tasks) graph.setNode(task.name, { width: nodeWidth, height: nodeHeight });
@@ -122,7 +125,19 @@ export function buildWorkflowGraph(
     for (const dependency of task.dependsOn ?? []) {
       if (!taskNames.has(dependency)) continue;
       graph.setEdge(dependency, task.name);
-      edges.push({ id: `${dependency}->${task.name}`, source: dependency, target: task.name, type: "smoothstep" });
+      const serviceEdge = taskByName.get(dependency)?.service !== undefined;
+      edges.push({
+        id: `${dependency}->${task.name}`,
+        source: dependency,
+        target: task.name,
+        type: "smoothstep",
+        ...(serviceEdge ? {
+          label: "after start",
+          labelStyle: { fill: "var(--muted-foreground)", fontSize: 9, fontFamily: "var(--font-mono)" },
+          labelBgStyle: { fill: "var(--card)", fillOpacity: 0.92 },
+          style: { strokeDasharray: "5 4" },
+        } : {}),
+      });
     }
   }
   dagre.layout(graph);
@@ -141,6 +156,7 @@ export function buildWorkflowGraph(
         task,
         aggregate: aggregates[task.name] ?? { state: "PENDING", completed: 0, total: expectedInstances(task), label: expectedInstances(task) > 1 ? `0/${String(expectedInstances(task))} COMPLETED` : "PENDING" },
         selected: selectedTask === task.name,
+        validationErrors: taskErrors[task.name] ?? [],
       },
     };
   });

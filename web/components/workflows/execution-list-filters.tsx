@@ -7,19 +7,21 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 
 const executionStates = ["PENDING", "VALIDATING", "QUEUED", "RUNNING", "SUCCEEDED", "FAILED", "PARTIAL_FAILURE", "CANCELING", "CANCELED"] as const;
 
-export function ExecutionListFilters({ workflows, workflow, state, showWorkflow = true }: {
+export function ExecutionListFilters({ workflows, workflow, state, testRuns = "all", showWorkflow = true }: {
   workflows: Workflow[];
   workflow: string;
   state: string;
+  testRuns?: "all" | "only" | "exclude";
   showWorkflow?: boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
 
-  function update(name: "workflow" | "state", value: string) {
+  function update(name: "workflow" | "state" | "test", value: string) {
     const params = new URLSearchParams(window.location.search);
     params.delete("cursor");
     if (!value || value === "all") params.delete(name);
+    else if (name === "test") params.set(name, value === "only" ? "true" : "false");
     else params.set(name, value);
     router.push(`${pathname}${params.size ? `?${params.toString()}` : ""}`);
   }
@@ -49,6 +51,19 @@ export function ExecutionListFilters({ workflows, workflow, state, showWorkflow 
           <SelectContent align="start">
             <SelectItem value="all">All states</SelectItem>
             {executionStates.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="grid gap-2">
+        <Label htmlFor="execution-test-filter">Test runs</Label>
+        <Select value={testRuns} onValueChange={(value) => { if (typeof value === "string") update("test", value); }}>
+          <SelectTrigger id="execution-test-filter" aria-label="Test runs" className="h-8 min-w-40">
+            <SelectValue>{testRuns === "only" ? "Only test runs" : testRuns === "exclude" ? "Exclude test runs" : "All runs"}</SelectValue>
+          </SelectTrigger>
+          <SelectContent align="start">
+            <SelectItem value="all">All runs</SelectItem>
+            <SelectItem value="only">Only test runs</SelectItem>
+            <SelectItem value="exclude">Exclude test runs</SelectItem>
           </SelectContent>
         </Select>
       </div>

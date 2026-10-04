@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { ApiAccessDenied } from "@/components/api-access-denied";
 import { ApiErrorNotice } from "@/components/api-error-notice";
+import { NewWorkflowDialog } from "@/components/workflows/new-workflow-dialog";
 import { WorkflowListFilters } from "@/components/workflows/workflow-list-filters";
 import { buttonVariants } from "@/components/ui/button";
 import { StateBadge } from "@/components/ui/badge";
@@ -47,6 +48,7 @@ export default async function WorkflowsPage({
 
   const workflows = workflowsResponse.data.workflows ?? [];
   const projects = projectsResponse.data.items;
+  const activeProjects = projects.filter((item) => item.state === "active");
   const versionResults = await Promise.all(workflows.filter((workflow) => workflow.latestPublishedVersionId).map(async (workflow) => ({
     workflow,
     response: await api.GET("/tenants/{tenant}/workflows/{workflow}/versions", { params: { path: { tenant, workflow: workflow.id } } }),
@@ -69,9 +71,12 @@ export default async function WorkflowsPage({
     <section className="space-y-5">
       <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4">
         <h1 className="text-xl font-semibold">Workflows</h1>
-        <Link className={buttonVariants({ variant: "outline" })} href={`/t/${encodeURIComponent(tenant)}/workflows/import`}>
-          Import sbatch
-        </Link>
+        <div className="flex items-center gap-2">
+          <NewWorkflowDialog tenant={tenant} projects={activeProjects} csrfToken={session.csrfToken} />
+          <Link className={buttonVariants({ variant: "outline" })} href={`/t/${encodeURIComponent(tenant)}/workflows/import`}>
+            Import sbatch
+          </Link>
+        </div>
       </header>
       <WorkflowListFilters projects={projects} project={project} includeArchived={includeArchived} />
       <section aria-label="Workflows" className="overflow-hidden border border-border bg-card">
