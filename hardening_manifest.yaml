@@ -1,0 +1,16 @@
+version: "1"
+name: exonical/custos
+labels:
+  org.opencontainers.image.title: custos
+  org.opencontainers.image.description: Custos multi-tenant Slurm gateway and HPC control plane
+  org.opencontainers.image.vendor: Exonical
+maintainers:
+  - name: Exonical Platform Team
+    email: platform@exonical.invalid
+tags:
+  - latest
+args: {}
+resources: []
+container:
+  user: "65532"
+  expose: [8443, 9090]

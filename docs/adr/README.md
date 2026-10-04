@@ -32,6 +32,11 @@ decisions get a new ADR that references the old one.
 | [ADR-024](ADR-024-builtin-workflow-templates.md) | Embedded, validated workflow template catalog exposed read-only over the API | [workflows.md](../workflows.md), [api.md](../api.md) |
 | [ADR-025](ADR-025-slurm-launch-and-sbatch-interchange.md) | Explicit sbatch/srun launch semantics with proposal-based sbatch import and export | [workflows.md](../workflows.md), [script-validation.md](../script-validation.md), [api.md](../api.md) |
 | [ADR-026](ADR-026-container-images-and-multinode.md) | Optional container images, cluster-selected runtimes, inline scripts and MPI/generic multinode launch | [workflows.md](../workflows.md), [slurm.md](../slurm.md), [threat-model.md](../threat-model.md) |
+| [ADR-027](ADR-027-harness-container-pipeline.md) | Account-scope Harness pipeline template for hardened, attested, scanned and signed container images with per-image hardening manifests | [container-pipeline.md](../container-pipeline.md) |
+| [ADR-028](ADR-028-harness-software-pipeline.md) | Composable Harness stage templates for Go/Rust build, test and scan with Opengrep SAST on pinned Semgrep CE rules | [container-pipeline.md](../container-pipeline.md) |
+| [ADR-029](ADR-029-image-pull-secrets.md) | Single-node private image pulls with submit-time Apptainer/Pyxis credentials | [workflows.md](../workflows.md), [secrets.md](../secrets.md), [slurm.md](../slurm.md), [threat-model.md](../threat-model.md) |
+| [ADR-030](ADR-030-draft-test-runs.md) | Draft test runs with create+execute authorization, spec locks and hash-pinned execution | [workflows.md](../workflows.md), [api.md](../api.md), [authorization.md](../authorization.md) |
+| [ADR-031](ADR-031-service-tasks.md) | Slurm-native service tasks with after-start dependencies and autoStop lifecycle | [workflows.md](../workflows.md), [slurm.md](../slurm.md), [script-validation.md](../script-validation.md), [threat-model.md](../threat-model.md), [workers.md](../workers.md) |
 
 ## Process
 

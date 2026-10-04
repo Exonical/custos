@@ -16,6 +16,11 @@ design-level behaviour** — the docs are the contract.
 - `go test -race ./...`
 - `go build ./cmd/custos`
 - Docs changes: `npx markdownlint docs/**/*.md README.md CONTRIBUTING.md SECURITY.md AGENTS.md --disable MD013 MD033 MD024`
+- `.harness/` holds the Harness hardened container and Go/Rust software
+  pipeline templates, consumer pipelines and `scripts/hardening_manifest.py`. Validate the manifests with
+  `python3 .harness/scripts/hardening_manifest.py validate --manifest <m> --dockerfile <f> --digest-pinning warn`;
+  validate the YAML against `harness/harness-schema` v0 (`template.json`,
+  `pipeline.json`).
 
 E2E (optional; local + nightly CI, never on PRs): `scripts/e2e.sh up`
 brings up real Slurm 26.05 + Keycloak 26.7 under Podman, then

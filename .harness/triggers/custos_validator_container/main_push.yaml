@@ -1,0 +1,54 @@
+trigger:
+  name: Main Push Release
+  identifier: main_push
+  enabled: true
+  description: Full build, scan, sign and promote on pushes to main touching the Custos validator image.
+  tags: {}
+  orgIdentifier: default
+  projectIdentifier: default_project
+  pipelineIdentifier: custos_validator_container
+  source:
+    type: Webhook
+    spec:
+      type: Github
+      spec:
+        type: Push
+        spec:
+          connectorRef: org.gh_personal
+          repoName: custos
+          autoAbortPreviousExecutions: true
+          payloadConditions: [{key: targetBranch, operator: Equals, value: main}, {key: changedFiles, operator: Regex, value: '^(cmd/custos-validator/|internal/|pkg/|go\.(mod|sum)$|deploy/Containerfile\.validator$|deploy/hardening_manifest\.validator\.yaml$|\.harness/).*'}]
+          headerConditions: []
+  inputYaml: |
+    pipeline:
+      identifier: custos_validator_container
+      template:
+        templateInputs:
+          properties:
+            ci:
+              codebase:
+                connectorRef: org.gh_personal
+                repoName: custos
+                build: {type: branch, spec: {branch: <+trigger.branch>}}
+          variables:
+            - name: registry_connector
+              type: String
+              value: account.ghcr
+            - name: registry_username
+              type: String
+              value: bryce
+            - name: registry_token
+              type: Secret
+              value: account.ghcr_token
+            - name: cosign_private_key
+              type: String
+              value: account.cosign_private_key
+            - name: cosign_password
+              type: String
+              value: account.cosign_password
+            - name: enable_signing
+              type: String
+              value: "true"
+            - name: promote
+              type: String
+              value: "true"

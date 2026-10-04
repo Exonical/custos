@@ -1,0 +1,129 @@
+template:
+  name: Go Build and Test
+  identifier: go_build_test
+  versionLabel: "1"
+  type: Stage
+  description: Format, vet, lint, test, govulncheck and build for a Go module
+  spec:
+    type: CI
+    when:
+      pipelineStatus: Success
+      condition: <+input>
+    variables:
+      - name: go_dir
+        type: String
+        value: <+input>.default(.)
+      - name: go_image
+        type: String
+        value: <+input>.default(golang:1.27)
+      - name: golangci_lint_image
+        type: String
+        value: <+input>.default(golangci/golangci-lint:v2.13.2)
+      - name: go_test_flags
+        type: String
+        value: <+input>.default(-race -count=1)
+    spec:
+      cloneCodebase: true
+      platform:
+        os: Linux
+        arch: Amd64
+      runtime:
+        type: Cloud
+        spec: {}
+      caching:
+        enabled: true
+        paths:
+          - /harness/.cache/go-mod
+          - /harness/.cache/go-build
+      execution:
+        steps:
+          - step:
+              type: Run
+              name: Format and Vet
+              identifier: format_and_vet
+              spec:
+                shell: Sh
+                image: <+stage.variables.go_image>
+                envVariables:
+                  GO_DIR: <+stage.variables.go_dir>
+                  GOMODCACHE: /harness/.cache/go-mod
+                  GOCACHE: /harness/.cache/go-build
+                command: |-
+                  set -eu
+                  cd "$GO_DIR"
+                  unformatted="$(gofmt -l $(git ls-files '*.go'))"
+                  if [ -n "$unformatted" ]; then
+                    echo "gofmt needed for:"
+                    echo "$unformatted"
+                    exit 1
+                  fi
+                  go vet ./...
+          - step:
+              type: Run
+              name: golangci-lint
+              identifier: golangci_lint
+              spec:
+                shell: Sh
+                image: <+stage.variables.golangci_lint_image>
+                envVariables:
+                  GO_DIR: <+stage.variables.go_dir>
+                  GOMODCACHE: /harness/.cache/go-mod
+                  GOCACHE: /harness/.cache/go-build
+                  GOLANGCI_LINT_CACHE: /harness/.cache/golangci-lint
+                command: |-
+                  set -eu
+                  cd "$GO_DIR"
+                  golangci-lint run ./...
+          - step:
+              type: Run
+              name: Test
+              identifier: test
+              spec:
+                shell: Sh
+                image: <+stage.variables.go_image>
+                envVariables:
+                  GO_DIR: <+stage.variables.go_dir>
+                  GO_TEST_FLAGS: <+stage.variables.go_test_flags>
+                  CGO_ENABLED: "1"
+                  GOMODCACHE: /harness/.cache/go-mod
+                  GOCACHE: /harness/.cache/go-build
+                command: |-
+                  set -eu
+                  mkdir -p /harness/reports
+                  cd "$GO_DIR"
+                  go run gotest.tools/gotestsum@v1.13.0 --junitfile /harness/reports/go-junit.xml -- $GO_TEST_FLAGS -coverprofile=/harness/reports/coverage.out ./...
+                reports:
+                  type: JUnit
+                  spec:
+                    paths:
+                      - /harness/reports/go-junit.xml
+          - step:
+              type: Run
+              name: govulncheck
+              identifier: govulncheck
+              spec:
+                shell: Sh
+                image: <+stage.variables.go_image>
+                envVariables:
+                  GO_DIR: <+stage.variables.go_dir>
+                  GOMODCACHE: /harness/.cache/go-mod
+                  GOCACHE: /harness/.cache/go-build
+                command: |-
+                  set -eu
+                  cd "$GO_DIR"
+                  go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
+          - step:
+              type: Run
+              name: Build
+              identifier: build
+              spec:
+                shell: Sh
+                image: <+stage.variables.go_image>
+                envVariables:
+                  GO_DIR: <+stage.variables.go_dir>
+                  GOMODCACHE: /harness/.cache/go-mod
+                  GOCACHE: /harness/.cache/go-build
+                command: |-
+                  set -eu
+                  cd "$GO_DIR"
+                  go build ./...

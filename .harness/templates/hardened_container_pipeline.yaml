@@ -1,0 +1,405 @@
+template:
+  name: Hardened Container Pipeline
+  identifier: hardened_container_pipeline
+  versionLabel: "1"
+  type: Pipeline
+  description: Iron Bank style hardened container pipeline (validate, import, build, attest, scan, sign, promote)
+  spec:
+    properties:
+      ci:
+        codebase:
+          connectorRef: <+input>
+          repoName: <+input>
+          build: <+input>
+    variables:
+      - name: manifest_path
+        type: String
+        value: <+input>.default(hardening_manifest.yaml)
+      - name: dockerfile
+        type: String
+        value: <+input>.default(Containerfile)
+      - name: context
+        type: String
+        value: <+input>.default(.)
+      - name: registry_connector
+        type: String
+        value: <+input>
+      - name: registry_domain
+        type: String
+        value: <+input>.default(ghcr.io)
+      - name: image_repo
+        type: String
+        value: <+input>
+      - name: image_path
+        type: String
+        value: <+input>
+      - name: image_tag
+        type: String
+        value: <+codebase.shortCommitSha>
+      - name: release_repo
+        type: String
+        value: <+input>
+      - name: registry_username
+        type: String
+        value: <+input>
+      - name: registry_token
+        type: Secret
+        value: <+input>
+      - name: cosign_private_key
+        type: String
+        value: <+input>
+      - name: cosign_password
+        type: String
+        value: <+input>
+      - name: fail_on_severity
+        type: String
+        value: <+input>.default(critical).allowedValues(critical,high,medium,low,none)
+      - name: digest_pinning
+        type: String
+        value: <+input>.default(warn).allowedValues(off,warn,strict)
+      - name: enable_sbom
+        type: String
+        value: <+input>.default(true).allowedValues(true,false)
+      - name: enable_slsa
+        type: String
+        value: <+input>.default(true).allowedValues(true,false)
+      - name: enable_signing
+        type: String
+        value: <+input>.default(true).allowedValues(true,false)
+      - name: enable_clamav
+        type: String
+        value: <+input>.default(true).allowedValues(true,false)
+      - name: enable_dockerfile_lint
+        type: String
+        value: <+input>.default(true).allowedValues(true,false)
+      - name: promote
+        type: String
+        value: <+input>.default(false).allowedValues(true,false)
+    stages:
+      - stage:
+          name: Setup
+          identifier: setup
+          description: Manifest validation, secret scan and Containerfile lint
+          type: CI
+          spec:
+            cloneCodebase: true
+            platform:
+              os: Linux
+              arch: Amd64
+            runtime:
+              type: Cloud
+              spec: {}
+            execution:
+              steps:
+                - step:
+                    type: Run
+                    name: Validate Hardening Manifest
+                    identifier: validate_manifest
+                    spec:
+                      shell: Sh
+                      image: python:3.13-alpine
+                      envVariables:
+                        MANIFEST: <+pipeline.variables.manifest_path>
+                        DOCKERFILE: <+pipeline.variables.dockerfile>
+                        PINNING: <+pipeline.variables.digest_pinning>
+                      command: |-
+                        set -eu
+                        pip install -q pyyaml
+                        python3 .harness/scripts/hardening_manifest.py validate --manifest "$MANIFEST" --dockerfile "$DOCKERFILE" --digest-pinning "$PINNING" --emit-env > /tmp/manifest.env
+                        . /tmp/manifest.env
+                      outputVariables:
+                        - name: IMAGE_NAME
+                        - name: IMAGE_TITLE
+                        - name: IMAGE_TAGS
+                - step:
+                    type: Gitleaks
+                    name: Secret Scan
+                    identifier: secret_scan
+                    spec:
+                      mode: orchestration
+                      config: default
+                      target:
+                        type: repository
+                        detection: auto
+                      advanced:
+                        fail_on_severity: critical
+                - step:
+                    type: Run
+                    name: Lint Containerfile
+                    identifier: lint_containerfile
+                    when:
+                      stageStatus: Success
+                      condition: <+pipeline.variables.enable_dockerfile_lint> == "true"
+                    spec:
+                      shell: Sh
+                      image: hadolint/hadolint:v2.12.0-alpine
+                      envVariables:
+                        DOCKERFILE: <+pipeline.variables.dockerfile>
+                      command: hadolint --no-fail "$DOCKERFILE"
+      - stage:
+          name: Build Scan Publish
+          identifier: build_scan_publish
+          description: Import artifacts, build, attest, scan, sign and promote
+          type: CI
+          spec:
+            cloneCodebase: true
+            platform:
+              os: Linux
+              arch: Amd64
+            runtime:
+              type: Cloud
+              spec: {}
+            sharedPaths:
+              - /shared/artifacts
+              - /shared/scan_results
+            execution:
+              steps:
+                - step:
+                    type: Run
+                    name: Import Artifacts
+                    identifier: import_artifacts
+                    spec:
+                      shell: Sh
+                      image: python:3.13-alpine
+                      envVariables:
+                        MANIFEST: <+pipeline.variables.manifest_path>
+                      command: |-
+                        set -eu
+                        pip install -q pyyaml
+                        python3 .harness/scripts/hardening_manifest.py import --manifest "$MANIFEST" --dest .containerbuild/resources
+                - step:
+                    type: BuildAndPushDockerRegistry
+                    name: Build And Push
+                    identifier: build_push
+                    spec:
+                      connectorRef: <+pipeline.variables.registry_connector>
+                      repo: <+pipeline.variables.image_repo>
+                      tags:
+                        - <+pipeline.variables.image_tag>
+                        - <+pipeline.sequenceId>
+                      dockerfile: <+pipeline.variables.dockerfile>
+                      context: <+pipeline.variables.context>
+                      caching: true
+                      buildArgs:
+                        VERSION: <+pipeline.variables.image_tag>
+                        COMMIT: <+codebase.commitSha>
+                        DATE: <+pipeline.startTs>
+                      labels:
+                        org.opencontainers.image.revision: <+codebase.commitSha>
+                        org.opencontainers.image.source: <+codebase.repoUrl>
+                        org.opencontainers.image.version: <+pipeline.variables.image_tag>
+                - step:
+                    type: provenance
+                    name: SLSA Provenance
+                    identifier: slsa_provenance
+                    when:
+                      stageStatus: Success
+                      condition: <+pipeline.variables.enable_slsa> == "true"
+                    spec:
+                      source:
+                        type: docker
+                        spec:
+                          connector: <+pipeline.variables.registry_connector>
+                          repo: <+pipeline.variables.image_repo>
+                          digest: <+pipeline.stages.build_scan_publish.spec.execution.steps.build_push.artifact_build_push.stepArtifacts.publishedImageArtifacts[0].digest>
+                      attestation:
+                        type: keybased
+                        spec:
+                          private_key: <+pipeline.variables.cosign_private_key>
+                          password: <+pipeline.variables.cosign_password>
+                - step:
+                    type: SscaOrchestration
+                    name: Generate SBOM
+                    identifier: generate_sbom
+                    when:
+                      stageStatus: Success
+                      condition: <+pipeline.variables.enable_sbom> == "true"
+                    spec:
+                      mode: generation
+                      tool:
+                        type: Syft
+                        spec:
+                          format: spdx-json
+                      source:
+                        type: docker
+                        spec:
+                          connector: <+pipeline.variables.registry_connector>
+                          image: <+pipeline.variables.image_repo>@<+pipeline.stages.build_scan_publish.spec.execution.steps.build_push.artifact_build_push.stepArtifacts.publishedImageArtifacts[0].digest>
+                      attestation:
+                        type: keybased
+                        spec:
+                          privateKey: <+pipeline.variables.cosign_private_key>
+                          password: <+pipeline.variables.cosign_password>
+                - parallel:
+                    - step:
+                        type: AquaTrivy
+                        name: Trivy Scan
+                        identifier: trivy_scan
+                        spec:
+                          mode: orchestration
+                          config: default
+                          target:
+                            type: container
+                            name: <+pipeline.variables.image_path>
+                            variant: <+pipeline.variables.image_tag>
+                          advanced:
+                            fail_on_severity: <+pipeline.variables.fail_on_severity>
+                          image:
+                            type: docker_v2
+                            domain: <+pipeline.variables.registry_domain>
+                            name: <+pipeline.variables.image_path>
+                            tag: <+pipeline.variables.image_tag>
+                            access_id: <+pipeline.variables.registry_username>
+                            access_token: <+pipeline.variables.registry_token>
+                    - step:
+                        type: Grype
+                        name: Grype Scan
+                        identifier: grype_scan
+                        spec:
+                          mode: orchestration
+                          config: default
+                          target:
+                            type: container
+                            name: <+pipeline.variables.image_path>
+                            variant: <+pipeline.variables.image_tag>
+                          advanced:
+                            fail_on_severity: <+pipeline.variables.fail_on_severity>
+                          image:
+                            type: docker_v2
+                            domain: <+pipeline.variables.registry_domain>
+                            name: <+pipeline.variables.image_path>
+                            tag: <+pipeline.variables.image_tag>
+                            access_id: <+pipeline.variables.registry_username>
+                            access_token: <+pipeline.variables.registry_token>
+                - step:
+                    type: Run
+                    name: Export Image For ClamAV
+                    identifier: clamav_export
+                    when:
+                      stageStatus: Success
+                      condition: <+pipeline.variables.enable_clamav> == "true"
+                    spec:
+                      shell: Sh
+                      image: quay.io/skopeo/stable:v1.22.3
+                      envVariables:
+                        IMAGE: <+pipeline.variables.image_repo>
+                        DIGEST: <+pipeline.stages.build_scan_publish.spec.execution.steps.build_push.artifact_build_push.stepArtifacts.publishedImageArtifacts[0].digest>
+                        REG_USER: <+pipeline.variables.registry_username>
+                        REG_TOKEN: <+pipeline.variables.registry_token>
+                      command: |-
+                        set -eu
+                        DIGEST="sha256:${DIGEST#sha256:}"
+                        mkdir -p /shared/artifacts /shared/scan_results
+                        skopeo copy --src-creds "$REG_USER:$REG_TOKEN" "docker://$IMAGE@$DIGEST" oci:/shared/artifacts/image:scan
+                - step:
+                    type: Run
+                    name: ClamAV Scan
+                    identifier: clamav_scan
+                    when:
+                      stageStatus: Success
+                      condition: <+pipeline.variables.enable_clamav> == "true"
+                    spec:
+                      shell: Sh
+                      image: clamav/clamav:1.4
+                      command: |-
+                        set -u
+                        mkdir -p /tmp/rootfs /shared/scan_results
+                        for blob in /shared/artifacts/image/blobs/sha256/*; do
+                          tar -xzf "$blob" -C /tmp/rootfs 2>/dev/null || tar -xf "$blob" -C /tmp/rootfs 2>/dev/null || true
+                        done
+                        freshclam
+                        rc=0
+                        clamscan -r --infected --stdout /tmp/rootfs > /shared/scan_results/clamav.log || rc=$?
+                        tail -n 15 /shared/scan_results/clamav.log
+                        [ "$rc" -le 1 ]
+                - step:
+                    type: Run
+                    name: Convert ClamAV Results
+                    identifier: clamav_to_sarif
+                    when:
+                      stageStatus: Success
+                      condition: <+pipeline.variables.enable_clamav> == "true"
+                    spec:
+                      shell: Sh
+                      image: python:3.13-alpine
+                      command: |-
+                        set -eu
+                        pip install -q pyyaml
+                        python3 .harness/scripts/hardening_manifest.py clamav-to-sarif --log /shared/scan_results/clamav.log --out /shared/scan_results/clamav.sarif --strip-prefix /tmp/rootfs
+                - step:
+                    type: CustomIngest
+                    name: Ingest ClamAV Results
+                    identifier: clamav_ingest
+                    when:
+                      stageStatus: Success
+                      condition: <+pipeline.variables.enable_clamav> == "true"
+                    spec:
+                      mode: ingestion
+                      config: sarif
+                      target:
+                        type: container
+                        name: <+pipeline.variables.image_path>
+                        variant: <+pipeline.variables.image_tag>
+                      ingestion:
+                        file: /shared/scan_results/clamav.sarif
+                - step:
+                    type: SscaArtifactSigning
+                    name: Sign Image
+                    identifier: sign_image
+                    when:
+                      stageStatus: Success
+                      condition: <+pipeline.variables.enable_signing> == "true"
+                    spec:
+                      source:
+                        type: docker
+                        spec:
+                          connector: <+pipeline.variables.registry_connector>
+                          image: <+pipeline.variables.image_repo>@<+pipeline.stages.build_scan_publish.spec.execution.steps.build_push.artifact_build_push.stepArtifacts.publishedImageArtifacts[0].digest>
+                      signing:
+                        type: keybased
+                        spec:
+                          private_key: <+pipeline.variables.cosign_private_key>
+                          password: <+pipeline.variables.cosign_password>
+                      uploadSignature:
+                        upload: true
+                - step:
+                    type: Run
+                    name: Promote
+                    identifier: promote
+                    when:
+                      stageStatus: Success
+                      condition: <+pipeline.variables.promote> == "true"
+                    spec:
+                      shell: Sh
+                      image: quay.io/skopeo/stable:v1.22.3
+                      envVariables:
+                        SRC: <+pipeline.variables.image_repo>
+                        DIGEST: <+pipeline.stages.build_scan_publish.spec.execution.steps.build_push.artifact_build_push.stepArtifacts.publishedImageArtifacts[0].digest>
+                        RELEASE_REPO: <+pipeline.variables.release_repo>
+                        TAG: <+pipeline.variables.image_tag>
+                        GIT_TAG: <+codebase.tag>
+                        MANIFEST_TAGS: <+pipeline.stages.setup.spec.execution.steps.validate_manifest.output.outputVariables.IMAGE_TAGS>
+                        REG_USER: <+pipeline.variables.registry_username>
+                        REG_TOKEN: <+pipeline.variables.registry_token>
+                      command: |-
+                        set -eu
+                        DIGEST="sha256:${DIGEST#sha256:}"
+                        case "${GIT_TAG:-}" in ""|null) GIT_TAG="" ;; esac
+                        for tag in "$TAG" $GIT_TAG $MANIFEST_TAGS; do
+                          skopeo copy --all --src-creds "$REG_USER:$REG_TOKEN" --dest-creds "$REG_USER:$REG_TOKEN" "docker://$SRC@$DIGEST" "docker://$RELEASE_REPO:$tag"
+                        done
+                - step:
+                    type: Run
+                    name: Findings Summary
+                    identifier: findings_summary
+                    when:
+                      stageStatus: All
+                    spec:
+                      shell: Sh
+                      image: python:3.13-alpine
+                      envVariables:
+                        MANIFEST: <+pipeline.variables.manifest_path>
+                      command: |-
+                        set -eu
+                        pip install -q pyyaml
+                        python3 .harness/scripts/hardening_manifest.py report --results /shared/scan_results --manifest "$MANIFEST"
