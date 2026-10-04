@@ -353,6 +353,22 @@ func TestAPIJobs(t *testing.T) {
 		t.Fatalf("fake submissions: %d", n)
 	}
 
+	code, listed := call(tokR, "GET", base, nil, "")
+	if code != http.StatusOK {
+		t.Fatalf("list own jobs: %d %v", code, listed)
+	}
+	items, _ := listed["items"].([]any)
+	found := false
+	for _, raw := range items {
+		if raw.(map[string]any)["id"] == jid {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("self-only list did not include job %s: %v", jid, listed)
+	}
+
 	// Tenant-wide list requires job.read.tenant (researcher lacks it).
 	if code, _ := call(tokR, "GET", "/api/v1/tenants/j-tenant/jobs",
 		nil, ""); code != 403 {

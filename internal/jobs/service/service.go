@@ -523,8 +523,10 @@ func (s *Service) List(ctx context.Context, p authn.Principal,
 	} else if err := authz.Require(ctx, s.d.AZ, p, authz.JobReadProject,
 		res, nil); err != nil {
 		// Fall back to self-only listing.
+		selfResource := res
+		selfResource.OwnerID = p.UserID.String()
 		if err := authz.Require(ctx, s.d.AZ, p, authz.JobReadSelf,
-			res, s.d.Audit); err != nil {
+			selfResource, s.d.Audit); err != nil {
 			return nil, "", err
 		}
 		f.CreatedBy = &p.UserID
