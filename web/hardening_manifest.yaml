@@ -1,0 +1,16 @@
+version: "1"
+name: exonical/custos-web
+labels:
+  org.opencontainers.image.title: custos-web
+  org.opencontainers.image.description: Custos web frontend
+  org.opencontainers.image.vendor: Exonical
+maintainers:
+  - name: Exonical Platform Team
+    email: platform@exonical.invalid
+tags:
+  - latest
+args: {}
+resources: []
+container:
+  user: "1001"
+  expose: [3000]

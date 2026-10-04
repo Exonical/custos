@@ -1,0 +1,124 @@
+template:
+  name: Source Security
+  identifier: source_security
+  versionLabel: "1"
+  type: Stage
+  description: Secret scan, Opengrep SAST, OSV dependency scan and repository SBOM
+  spec:
+    type: CI
+    variables:
+      - name: fail_on_severity
+        type: String
+        value: <+input>.default(high).allowedValues(critical,high,medium,low,none)
+      - name: opengrep_rule_paths
+        type: String
+        value: <+input>.default(go rust)
+      - name: opengrep_exclude
+        type: String
+        value: <+input>.default(vendor,testdata,target,node_modules)
+    spec:
+      cloneCodebase: true
+      platform:
+        os: Linux
+        arch: Amd64
+      runtime:
+        type: Cloud
+        spec: {}
+      sharedPaths:
+        - /shared/scan_results
+      execution:
+        steps:
+          - step:
+              type: Gitleaks
+              name: Secret Scan
+              identifier: secret_scan
+              spec:
+                mode: orchestration
+                config: default
+                target:
+                  type: repository
+                  detection: auto
+                advanced:
+                  fail_on_severity: <+stage.variables.fail_on_severity>
+          - step:
+              type: Run
+              name: Opengrep
+              identifier: opengrep
+              spec:
+                shell: Sh
+                image: buildpack-deps:bookworm-scm
+                envVariables:
+                  OPENGREP_RULE_PATHS: <+stage.variables.opengrep_rule_paths>
+                  OPENGREP_EXCLUDE: <+stage.variables.opengrep_exclude>
+                command: |-
+                  set -eu
+                  OPENGREP_VERSION=v1.30.0
+                  OPENGREP_SHA256=35779bdd72e92129c8df2a77f0c55e8c08356801ea92591ef32108d6b28d564c
+                  RULES_REPO=https://github.com/semgrep/semgrep-rules
+                  RULES_SHA=a84ff9cc2453ca91d581380de4b8b3f272f6f4be
+                  curl -fsSL -o /tmp/opengrep "https://github.com/opengrep/opengrep/releases/download/${OPENGREP_VERSION}/opengrep_manylinux_x86"
+                  echo "${OPENGREP_SHA256}  /tmp/opengrep" | sha256sum -c -
+                  chmod +x /tmp/opengrep
+                  mkdir /tmp/semgrep-rules
+                  cd /tmp/semgrep-rules
+                  git init -q
+                  git remote add origin "$RULES_REPO"
+                  git fetch -q --depth 1 origin "$RULES_SHA"
+                  git checkout -q FETCH_HEAD
+                  git config --global --add safe.directory /harness
+                  cd /harness
+                  set --
+                  for p in $OPENGREP_RULE_PATHS; do
+                    set -- "$@" -f "/tmp/semgrep-rules/$p"
+                  done
+                  if [ -d .opengrep ]; then
+                    set -- "$@" -f .opengrep
+                  fi
+                  for e in $(echo "$OPENGREP_EXCLUDE" | tr ',' ' '); do
+                    set -- "$@" "--exclude=$e"
+                  done
+                  mkdir -p /shared/scan_results
+                  /tmp/opengrep scan --disable-version-check --sarif-output=/shared/scan_results/opengrep.sarif "$@" .
+          - step:
+              type: CustomIngest
+              name: Ingest Opengrep
+              identifier: ingest_opengrep
+              spec:
+                mode: ingestion
+                config: sarif
+                target:
+                  type: repository
+                  detection: auto
+                advanced:
+                  fail_on_severity: <+stage.variables.fail_on_severity>
+                ingestion:
+                  file: /shared/scan_results/opengrep.sarif
+          - step:
+              type: OsvScanner
+              name: OSV Scan
+              identifier: osv_scan
+              spec:
+                mode: orchestration
+                config: default
+                target:
+                  type: repository
+                  detection: auto
+                advanced:
+                  fail_on_severity: <+stage.variables.fail_on_severity>
+          - step:
+              type: SscaOrchestration
+              name: Repository SBOM
+              identifier: repository_sbom
+              spec:
+                mode: generation
+                tool:
+                  type: Syft
+                  spec:
+                    format: cyclonedx-json
+                source:
+                  type: repository
+                  spec:
+                    url: <+codebase.repoUrl>
+                    variant_type: commit
+                    variant: <+codebase.commitSha>
+                    cloned_codebase: "true"

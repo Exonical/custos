@@ -1,0 +1,52 @@
+pipeline:
+  name: Custos Software
+  identifier: custos_software
+  orgIdentifier: default
+  projectIdentifier: default_project
+  template:
+    templateRef: account.secure_software_pipeline
+    versionLabel: "1"
+    templateInputs:
+      properties:
+        ci:
+          codebase:
+            connectorRef: org.gh_personal
+            repoName: custos
+            build: <+input>
+      variables:
+        - name: build_go
+          type: String
+          value: "true"
+        - name: build_rust
+          type: String
+          value: "false"
+        - name: go_dir
+          type: String
+          value: .
+        - name: go_image
+          type: String
+          value: golang:1.27
+        - name: golangci_lint_image
+          type: String
+          value: golangci/golangci-lint:v2.13.2
+        - name: go_test_flags
+          type: String
+          value: -race -count=1
+        - name: rust_dir
+          type: String
+          value: .
+        - name: rust_image
+          type: String
+          value: rust:1.98.1-bookworm
+        - name: cargo_features
+          type: String
+          value: --all-features
+        - name: fail_on_severity
+          type: String
+          value: high
+        - name: opengrep_rule_paths
+          type: String
+          value: go
+        - name: opengrep_exclude
+          type: String
+          value: vendor,testdata,target,node_modules

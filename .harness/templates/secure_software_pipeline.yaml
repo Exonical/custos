@@ -1,0 +1,113 @@
+template:
+  name: Secure Software Pipeline
+  identifier: secure_software_pipeline
+  versionLabel: "1"
+  type: Pipeline
+  description: Build, test and scan first-party Go and Rust software; no artifact publishing
+  spec:
+    properties:
+      ci:
+        codebase:
+          connectorRef: <+input>
+          repoName: <+input>
+          build: <+input>
+    variables:
+      - name: build_go
+        type: String
+        value: <+input>.default(true).allowedValues(true,false)
+      - name: build_rust
+        type: String
+        value: <+input>.default(false).allowedValues(true,false)
+      - name: go_dir
+        type: String
+        value: <+input>.default(.)
+      - name: go_image
+        type: String
+        value: <+input>.default(golang:1.27)
+      - name: golangci_lint_image
+        type: String
+        value: <+input>.default(golangci/golangci-lint:v2.13.2)
+      - name: go_test_flags
+        type: String
+        value: <+input>.default(-race -count=1)
+      - name: rust_dir
+        type: String
+        value: <+input>.default(.)
+      - name: rust_image
+        type: String
+        value: <+input>.default(rust:1.98.1-bookworm)
+      - name: cargo_features
+        type: String
+        value: <+input>.default(--all-features)
+      - name: fail_on_severity
+        type: String
+        value: <+input>.default(high).allowedValues(critical,high,medium,low,none)
+      - name: opengrep_rule_paths
+        type: String
+        value: <+input>.default(go rust)
+      - name: opengrep_exclude
+        type: String
+        value: <+input>.default(vendor,testdata,target,node_modules)
+    stages:
+      - parallel:
+          - stage:
+              name: Source Security
+              identifier: source_security
+              template:
+                templateRef: account.source_security
+                versionLabel: "1"
+                templateInputs:
+                  type: CI
+                  variables:
+                    - name: fail_on_severity
+                      type: String
+                      value: <+pipeline.variables.fail_on_severity>
+                    - name: opengrep_rule_paths
+                      type: String
+                      value: <+pipeline.variables.opengrep_rule_paths>
+                    - name: opengrep_exclude
+                      type: String
+                      value: <+pipeline.variables.opengrep_exclude>
+          - stage:
+              name: Go Build and Test
+              identifier: go_build_test
+              template:
+                templateRef: account.go_build_test
+                versionLabel: "1"
+                templateInputs:
+                  type: CI
+                  when:
+                    condition: <+pipeline.variables.build_go> == "true"
+                  variables:
+                    - name: go_dir
+                      type: String
+                      value: <+pipeline.variables.go_dir>
+                    - name: go_image
+                      type: String
+                      value: <+pipeline.variables.go_image>
+                    - name: golangci_lint_image
+                      type: String
+                      value: <+pipeline.variables.golangci_lint_image>
+                    - name: go_test_flags
+                      type: String
+                      value: <+pipeline.variables.go_test_flags>
+          - stage:
+              name: Rust Build and Test
+              identifier: rust_build_test
+              template:
+                templateRef: account.rust_build_test
+                versionLabel: "1"
+                templateInputs:
+                  type: CI
+                  when:
+                    condition: <+pipeline.variables.build_rust> == "true"
+                  variables:
+                    - name: rust_dir
+                      type: String
+                      value: <+pipeline.variables.rust_dir>
+                    - name: rust_image
+                      type: String
+                      value: <+pipeline.variables.rust_image>
+                    - name: cargo_features
+                      type: String
+                      value: <+pipeline.variables.cargo_features>

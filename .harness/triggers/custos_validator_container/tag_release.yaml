@@ -1,0 +1,54 @@
+trigger:
+  name: Tag Release
+  identifier: tag_release
+  enabled: true
+  description: Full build, scan, sign and promote of the Custos validator image on v* tags.
+  tags: {}
+  orgIdentifier: default
+  projectIdentifier: default_project
+  pipelineIdentifier: custos_validator_container
+  source:
+    type: Webhook
+    spec:
+      type: Github
+      spec:
+        type: Push
+        spec:
+          connectorRef: org.gh_personal
+          repoName: custos
+          autoAbortPreviousExecutions: false
+          payloadConditions: [{key: <+trigger.payload.ref>, operator: StartsWith, value: refs/tags/v}, {key: <+trigger.payload.created>, operator: Equals, value: "true"}]
+          headerConditions: []
+  inputYaml: |
+    pipeline:
+      identifier: custos_validator_container
+      template:
+        templateInputs:
+          properties:
+            ci:
+              codebase:
+                connectorRef: org.gh_personal
+                repoName: custos
+                build: {type: tag, spec: {tag: <+trigger.tag>}}
+          variables:
+            - name: registry_connector
+              type: String
+              value: account.ghcr
+            - name: registry_username
+              type: String
+              value: bryce
+            - name: registry_token
+              type: Secret
+              value: account.ghcr_token
+            - name: cosign_private_key
+              type: String
+              value: account.cosign_private_key
+            - name: cosign_password
+              type: String
+              value: account.cosign_password
+            - name: enable_signing
+              type: String
+              value: "true"
+            - name: promote
+              type: String
+              value: "true"

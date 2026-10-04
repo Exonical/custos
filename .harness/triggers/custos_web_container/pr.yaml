@@ -1,0 +1,55 @@
+trigger:
+  name: PR Build and Scan
+  identifier: pr
+  enabled: true
+  description: Build and scan on PRs to main touching the Custos web image; no signing or promotion.
+  tags: {}
+  orgIdentifier: default
+  projectIdentifier: default_project
+  pipelineIdentifier: custos_web_container
+  source:
+    type: Webhook
+    spec:
+      type: Github
+      spec:
+        type: PullRequest
+        spec:
+          connectorRef: org.gh_personal
+          repoName: custos
+          autoAbortPreviousExecutions: true
+          actions: [Open, Reopen, Synchronize, ReadyForReview]
+          payloadConditions: [{key: targetBranch, operator: Equals, value: main}, {key: changedFiles, operator: Regex, value: '^(web/|api/openapi/|internal/workflowtemplates/catalog/|\.harness/).*'}]
+          headerConditions: []
+  inputYaml: |
+    pipeline:
+      identifier: custos_web_container
+      template:
+        templateInputs:
+          properties:
+            ci:
+              codebase:
+                connectorRef: org.gh_personal
+                repoName: custos
+                build: {type: PR, spec: {number: <+trigger.prNumber>}}
+          variables:
+            - name: registry_connector
+              type: String
+              value: account.ghcr
+            - name: registry_username
+              type: String
+              value: bryce
+            - name: registry_token
+              type: Secret
+              value: account.ghcr_token
+            - name: cosign_private_key
+              type: String
+              value: account.cosign_private_key
+            - name: cosign_password
+              type: String
+              value: account.cosign_password
+            - name: enable_signing
+              type: String
+              value: "false"
+            - name: promote
+              type: String
+              value: "false"

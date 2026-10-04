@@ -1,0 +1,76 @@
+pipeline:
+  name: Custos Validator Container
+  identifier: custos_validator_container
+  orgIdentifier: default
+  projectIdentifier: default_project
+  template:
+    templateRef: account.hardened_container_pipeline
+    versionLabel: "1"
+    templateInputs:
+      properties:
+        ci:
+          codebase:
+            connectorRef: <+input>
+            repoName: <+input>
+            build: <+input>
+      variables:
+        - name: manifest_path
+          type: String
+          value: deploy/hardening_manifest.validator.yaml
+        - name: dockerfile
+          type: String
+          value: deploy/Containerfile.validator
+        - name: context
+          type: String
+          value: "."
+        - name: registry_connector
+          type: String
+          value: <+input>
+        - name: registry_domain
+          type: String
+          value: ghcr.io
+        - name: image_repo
+          type: String
+          value: ghcr.io/exonical/custos-validator
+        - name: image_path
+          type: String
+          value: exonical/custos-validator
+        - name: release_repo
+          type: String
+          value: ghcr.io/exonical/release/custos-validator
+        - name: registry_username
+          type: String
+          value: <+input>
+        - name: registry_token
+          type: Secret
+          value: <+input>
+        - name: cosign_private_key
+          type: String
+          value: <+input>
+        - name: cosign_password
+          type: String
+          value: <+input>
+        - name: fail_on_severity
+          type: String
+          value: critical
+        - name: digest_pinning
+          type: String
+          value: warn
+        - name: enable_sbom
+          type: String
+          value: "true"
+        - name: enable_slsa
+          type: String
+          value: "true"
+        - name: enable_signing
+          type: String
+          value: <+input>.default(true).allowedValues(true,false)
+        - name: enable_clamav
+          type: String
+          value: "true"
+        - name: enable_dockerfile_lint
+          type: String
+          value: "true"
+        - name: promote
+          type: String
+          value: <+input>.default(false).allowedValues(true,false)
