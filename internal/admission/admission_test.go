@@ -1,6 +1,7 @@
 package admission_test
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -225,6 +226,86 @@ func TestBuildContainerAndMultinode(t *testing.T) {
 	out, denial = admission.Build(mpi)
 	if denial != nil || out.Multinode == nil || out.Multinode.MPIPlugin != "pmix_v5" {
 		t.Fatalf("OpenMPI plugin was not frozen: %+v denial=%v", out.Multinode, denial)
+	}
+}
+
+func TestBuildImagePullSecretFreezesOnlyNonSecretConfiguration(t *testing.T) {
+	in := admission.BuildInput{
+		Spec: admission.ExecutionSpec{
+			ID: uuid.New(), TenantID: uuid.New(), TaskName: "pull",
+			Payload: admission.PayloadRef{
+				ScriptID: uuid.New(), Digest: validation.DigestOf([]byte("x")),
+				Language: workflowspec.LanguageBash, Interpreter: admission.InterpreterBash,
+			},
+		},
+		Request: workflowspec.Resources{
+			Nodes: 1, Tasks: 1, CPUsPerTask: 1, Walltime: workflowspec.Duration(time.Hour),
+		},
+		Policy:  admission.ResourcePolicy{MaxNodes: 2},
+		Binding: admission.Binding{Account: "a", DefaultPartition: "main"},
+		Cluster: validation.ClusterSnapshot{
+			Partitions:       []string{"main"},
+			ContainerRuntime: &validation.ContainerRuntime{Type: "pyxis"},
+		},
+		Image: &workflowspec.Image{
+			URI: "docker://registry.example.com/team/app:1.2",
+			PullSecret: &workflowspec.ImagePullSecret{
+				UsernameSecret: "registry-user", PasswordSecret: "registry-token",
+			},
+		},
+	}
+	out, denial := admission.Build(in)
+	if denial != nil {
+		t.Fatalf("image pull admission denied: %v", denial)
+	}
+	if out.Container == nil || !out.Container.PullSecret ||
+		!out.Container.PullUsernameSecret || out.Container.PullUsername != "" ||
+		out.Container.RegistryHost != "registry.example.com" ||
+		out.Container.EnrootImage != "docker://registry.example.com#team/app:1.2" {
+		t.Fatalf("image pull configuration was not frozen: %+v", out.Container)
+	}
+	canonical, err := out.Canonical()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, secret := range []string{"registry-user", "registry-token", "very-secret"} {
+		if strings.Contains(string(canonical), secret) {
+			t.Fatalf("secret handle/value %q was frozen in ExecutionSpec: %s", secret, canonical)
+		}
+	}
+
+	in.Cluster.ContainerRuntime = &validation.ContainerRuntime{Type: "apptainer"}
+	in.Image = &workflowspec.Image{
+		URI: "oras://registry.example.com/team/app.sif",
+		PullSecret: &workflowspec.ImagePullSecret{
+			UsernameSecret: "registry-user", PasswordSecret: "registry-token",
+		},
+	}
+	out, denial = admission.Build(in)
+	if denial != nil || out.Container == nil || out.Container.Image != in.Image.URI ||
+		!out.Container.PullSecret {
+		t.Fatalf("Apptainer ORAS pull secret resolution: container=%+v denial=%v", out.Container, denial)
+	}
+
+	in.Cluster.ContainerRuntime = &validation.ContainerRuntime{Type: "pyxis"}
+	in.Image.URI = "docker://registry.example.com/team/app:1.2"
+	in.Image.PullSecret = &workflowspec.ImagePullSecret{
+		Username: "robot$ci", PasswordSecret: "registry-token",
+	}
+	out, denial = admission.Build(in)
+	if denial != nil || out.Container == nil ||
+		out.Container.PullUsername != "robot$ci" || out.Container.PullUsernameSecret {
+		t.Fatalf("literal username was not frozen as non-secret configuration: container=%+v denial=%v", out.Container, denial)
+	}
+
+	in.Image.URI = "oras://registry.example.com/team/app.sif"
+	if _, denial = admission.Build(in); denial == nil || denial.Code != "PULL_SECRET_INVALID" {
+		t.Fatalf("Pyxis oras pull secret denial = %v", denial)
+	}
+	in.Image.URI = "docker://registry.example.com/team/app:1.2"
+	in.Request.Nodes = 2
+	if _, denial = admission.Build(in); denial == nil || denial.Code != "PULL_SECRET_MULTINODE_UNSUPPORTED" {
+		t.Fatalf("multi-node pull secret denial = %v", denial)
 	}
 }
 

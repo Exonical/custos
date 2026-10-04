@@ -310,6 +310,16 @@ passed through `/usr/bin/env` inside either image, so images must contain
 user env is never exported on the host. Image tasks are denied when no
 runtime is configured or a cluster's prefix/digest policy is not met.
 
+Image pull secrets may use `docker://` with either runtime; Apptainer also
+accepts `oras://`. Apptainer pulls with `--disable-cache` to a local
+`$CUSTOS_JOB_DIR/image.sif` and scopes `APPTAINER_DOCKER_USERNAME` /
+`APPTAINER_DOCKER_PASSWORD` to that pull command. Pyxis uses `enroot import`
+with a temporary credentials file outside the mounted job directory, then
+launches the local `$CUSTOS_JOB_DIR/image.sqsh`. The `enroot` CLI must be
+available on compute nodes for Pyxis pull-secret tasks. In both cases the
+pull credentials are removed from the wrapper environment before the user
+payload starts. Pull-secret tasks must be single-node; arrays are supported.
+
 OpenMPI/MPICH multinode tasks use `srun --mpi=<mpi_plugin>` and the resolved
 per-rank task shape. Generic multinode tasks run the command once, export the
 Fuzzball-compatible `MULTINODE_*` variables, and use a generated

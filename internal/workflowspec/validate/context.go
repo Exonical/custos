@@ -3,6 +3,7 @@ package validate
 import (
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/Exonical/custos/internal/admission"
 	"github.com/Exonical/custos/internal/validation"
@@ -71,6 +72,15 @@ func Contextual(w workflowspec.Workflow, ctx Context) []FieldError {
 						Code:    "WRAPPED_TOKEN_UNSUPPORTED_CONNECTOR",
 						Message: "wrapped tokens require the platform OpenBao connector"})
 				}
+			case "image_pull":
+				if info.Kind != "generic" {
+					errs = append(errs, FieldError{Path: base + ".use",
+						Code: "PULL_SECRET_INVALID", Message: "image_pull requires a generic secret reference"})
+				}
+				if !slices.Contains(info.AllowedUses, "image_pull") {
+					errs = append(errs, FieldError{Path: base + ".use",
+						Code: "SECRET_USE_NOT_ALLOWED", Message: "reference does not allow image_pull"})
+				}
 			}
 		}
 	}
@@ -110,6 +120,12 @@ func Contextual(w workflowspec.Workflow, ctx Context) []FieldError {
 					Code:    "PLACEMENT_CLUSTER_UNBOUND",
 					Message: "cluster " + clusterName + " has no enabled project binding"})
 			}
+		}
+		if t.Image != nil && t.Image.PullSecret != nil &&
+			strings.HasPrefix(t.Image.URI, "oras://") && ok &&
+			caps.ContainerRuntime != nil && caps.ContainerRuntime.Type == "pyxis" {
+			errs = append(errs, FieldError{Path: base + ".image.pullSecret",
+				Code: "PULL_SECRET_INVALID", Message: "pyxis pull secrets require a docker:// image URI"})
 		}
 		// Step 6: resources. A task declaring none inherits the
 		// submission-time defaults; nothing to check here.

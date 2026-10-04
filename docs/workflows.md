@@ -148,6 +148,32 @@ optional image-prefix allow-list, digest requirement, MPI plugin, and whether
 a compatible Slurm client is available inside the image. No site bind paths
 are configured; both runtimes mount only `$CUSTOS_JOB_DIR`.
 
+Private images may declare `image.pullSecret` with exactly one literal
+`username` or `usernameSecret`, and a required `passwordSecret`. Secret handles
+must be declared in `spec.secrets` with `use: image_pull`, and the referenced
+SecretReferences must allow `image_pull`. Image-pull secrets are never task
+environment values. Literal usernames are limited to 256 characters and
+cannot contain whitespace or control characters. Pyxis accepts only
+`docker://`; Apptainer accepts
+`docker://` and `oras://` pull-secret URIs. Pull-secret tasks must be
+single-node (`multinode` and `resources.nodes > 1` are rejected); arrays are
+supported.
+
+```yaml
+spec:
+  secrets:
+    registryUser: { ref: registry-user, use: image_pull }
+    registryToken: { ref: registry-token, use: image_pull }
+  tasks:
+    - name: private-run
+      image:
+        uri: docker://registry.example.com/team/app:1.2
+        pullSecret:
+          usernameSecret: registryUser
+          passwordSecret: registryToken
+      command: ["./run"]
+```
+
 `script` accepts a content-addressed `{ref, language}` object, an inline
 `{inline: | ...}` object, or inline text as shorthand. Inline source remains
 in the immutable spec; create/update stores the same bytes content-addressed,

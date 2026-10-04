@@ -54,7 +54,8 @@ export CUSTOS_EXECUTION_ID={{ q .ExecutionID }}
 export CUSTOS_TASK={{ q .TaskName }}
 export CUSTOS_JOB_DIR="${SLURM_TMPDIR:-${TMPDIR:-/tmp}}/custos-${SLURM_JOB_ID}"
 mkdir -p "$CUSTOS_JOB_DIR"
-trap 'rm -rf "$CUSTOS_JOB_DIR"' EXIT
+creds_dir=
+trap 'if [ -n "${creds_dir:-}" ]; then rm -rf "$creds_dir" || true; fi; rm -rf "$CUSTOS_JOB_DIR"' EXIT
 {{ range .Modules }}module load {{ q . }}
 {{ end }}{{ if .GenericMultinode }}
 CUSTOS_HOSTS=$(scontrol show hostnames "$SLURM_JOB_NODELIST")
@@ -83,6 +84,8 @@ echo {{ q .PayloadDigest }}"  $CUSTOS_JOB_DIR/payload.in" | sha256sum -c --quiet
 srun --ntasks="$SLURM_JOB_NUM_NODES" --ntasks-per-node=1 mkdir -p -m 0700 "$CUSTOS_JOB_DIR"
 sbcast --force --preserve "$CUSTOS_JOB_DIR/payload.in" "$CUSTOS_JOB_DIR/payload"{{ else }}mv "$CUSTOS_JOB_DIR/payload.in" "$CUSTOS_JOB_DIR/payload"
 chmod 0500 "$CUSTOS_JOB_DIR/payload"{{ end }}{{ end }}
+{{ range .ImagePullSetup }}{{ . }}
+{{ end }}
 cd {{ q .WorkingDir }}
 {{ range .LaunchWords }}{{ . }} {{ end }}{{ range .ContainerWords }}{{ . }} {{ end }}{{ range .EnvPrefix }}{{ . }} {{ end }}{{ if .HasPayload }}{{ q .Interpreter }} "$CUSTOS_JOB_DIR/payload"{{ end }}{{ range $i, $a := .Argv }}{{ if or $i $.HasPayload }} {{ end }}{{ $a }}{{ end }}
 `
@@ -107,6 +110,7 @@ type wrapperData struct {
 	WorkingDir        string
 	LaunchWords       []SafeToken
 	ContainerWords    []string // pre-quoted shell words built by Custos
+	ImagePullSetup    []string // Custos-authored setup lines for one-time image pulls
 	EnvPrefix         []string
 	RshContainerWords []string
 	RshEnvPrefix      []string
@@ -223,6 +227,9 @@ func containerEnvNames(spec admission.ExecutionSpec) ([]string, error) {
 		set[name] = true
 	}
 	for _, ref := range spec.Environment.SecretRefs {
+		if ref.Mode == "image_pull" {
+			continue
+		}
 		if _, err := safeToken(ref.Name); err != nil {
 			return nil, err
 		}
@@ -253,11 +260,19 @@ func apptainerWords(container *admission.ContainerSpec) []string {
 	if binary == "" {
 		binary = "apptainer"
 	}
-	return []string{q(binary), q("exec"), q("--no-eval"), q("--bind"), `"$CUSTOS_JOB_DIR"`, q(container.Image)}
+	image := q(container.Image)
+	if container.PullSecret {
+		image = `"$CUSTOS_JOB_DIR/image.sif"`
+	}
+	return []string{q(binary), q("exec"), q("--no-eval"), q("--bind"), `"$CUSTOS_JOB_DIR"`, image}
 }
 
 func pyxisWords(spec admission.ExecutionSpec) ([]string, error) {
-	words := []string{"--container-image=" + q(spec.Container.Image),
+	image := "--container-image=" + q(spec.Container.Image)
+	if spec.Container.PullSecret {
+		image = `--container-image="$CUSTOS_JOB_DIR/image.sqsh"`
+	}
+	words := []string{image,
 		`--container-mounts="$CUSTOS_JOB_DIR:$CUSTOS_JOB_DIR"`}
 	names, err := containerEnvNames(spec)
 	if err != nil {
@@ -267,6 +282,88 @@ func pyxisWords(spec admission.ExecutionSpec) ([]string, error) {
 		words = append(words, "--container-env="+q(strings.Join(names, ",")))
 	}
 	return words, nil
+}
+
+func imagePullUsernameValue(container *admission.ContainerSpec) (string, error) {
+	if container.PullUsernameSecret {
+		return fmt.Sprintf("\"$%s\"", admission.ImagePullUsernameEnvName), nil
+	}
+	if container.PullUsername == "" {
+		return "", apperr.New(apperr.Internal, "INTERNAL",
+			"submission: image pull secret has no username")
+	}
+	return q(container.PullUsername), nil
+}
+
+func enrootCredentialLines(host, usernameValue string, first bool) []string {
+	op := ">>"
+	if first {
+		op = ">"
+	}
+	return []string{
+		fmt.Sprintf("printf 'machine %%s login ' %s %s \"$creds_dir/.credentials\"", q(host), op),
+		fmt.Sprintf(`printf '%%s' %s >> "$creds_dir/.credentials"`, usernameValue),
+		`printf '%s' ' password ' >> "$creds_dir/.credentials"`,
+		fmt.Sprintf(`printf '%%s' "$%s" >> "$creds_dir/.credentials"`, admission.ImagePullPasswordEnvName),
+		`printf '\n' >> "$creds_dir/.credentials"`,
+	}
+}
+
+func imagePullSetup(spec admission.ExecutionSpec) ([]string, error) {
+	container := spec.Container
+	if container == nil || !container.PullSecret {
+		return nil, nil
+	}
+	username, err := imagePullUsernameValue(container)
+	if err != nil {
+		return nil, err
+	}
+	lines := make([]string, 0, 20)
+	switch container.Runtime {
+	case "apptainer":
+		binary := container.Binary
+		if binary == "" {
+			binary = "apptainer"
+		}
+		lines = append(lines, fmt.Sprintf(
+			`APPTAINER_DOCKER_USERNAME=%s APPTAINER_DOCKER_PASSWORD="$%s" %s pull --disable-cache "$CUSTOS_JOB_DIR/image.sif" %s`,
+			username, admission.ImagePullPasswordEnvName, q(binary), q(container.Image)))
+		lines = append(lines, fmt.Sprintf("unset %s %s",
+			admission.ImagePullUsernameEnvName, admission.ImagePullPasswordEnvName))
+	case "pyxis":
+		if container.RegistryHost == "" || container.EnrootImage == "" {
+			return nil, apperr.New(apperr.Internal, "INTERNAL",
+				"submission: Pyxis pull configuration is incomplete")
+		}
+		hosts := []string{container.RegistryHost}
+		if container.RegistryHost == "docker.io" {
+			hosts = []string{"auth.docker.io", "registry-1.docker.io"}
+		}
+		lines = append(lines,
+			"umask 077",
+			`creds_dir=$(mktemp -d "${TMPDIR:-/tmp}/custos-enroot.XXXXXX")`,
+			`chmod 0700 "$creds_dir"`,
+		)
+		for i, host := range hosts {
+			lines = append(lines, enrootCredentialLines(host, username, i == 0)...)
+		}
+		lines = append(lines,
+			`chmod 0600 "$creds_dir/.credentials"`,
+			fmt.Sprintf(`if ! ENROOT_CONFIG_PATH="$creds_dir" 'enroot' 'import' '-o' "$CUSTOS_JOB_DIR/image.sqsh" %s; then`,
+				q(container.EnrootImage)),
+			`  printf '%s\n' 'Custos: failed to import authenticated image with enroot' >&2`,
+			`  exit 1`,
+			`fi`,
+			`rm -rf "$creds_dir"`,
+			`creds_dir=`,
+			fmt.Sprintf("unset %s %s",
+				admission.ImagePullUsernameEnvName, admission.ImagePullPasswordEnvName),
+		)
+	default:
+		return nil, apperr.New(apperr.Internal, "INTERNAL",
+			"submission: unsupported pull-secret runtime")
+	}
+	return lines, nil
 }
 
 func containerEnvPrefix(spec admission.ExecutionSpec) ([]string, error) {
@@ -347,6 +444,10 @@ func Wrapper(spec admission.ExecutionSpec, payload []byte) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	pullSetup, err := imagePullSetup(spec)
+	if err != nil {
+		return "", err
+	}
 	varsToExport := []map[string]string{spec.Environment.Controlled}
 	if spec.Container == nil {
 		varsToExport = append(varsToExport, spec.Environment.User)
@@ -416,6 +517,7 @@ func Wrapper(spec admission.ExecutionSpec, payload []byte) (string, error) {
 		WorkingDir:        spec.WorkingDir,
 		LaunchWords:       launcherWords,
 		ContainerWords:    containerPrefix,
+		ImagePullSetup:    pullSetup,
 		EnvPrefix:         envPrefix,
 		RshContainerWords: rshPrefix,
 		RshEnvPrefix:      rshEnvPrefix,

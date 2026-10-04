@@ -216,7 +216,7 @@ func deliverSecrets(ctx context.Context, d Deps, j jobs.Job,
 		}
 		values = append(values, out.Value)
 		switch ref.Mode {
-		case "env":
+		case "env", "image_pull":
 			sub.Environment[ref.Name] = string(out.Value.Reveal())
 		case "wrapped_token":
 			prefix := strings.TrimSuffix(ref.Name, "_WRAP_TOKEN")

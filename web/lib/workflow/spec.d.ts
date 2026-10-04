@@ -88,7 +88,7 @@ export interface Defaults {
  */
 export interface SecretUse {
   ref: string;
-  use: "env" | "wrapped_token";
+  use: "env" | "wrapped_token" | "image_pull";
   envName?: string;
 }
 /**
@@ -184,6 +184,16 @@ export interface GpuRequest {
  */
 export interface Image {
   uri: string;
+  pullSecret?: ImagePullSecret;
+}
+/**
+ * This interface was referenced by `CustosWorkflow`'s JSON-Schema
+ * via the `definition` "imagePullSecret".
+ */
+export interface ImagePullSecret {
+  username?: string;
+  usernameSecret?: string;
+  passwordSecret: string;
 }
 /**
  * This interface was referenced by `CustosWorkflow`'s JSON-Schema

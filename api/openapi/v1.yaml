@@ -2938,7 +2938,16 @@ paths:
     patch:
       operationId: updateSecretReference
       security: [{bearerAuth: []}]
-      requestBody: {required: true, content: {application/json: {schema: {type: object}}}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                allowed_uses:
+                  type: array
+                  items: {type: string, enum: [workflow_env, wrapped_token, image_pull]}
       responses: {"200": {description: Reference updated, content: {application/json: {schema: {$ref: "#/components/schemas/SecretReference"}}}}}
     delete:
       operationId: deleteSecretReference
@@ -3856,7 +3865,7 @@ components:
           description: SecretReference name in the tenant.
         use:
           type: string
-          enum: [env, wrapped_token]
+          enum: [env, wrapped_token, image_pull]
         envName:
           type: string
           pattern: "^[A-Z_][A-Z0-9_]*$"
@@ -3949,7 +3958,9 @@ components:
         key: {type: string}
         secret_version: {type: [integer, "null"], minimum: 1}
         kind: {type: string, enum: [ssh_key, slurm_token, api_token, generic, storage_credential]}
-        allowed_uses: {type: array, items: {type: string}}
+        allowed_uses:
+          type: array
+          items: {type: string, enum: [workflow_env, wrapped_token, image_pull]}
         version: {type: integer, format: int64}
         created_at: {type: string, format: date-time}
         updated_at: {type: string, format: date-time}
@@ -3973,7 +3984,9 @@ components:
         key: {type: string}
         secret_version: {type: integer, minimum: 1}
         kind: {type: string, enum: [ssh_key, slurm_token, api_token, generic, storage_credential]}
-        allowed_uses: {type: array, items: {type: string}}
+        allowed_uses:
+          type: array
+          items: {type: string, enum: [workflow_env, wrapped_token, image_pull]}
 
     SecretRef:
       type: object

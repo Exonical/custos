@@ -10,7 +10,10 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
+	"github.com/Exonical/custos/internal/admission"
 	"github.com/Exonical/custos/internal/validation"
 	"github.com/Exonical/custos/internal/workflowspec"
 	"github.com/Exonical/custos/internal/workflowspec/expr"
@@ -46,6 +49,75 @@ func validImageURI(uri string) bool {
 		}
 	}
 	return true
+}
+
+func validPullUsername(username string) bool {
+	if utf8.RuneCountInString(username) > 256 {
+		return false
+	}
+	for _, r := range username {
+		if unicode.IsControl(r) || unicode.IsSpace(r) {
+			return false
+		}
+	}
+	return username != ""
+}
+
+func checkImagePullSecret(task workflowspec.Task, base string,
+	secrets map[string]workflowspec.SecretUse, used map[string]bool,
+) []FieldError {
+	if task.Image == nil || task.Image.PullSecret == nil {
+		return nil
+	}
+	pull := task.Image.PullSecret
+	path := base + ".image.pullSecret"
+	var errs []FieldError
+	if task.Image.URI == "" {
+		errs = append(errs, fe(path, "PULL_SECRET_REQUIRES_IMAGE",
+			"pullSecret requires an image URI"))
+	} else if !strings.HasPrefix(task.Image.URI, "docker://") &&
+		!strings.HasPrefix(task.Image.URI, "oras://") {
+		errs = append(errs, fe(path, "PULL_SECRET_INVALID",
+			"pullSecret requires a docker:// or oras:// image URI"))
+	}
+	if (pull.Username == "") == (pull.UsernameSecret == "") {
+		errs = append(errs, fe(path, "PULL_SECRET_INVALID",
+			"exactly one of username or usernameSecret is required"))
+	}
+	if pull.Username != "" && !validPullUsername(pull.Username) {
+		errs = append(errs, fe(path+".username", "PULL_SECRET_INVALID",
+			"literal username must be at most 256 characters with no whitespace or control characters"))
+	}
+	if pull.PasswordSecret == "" {
+		errs = append(errs, fe(path+".passwordSecret", "PULL_SECRET_INVALID",
+			"passwordSecret is required"))
+	}
+	for _, ref := range []struct{ field, handle string }{
+		{"usernameSecret", pull.UsernameSecret},
+		{"passwordSecret", pull.PasswordSecret},
+	} {
+		field, handle := ref.field, ref.handle
+		if handle == "" {
+			continue
+		}
+		used[handle] = true
+		use, ok := secrets[handle]
+		if !ok || use.Use != "image_pull" {
+			errs = append(errs, fe(path+"."+field, "PULL_SECRET_INVALID",
+				"secret handle must be declared with use: image_pull"))
+		}
+	}
+	multiNode := task.Multinode != nil || task.Resources.Nodes > 1
+	if !multiNode {
+		if resolved, resourceErrs := task.ResolveResources(base + ".resources"); len(resourceErrs) == 0 {
+			multiNode = resolved.Nodes > 1
+		}
+	}
+	if multiNode {
+		errs = append(errs, fe(path, "PULL_SECRET_MULTINODE_UNSUPPORTED",
+			"pullSecret is only supported for single-node tasks"))
+	}
+	return errs
 }
 
 func multinodeImplementation(task workflowspec.Task) string {
@@ -146,11 +218,28 @@ func checkDocument(w workflowspec.Workflow) []FieldError {
 	for i, task := range w.Spec.Tasks {
 		for name := range task.Env {
 			if strings.HasPrefix(name, "CUSTOS_SECRET_") || name == "CUSTOS_BAO_ADDR" ||
-				name == "CUSTOS_BAO_NAMESPACE" {
+				name == "CUSTOS_BAO_NAMESPACE" ||
+				name == admission.ImagePullUsernameEnvName ||
+				name == admission.ImagePullPasswordEnvName {
 				errs = append(errs, fe(fmt.Sprintf("spec.tasks[%d].env.%s", i, name),
 					"SECRET_ENV_CONTROLLED", "environment name is reserved for secret delivery"))
 			}
 		}
+	}
+	if w.Spec.Defaults != nil {
+		for name := range w.Spec.Defaults.Env {
+			if name == admission.ImagePullUsernameEnvName ||
+				name == admission.ImagePullPasswordEnvName {
+				errs = append(errs, fe("spec.defaults.env."+name,
+					"SECRET_ENV_CONTROLLED", "environment name is reserved for image pull secret delivery"))
+			}
+		}
+	}
+	usedImagePullSecrets := map[string]bool{}
+	for i, task := range w.Spec.Tasks {
+		errs = append(errs, checkImagePullSecret(task,
+			fmt.Sprintf("spec.tasks[%d]", i), w.Spec.Secrets,
+			usedImagePullSecrets)...)
 	}
 	for handle, use := range w.Spec.Secrets {
 		base := "spec.secrets." + handle
@@ -158,15 +247,19 @@ func checkDocument(w workflowspec.Workflow) []FieldError {
 			errs = append(errs, fe(base+".ref", "SECRET_REFERENCE_REQUIRED",
 				"secret reference name is required"))
 		}
-		if use.Use != "env" && use.Use != "wrapped_token" {
+		if use.Use != "env" && use.Use != "wrapped_token" && use.Use != "image_pull" {
 			errs = append(errs, fe(base+".use", "SECRET_USE_INVALID",
-				"secret use must be env or wrapped_token"))
+				"secret use must be env, wrapped_token, or image_pull"))
 			continue
 		}
-		if use.Use == "wrapped_token" && use.EnvName != "" {
+		if use.Use != "env" && use.EnvName != "" {
 			errs = append(errs, fe(base+".envName", "SECRET_ENV_NAME_UNUSED",
 				"envName is only valid with use: env"))
 			continue
+		}
+		if use.Use == "image_pull" && !usedImagePullSecrets[handle] {
+			errs = append(errs, fe(base+".use", "SECRET_USE_UNUSED",
+				"image_pull secret handles must be referenced by an image.pullSecret"))
 		}
 		if use.Use != "env" {
 			continue

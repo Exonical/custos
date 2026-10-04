@@ -71,9 +71,16 @@ type ResolvedSoftware struct {
 type SecretEnvRef struct {
 	Name        string    `json:"name"`
 	ReferenceID uuid.UUID `json:"reference_id"`
-	Mode        string    `json:"mode"` // env | wrapped_token
+	Mode        string    `json:"mode"` // env | wrapped_token | image_pull
 	Handle      string    `json:"handle"`
 }
+
+const (
+	// ImagePullUsernameEnvName is the internal username slot for a secret pull.
+	ImagePullUsernameEnvName = "CUSTOS_IMAGE_PULL_USERNAME"
+	// ImagePullPasswordEnvName is the internal password slot for a secret pull.
+	ImagePullPasswordEnvName = "CUSTOS_IMAGE_PULL_PASSWORD" // #nosec G101 -- environment-variable name, not a credential
+)
 
 // EnvSet is the classified environment.
 type EnvSet struct {
@@ -167,9 +174,14 @@ type Result struct {
 
 // ContainerSpec freezes the cluster-selected image runtime.
 type ContainerSpec struct {
-	Runtime string `json:"runtime"`
-	Image   string `json:"image"`
-	Binary  string `json:"binary,omitempty"`
+	Runtime            string `json:"runtime"`
+	Image              string `json:"image"`
+	Binary             string `json:"binary,omitempty"`
+	PullSecret         bool   `json:"pull_secret,omitempty"`
+	PullUsername       string `json:"pull_username,omitempty"`
+	PullUsernameSecret bool   `json:"pull_username_secret,omitempty"`
+	RegistryHost       string `json:"registry_host,omitempty"`
+	EnrootImage        string `json:"enroot_image,omitempty"`
 }
 
 // MultinodeSpec freezes the distributed launcher shape.

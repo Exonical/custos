@@ -274,6 +274,179 @@ spec: { tasks: [{name: a, command: ["true"], resources: {memory: 1GiB, memoryPer
 	t.Fatalf("MEMORY_CONFLICT not found in %+v", errs)
 }
 
+func TestImagePullSecretStaticValidation(t *testing.T) {
+	valid := wf(t, `
+apiVersion: custos.io/v1alpha1
+kind: Workflow
+metadata: {name: pull}
+spec:
+  secrets:
+    user: {ref: registry-user, use: image_pull}
+    token: {ref: registry-token, use: image_pull}
+  tasks:
+    - name: run
+      image:
+        uri: docker://registry.example.com/team/app:1.2
+        pullSecret: {usernameSecret: user, passwordSecret: token}
+      command: ["true"]
+    - name: array-run
+      image:
+        uri: docker://registry.example.com/team/app:1.2
+        pullSecret: {username: "robot$ci", passwordSecret: token}
+      array: {start: 0, end: 2}
+      command: ["true"]
+`)
+	if errs := validate.Static(valid); len(errs) != 0 {
+		t.Fatalf("valid image pull secret/array spec rejected: %+v", errs)
+	}
+	for _, username := range []string{strings.Repeat("x", 257), "robot\nci"} {
+		invalid := workflowspec.Workflow{
+			APIVersion: workflowspec.APIVersionV1Alpha1,
+			Kind:       workflowspec.KindWorkflow,
+			Metadata:   workflowspec.Metadata{Name: "pull"},
+			Spec: workflowspec.Spec{
+				Secrets: map[string]workflowspec.SecretUse{
+					"token": {Ref: "registry-token", Use: "image_pull"},
+				},
+				Tasks: []workflowspec.Task{{
+					Name:    "run",
+					Command: []string{"true"},
+					Image: &workflowspec.Image{
+						URI: "docker://registry.example.com/team/app:1.2",
+						PullSecret: &workflowspec.ImagePullSecret{
+							Username: username, PasswordSecret: "token",
+						},
+					},
+				}},
+			},
+		}
+		if errs := validate.Static(invalid); !hasCode(errs, "PULL_SECRET_INVALID") {
+			t.Fatalf("invalid literal username %q accepted: %+v", username, errs)
+		}
+	}
+
+	tests := []struct {
+		name string
+		yaml string
+		code string
+	}{
+		{
+			name: "bad literal username",
+			yaml: `
+apiVersion: custos.io/v1alpha1
+kind: Workflow
+metadata: {name: pull}
+spec:
+  secrets: {token: {ref: registry-token, use: image_pull}}
+  tasks: [{name: run, image: {uri: "docker://registry.example.com/team/app:1.2", pullSecret: {username: "bad user", passwordSecret: token}}, command: ["true"]}]
+`,
+			code: "PULL_SECRET_INVALID",
+		},
+		{
+			name: "both username forms",
+			yaml: `
+apiVersion: custos.io/v1alpha1
+kind: Workflow
+metadata: {name: pull}
+spec:
+  secrets: {token: {ref: registry-token, use: image_pull}, user: {ref: registry-user, use: image_pull}}
+  tasks: [{name: run, image: {uri: "docker://registry.example.com/team/app:1.2", pullSecret: {username: robot, usernameSecret: user, passwordSecret: token}}, command: ["true"]}]
+`,
+			code: "PULL_SECRET_INVALID",
+		},
+		{
+			name: "missing password secret",
+			yaml: `
+apiVersion: custos.io/v1alpha1
+kind: Workflow
+metadata: {name: pull}
+spec:
+  tasks: [{name: run, image: {uri: "docker://registry.example.com/team/app:1.2", pullSecret: {username: robot}}, command: ["true"]}]
+`,
+			code: "PULL_SECRET_INVALID",
+		},
+		{
+			name: "pull secret without image URI",
+			yaml: `
+apiVersion: custos.io/v1alpha1
+kind: Workflow
+metadata: {name: pull}
+spec:
+  secrets: {token: {ref: registry-token, use: image_pull}}
+  tasks: [{name: run, image: {uri: "", pullSecret: {username: robot, passwordSecret: token}}, command: ["true"]}]
+`,
+			code: "PULL_SECRET_REQUIRES_IMAGE",
+		},
+		{
+			name: "absolute image path",
+			yaml: `
+apiVersion: custos.io/v1alpha1
+kind: Workflow
+metadata: {name: pull}
+spec:
+  secrets: {token: {ref: registry-token, use: image_pull}}
+  tasks: [{name: run, image: {uri: "/images/app.sif", pullSecret: {username: robot, passwordSecret: token}}, command: ["true"]}]
+`,
+			code: "PULL_SECRET_INVALID",
+		},
+		{
+			name: "password secret uses wrong mode",
+			yaml: `
+apiVersion: custos.io/v1alpha1
+kind: Workflow
+metadata: {name: pull}
+spec:
+  secrets: {token: {ref: registry-token, use: env, envName: TOKEN}}
+  tasks: [{name: run, image: {uri: "docker://registry.example.com/team/app:1.2", pullSecret: {username: robot, passwordSecret: token}}, command: ["true"]}]
+`,
+			code: "PULL_SECRET_INVALID",
+		},
+		{
+			name: "multinode",
+			yaml: `
+apiVersion: custos.io/v1alpha1
+kind: Workflow
+metadata: {name: pull}
+spec:
+  secrets: {token: {ref: registry-token, use: image_pull}}
+  tasks: [{name: run, image: {uri: "docker://registry.example.com/team/app:1.2", pullSecret: {username: robot, passwordSecret: token}}, multinode: {nodes: 2, implementation: generic}, resources: {cpu: 2, walltime: 5m}, command: ["true"]}]
+`,
+			code: "PULL_SECRET_MULTINODE_UNSUPPORTED",
+		},
+		{
+			name: "resources nodes greater than one",
+			yaml: `
+apiVersion: custos.io/v1alpha1
+kind: Workflow
+metadata: {name: pull}
+spec:
+  secrets: {token: {ref: registry-token, use: image_pull}}
+  tasks: [{name: run, image: {uri: "docker://registry.example.com/team/app:1.2", pullSecret: {username: robot, passwordSecret: token}}, resources: {nodes: 2, walltime: 5m}, command: ["true"]}]
+`,
+			code: "PULL_SECRET_MULTINODE_UNSUPPORTED",
+		},
+		{
+			name: "unused image pull secret",
+			yaml: `
+apiVersion: custos.io/v1alpha1
+kind: Workflow
+metadata: {name: pull}
+spec:
+  secrets: {token: {ref: registry-token, use: image_pull}}
+  tasks: [{name: run, command: ["true"]}]
+`,
+			code: "SECRET_USE_UNUSED",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if errs := validate.Static(wf(t, tc.yaml)); !hasCode(errs, tc.code) {
+				t.Fatalf("want %s: %+v", tc.code, errs)
+			}
+		})
+	}
+}
+
 func TestTasksRefAncestorOK(t *testing.T) {
 	w := wf(t, `
 apiVersion: custos.io/v1alpha1

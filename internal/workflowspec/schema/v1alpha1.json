@@ -86,7 +86,7 @@
       "additionalProperties": false,
       "properties": {
         "ref": {"type": "string"},
-        "use": {"enum": ["env", "wrapped_token"]},
+        "use": {"enum": ["env", "wrapped_token", "image_pull"]},
         "envName": {"type": "string"}
       }
     },
@@ -195,7 +195,18 @@
           "maxLength": 512,
           "pattern": "^(docker|oras)://[A-Za-z0-9._/:@+-]+$|^/[A-Za-z0-9._/+-]+$",
           "not": {"pattern": "(^|/)\\.\\.(?:/|$)"}
-        }
+        },
+        "pullSecret": {"$ref": "#/$defs/imagePullSecret"}
+      }
+    },
+    "imagePullSecret": {
+      "type": "object",
+      "required": ["passwordSecret"],
+      "additionalProperties": false,
+      "properties": {
+        "username": {"type": "string", "minLength": 1, "maxLength": 256},
+        "usernameSecret": {"type": "string", "minLength": 1},
+        "passwordSecret": {"type": "string", "minLength": 1}
       }
     },
     "multinode": {

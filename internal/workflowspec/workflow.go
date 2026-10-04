@@ -172,7 +172,7 @@ func validEnvName(name string) bool {
 // SecretUse binds a SecretReference to a consumption mode.
 type SecretUse struct {
 	Ref     string `json:"ref"`
-	Use     string `json:"use"` // env | wrapped_token
+	Use     string `json:"use"` // env | wrapped_token | image_pull
 	EnvName string `json:"envName,omitempty"`
 }
 
@@ -221,7 +221,15 @@ type Output struct {
 
 // Image identifies an optional task container image.
 type Image struct {
-	URI string `json:"uri"`
+	URI        string           `json:"uri"`
+	PullSecret *ImagePullSecret `json:"pullSecret,omitempty"`
+}
+
+// ImagePullSecret selects workflow SecretReferences for a one-time image pull.
+type ImagePullSecret struct {
+	Username       string `json:"username,omitempty"`
+	UsernameSecret string `json:"usernameSecret,omitempty"`
+	PasswordSecret string `json:"passwordSecret"`
 }
 
 // Multinode selects a distributed task launcher and node shape.

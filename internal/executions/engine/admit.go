@@ -130,6 +130,56 @@ func denyFail(reason, field, msg string) *denyError {
 		"stage": reason, "field": field, "message": msg}}
 }
 
+func freezeImagePullSecretRefs(pull *workflowspec.ImagePullSecret,
+	uses map[string]workflowspec.SecretUse,
+	infos map[string]wfvalidate.SecretReferenceInfo,
+) ([]admission.SecretEnvRef, *denyError) {
+	if pull == nil {
+		return nil, nil
+	}
+	var refs []admission.SecretEnvRef
+	add := func(handle, name, field string) *denyError {
+		use, ok := uses[handle]
+		if !ok || use.Use != "image_pull" {
+			return denyFail("PULL_SECRET_INVALID", field,
+				"secret handle must be declared with use: image_pull")
+		}
+		info, ok := infos[handle]
+		if !ok {
+			return denyFail("SECRET_REFERENCE_NOT_FOUND", field,
+				"secret reference metadata is unavailable")
+		}
+		if info.Kind != "generic" {
+			return denyFail("PULL_SECRET_INVALID", field,
+				"image_pull requires a generic secret reference")
+		}
+		if !slices.Contains(info.AllowedUses, "image_pull") {
+			return denyFail("SECRET_USE_NOT_ALLOWED", field,
+				"reference does not allow image_pull")
+		}
+		id, err := uuid.Parse(info.ID)
+		if err != nil {
+			return denyFail("SECRET_REFERENCE_NOT_FOUND", field,
+				"secret reference id invalid")
+		}
+		refs = append(refs, admission.SecretEnvRef{
+			Name: name, ReferenceID: id, Mode: "image_pull", Handle: handle,
+		})
+		return nil
+	}
+	if pull.UsernameSecret != "" {
+		if err := add(pull.UsernameSecret, admission.ImagePullUsernameEnvName,
+			"image.pullSecret.usernameSecret"); err != nil {
+			return nil, err
+		}
+	}
+	if err := add(pull.PasswordSecret, admission.ImagePullPasswordEnvName,
+		"image.pullSecret.passwordSecret"); err != nil {
+		return nil, err
+	}
+	return refs, nil
+}
+
 func asDeny(err error, out **denyError) bool {
 	if de, ok := err.(*denyError); ok {
 		*out = de
@@ -216,9 +266,22 @@ func admitTask(ctx context.Context, d Deps,
 			ReferenceID: id, Mode: use.Use, Handle: handle})
 		wrapped = append(wrapped, handle)
 	}
+	var pullSecret *workflowspec.ImagePullSecret
+	if st.Image != nil {
+		pullSecret = st.Image.PullSecret
+	}
+	pullSecretRefs, pullErr := freezeImagePullSecretRefs(
+		pullSecret, spec.Spec.Secrets, secretInfo)
+	if pullErr != nil {
+		return pullErr
+	}
+	env.SecretRefs = append(env.SecretRefs, pullSecretRefs...)
 	slices.Sort(wrapped)
 	slices.SortFunc(env.SecretRefs, func(a, b admission.SecretEnvRef) int {
-		return strings.Compare(a.Handle, b.Handle)
+		if cmp := strings.Compare(a.Handle, b.Handle); cmp != 0 {
+			return cmp
+		}
+		return strings.Compare(a.Name, b.Name)
 	})
 	literal := func(src, field string) (string, error) {
 		return renderLiteral(src, sc, field)

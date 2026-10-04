@@ -62,6 +62,7 @@ func TestSchemaCoversSpec(t *testing.T) {
 		"arraySpec":           reflect.TypeOf(workflowspec.ArraySpecYAML{}),
 		"scriptRef":           reflect.TypeOf(workflowspec.ScriptRef{}),
 		"image":               reflect.TypeOf(workflowspec.Image{}),
+		"imagePullSecret":     reflect.TypeOf(workflowspec.ImagePullSecret{}),
 		"multinode":           reflect.TypeOf(workflowspec.Multinode{}),
 		"softwareRequirement": reflect.TypeOf(workflowspec.SoftwareRequirement{}),
 		"task":                reflect.TypeOf(workflowspec.Task{}),

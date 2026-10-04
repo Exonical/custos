@@ -472,16 +472,20 @@ own process environment is never consulted. Classes:
 | --- | --- | --- | --- |
 | Controlled | Custos | `CUSTOS_*`, `SLURM_*`, `SBATCH_*`, `SRUN_*`, `SALLOC_*`, `MULTINODE_*`, `APPTAINER*`, `SINGULARITY*`, `PYXIS_*`, `ENROOT_*`, `PATH` (host), `HOME`, `USER`, `TMPDIR` | set by Custos/Slurm/runtime; user values rejected `CUSTOS301` |
 | Generated | Software catalog | vars from `ResolvedSoftware` (e.g. `OMPI_MCA_*` defaults) | user cannot override `CUSTOS302` |
-| Secret-injected | `SecretReference` | declared `secrets.<handle>` using env or wrapped-token mode; only reference UUID/name/mode/handle enter `ExecutionSpec`; values are resolved directly into the scheduler request | |
+| Secret-injected | `SecretReference` | declared `secrets.<handle>` using env, wrapped-token, or image-pull mode; only reference UUID/name/mode/handle enter `ExecutionSpec`; values are resolved directly into the scheduler request | |
 | Filtered | policy | default-denied names; tenant policy may allow specific ones: `LD_PRELOAD`, `LD_AUDIT`, `LD_LIBRARY_PATH`, `LD_DEBUG*`, `GLIBC_TUNABLES`, `BASH_ENV`, `ENV`, `PROMPT_COMMAND`, `SHELLOPTS`, `PYTHONSTARTUP`, `PYTHONHOME`, `PERL5OPT`, `RUBYOPT`, `NODE_OPTIONS`, `JAVA_TOOL_OPTIONS`, `*_PROXY`/`*_proxy`, `CUDA_VISIBLE_DEVICES`, `ROCR_VISIBLE_DEVICES`, `OMPI_*`, `PMIX_*`, `I_MPI_*`, `UCX_*`, `NCCL_*` | `CUSTOS303 variable is filtered by policy` |
 | User-configurable | task `env` | everything else | name `^[A-Za-z_][A-Za-z0-9_]*$`, ≤ 128 chars; value ≤ 32 KiB, no NUL/CR/LF; total ≤ 256 KiB |
+
+`image_pull` references are consumed only by `image.pullSecret`; they are
+never added to the task or container environment.
 
 For an image task only, `PATH` and `LD_LIBRARY_PATH` are reclassified as
 user-configurable; other controlled and filtered names remain protected.
 Apptainer and Pyxis pass user values through `/usr/bin/env KEY=VALUE` inside
 the container, so images must include `/usr/bin/env`. Pyxis `--container-env`
-is reserved for runtime, secret, and `MULTINODE_*` names whose host-provided
-values must override image defaults. In both cases user environment values are
+is reserved for runtime, env/wrapped-secret, and `MULTINODE_*` names whose
+host-provided values must override image defaults. `image_pull` references are
+never included in the container environment. In both cases user environment values are
 omitted from `JobSubmission.Environment` and never exported on the host;
 controlled, runtime, and secret values remain host-side.
 
@@ -716,7 +720,7 @@ persistence, M8 for UI):
 | --- | --- |
 | M4 Jobs (delivered) | `scripts` storage + digests; `shsyntax`; `sbatchscan` (reject mode); `envcheck`; `admission.ExecutionSpec`; `submission` wrapper; invariant + bypass tests; the secure job submission path (`job.submit/reconcile/cancel`, `jobs.sweep`). A batch job cannot be submitted without them. Until M5 persists `ValidationPolicy`, the submission path applies the hardcoded default `{BlockAt: ERROR}` — `POLICY`/`SECURITY` severities are immutable regardless. |
 | M5 Workflows (delivered) | Durable validation pipeline (`internal/validation/pipeline`) with persisted `script_validations`; `validation_policies` at tenant + cluster scope (optimistic version, stricter-than-cluster merge, per-scope `shellcheckShell`, `allowShellTasks`, `unavailable_severity`); the loopback-only ShellCheck sidecar (`custos-validator`, `POST /v1/shellcheck` → `{"version","result"}`); ad-hoc `scripts/validate` + `scripts/import-sbatch` routes and validation-policy routes; task-level `validate`, `import-sbatch` and `preview-submission` endpoints on workflow versions; `ADMITTING` realized as the `task.admit` work item (currency check → `ExecutionSpec` freeze → linked `jobs` row + `job.submit` in one transaction); the publish gate (`Publish` 422s when any task lacks a current `ScriptValidation`, including after draft edits — currency is keyed by `input_hash`, an FNV-64a of the canonical validation input persisted on `script_validations`); `jobs.script_validation_id`. Implementation refinements: `ScriptValidation.PolicyVersion` is the FNV-64a fingerprint of the effective policy (canonical JSON); `disabledCodes` may not contain any `CUSTOS*` code because Custos-origin severity is known and never disableable; the pipeline keeps a 10-minute, 1024-entry cache keyed by (tenant, digest, policy fingerprint, input hash); a hit reuses the diagnostics but mints a fresh `ScriptValidation` (new ID, request's `WorkflowVersionID`/`TaskName`) so each persisted row is its own run. `unavailable_severity` only softens external (sidecar) validators; in-process validator failures always stay ERROR. **Not delivered in M5** (M8): the ValidationPolicy UI — policies are API-only today. |
-| M6 Secrets (delivered) | Tenant connectors and SecretReferences; publish/execute/ad-hoc authorization; metadata-only `Environment.SecretRefs` and `Security.WrappedTokenRefs`; submit-time env resolution with wiping/retry semantics; platform-OpenBao response-wrapped, per-reference child tokens; value-free preview/audit/metrics. |
+| M6 Secrets (delivered) | Tenant connectors and SecretReferences; publish/execute/ad-hoc authorization; metadata-only `Environment.SecretRefs` and `Security.WrappedTokenRefs`; submit-time env and image-pull resolution with wiping/retry semantics; platform-OpenBao response-wrapped, per-reference child tokens; value-free preview/audit/metrics. |
 | M7 Accounting/Policy | `softwareenv` catalog sync; `policy.sync` to slurmdbd associations |
 | M8 UI | Monaco editor, Resources/Problems panels, preview tab, import UX |
 | Later | Python (`ruff`/AST), PowerShell, staged payload files, external PDP hooks in admission |

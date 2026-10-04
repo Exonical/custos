@@ -129,6 +129,18 @@ type UpdateReference struct {
 	Version       int64       `json:"version"`
 }
 
+func validateAllowedUses(uses []string) error {
+	for _, use := range uses {
+		switch use {
+		case "workflow_env", "wrapped_token", "image_pull":
+		default:
+			return apperr.New(apperr.Validation, "SECRET_ALLOWED_USE_INVALID",
+				"allowed_uses entries must be workflow_env, wrapped_token, or image_pull")
+		}
+	}
+	return nil
+}
+
 func resource(tid uuid.UUID, owner *uuid.UUID) authz.Resource {
 	r := authz.Resource{Kind: "secret-reference", TenantID: tid.String()}
 	if owner != nil {
@@ -407,6 +419,9 @@ func (s *Service) CreateReference(ctx context.Context, p authn.Principal, tc ten
 	if !slices.Contains(kinds, in.Kind) {
 		return Reference{}, apperr.New(apperr.Validation, "SECRET_KIND_INVALID", "invalid secret kind")
 	}
+	if err := validateAllowedUses(in.AllowedUses); err != nil {
+		return Reference{}, err
+	}
 	connector := in.Connector
 	if connector == "" {
 		connector = "default"
@@ -523,6 +538,9 @@ func (s *Service) UpdateReference(ctx context.Context, p authn.Principal, tc ten
 	}
 	if in.AllowedUses != nil {
 		x.AllowedUses = *in.AllowedUses
+		if err := validateAllowedUses(x.AllowedUses); err != nil {
+			return x, err
+		}
 	}
 	x.Version = in.Version
 	if err := s.repo.UpdateReference(ctx, tenants.ScopeFor(&tc), x); err != nil {
@@ -668,7 +686,7 @@ func (s *Service) deliveryResult(ctx context.Context, req DeliveryRequest,
 		Result: result, Details: details})
 }
 
-// Deliver resolves an env value or mints a wrapped token immediately before submit.
+// Deliver resolves an env/image-pull value or mints a wrapped token before submit.
 func (s *Service) Deliver(ctx context.Context, req DeliveryRequest) (DeliveredSecret, error) {
 	x, err := s.repo.GetReference(ctx, tenants.TenantScope(req.TenantID),
 		req.TenantID, req.ReferenceID.String())
@@ -686,6 +704,13 @@ func (s *Service) Deliver(ctx context.Context, req DeliveryRequest) (DeliveredSe
 		Namespace: x.Namespace, Path: x.Mount + "/data/" + x.Path, Key: x.Key}
 	switch req.Mode {
 	case "env":
+		out.Value, err = s.runtime.Resolve(ctx, req.TenantID, x)
+	case "image_pull":
+		if x.Kind != "generic" || !slices.Contains(x.AllowedUses, "image_pull") {
+			err = apperr.New(apperr.Validation, "SECRET_USE_NOT_ALLOWED",
+				"reference does not allow image_pull")
+			break
+		}
 		out.Value, err = s.runtime.Resolve(ctx, req.TenantID, x)
 	case "wrapped_token":
 		if c.Kind != "platform-openbao" {

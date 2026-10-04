@@ -1995,7 +1995,7 @@ export interface components {
             /** @description SecretReference name in the tenant. */
             ref: string;
             /** @enum {string} */
-            use: "env" | "wrapped_token";
+            use: "env" | "wrapped_token" | "image_pull";
             /** @description Env-mode variable name; defaults to upper-snake handle. */
             envName?: string;
         };
@@ -2078,7 +2078,7 @@ export interface components {
             secret_version: number | null;
             /** @enum {string} */
             kind: "ssh_key" | "slurm_token" | "api_token" | "generic" | "storage_credential";
-            allowed_uses: string[];
+            allowed_uses: ("workflow_env" | "wrapped_token" | "image_pull")[];
             /** Format: int64 */
             version: number;
             /** Format: date-time */
@@ -2103,7 +2103,7 @@ export interface components {
             secret_version?: number;
             /** @enum {string} */
             kind: "ssh_key" | "slurm_token" | "api_token" | "generic" | "storage_credential";
-            allowed_uses?: string[];
+            allowed_uses?: ("workflow_env" | "wrapped_token" | "image_pull")[];
         };
         /** @description Reference to a secret value (docs/secrets.md); never the value. */
         SecretRef: {
@@ -8464,7 +8464,9 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": Record<string, never>;
+                "application/json": {
+                    allowed_uses?: ("workflow_env" | "wrapped_token" | "image_pull")[];
+                };
             };
         };
         responses: {

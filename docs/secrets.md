@@ -9,7 +9,7 @@
   type allows. They never enter PostgreSQL, logs, audit details, metrics,
   traces, or API responses.
 - M6 implements providers, connectors, references, cluster credentials, and
-  submit-time environment or response-wrapped-token delivery.
+  submit-time environment, image-pull, or response-wrapped-token delivery.
 
 ## Platform OpenBao
 
@@ -147,7 +147,7 @@ Workflow and ad-hoc requests declare handles:
 secrets:
   hf:
     ref: hf-token
-    use: env                 # env | wrapped_token
+    use: env                 # env | wrapped_token | image_pull
     envName: HF_TOKEN        # env only; defaults to HF
 ```
 
@@ -166,6 +166,31 @@ submit adoption happens before resolution, so retries never fetch a second
 value after Slurm already accepted the job. Values are wiped after the request.
 Transient provider failures keep the job `SUBMITTING`; forbidden/missing
 references fail it with `SECRET_UNAVAILABLE`.
+
+`allowed_uses` accepts `workflow_env`, `wrapped_token`, and `image_pull`.
+Image pull credentials use a separate `image_pull` mode. A workflow's
+`image.pullSecret` names generic SecretReferences allowed for `image_pull`;
+each handle must be referenced by a task and cannot have `envName`. A task
+provides either a literal registry username or a username handle, and a
+password handle. Literal usernames are limited to 256 characters and reject
+whitespace/control characters. Admission freezes internal environment names,
+modes, handles, and reference UUIDs; a literal username is plain configuration,
+while secret values are never frozen.
+
+The wrapper uses the credentials only for the pull. Apptainer applies them to
+one `apptainer pull --disable-cache`, creates a local SIF, and unsets the
+variables before launching the task. Pyxis writes a netrc credentials file
+under a host-only temporary directory (directory mode `0700`, file mode
+`0600`), runs `enroot import` to create a local `.sqsh`, removes the credentials
+directory, and unsets the variables before `srun`. An EXIT trap cleans the
+temporary directory if import fails. Pull-secret images are single-node only;
+arrays are supported.
+
+Secret values are not written into the wrapper or command arguments. They
+briefly exist in the Slurm job environment for the wrapper to use, so
+authorized job owners and Slurm administrators may be able to inspect them
+while the job is pending or starting; sites must account for this residual
+visibility.
 
 Env delivery places the raw value in the Slurm environment. Sites must account
 for its visibility to the job owner through Slurm inspection and to privileged

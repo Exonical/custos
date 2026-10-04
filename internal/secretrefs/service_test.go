@@ -28,6 +28,7 @@ func (allowAll) Check(context.Context, authn.Principal, authz.Action, authz.Reso
 type fakeRepo struct {
 	secretrefs.Repository
 	connector secretrefs.Connector
+	reference secretrefs.Reference
 	createErr error
 	deleted   bool
 }
@@ -38,6 +39,10 @@ func (r *fakeRepo) CreateConnector(context.Context, tenants.Scope, secretrefs.Co
 
 func (r *fakeRepo) GetConnector(context.Context, tenants.Scope, uuid.UUID, string) (secretrefs.Connector, error) {
 	return r.connector, nil
+}
+
+func (r *fakeRepo) GetReference(context.Context, tenants.Scope, uuid.UUID, string) (secretrefs.Reference, error) {
+	return r.reference, nil
 }
 
 func (r *fakeRepo) ConnectorReferenceCount(context.Context, tenants.Scope, uuid.UUID) (int, error) {
@@ -104,6 +109,37 @@ func TestDeleteConnectorCredentialCleanupFailureIsLoggedAndAudited(t *testing.T)
 	d := rec.events[0].Details
 	if d["credential_cleanup"] != "failed" || d["credential_path"] != "connectors/x" || d["credential_mount"] != "kv" {
 		t.Fatalf("audit details = %v", d)
+	}
+}
+
+func TestDeliverImagePullRequiresGenericAllowedReference(t *testing.T) {
+	tc := tenantContext()
+	refID := uuid.New()
+	repo := &fakeRepo{
+		connector: secretrefs.Connector{
+			ID: uuid.New(), TenantID: tc.Tenant.ID, Name: "ext",
+			Kind: "openbao", State: "active",
+		},
+		reference: secretrefs.Reference{
+			ID: refID, TenantID: tc.Tenant.ID, ConnectorID: uuid.New(),
+			Kind: "generic",
+		},
+	}
+	recorder := &captureRecorder{}
+	service := secretrefs.NewService(repo, secretrefs.NewRuntime(repo, nil, nil),
+		allowAll{}, recorder, nil, "custos")
+	_, err := service.Deliver(context.Background(), secretrefs.DeliveryRequest{
+		TenantID: tc.Tenant.ID, ReferenceID: refID, Mode: "image_pull",
+		JobID: uuid.New(),
+	})
+	var domainErr *apperr.Error
+	if !errors.As(err, &domainErr) || domainErr.Code != "SECRET_USE_NOT_ALLOWED" {
+		t.Fatalf("image pull delivery error = %v, want SECRET_USE_NOT_ALLOWED", err)
+	}
+	if len(recorder.events) != 1 ||
+		recorder.events[0].Details["purpose"] != "image_pull" ||
+		recorder.events[0].Details["result"] != "error" {
+		t.Fatalf("image pull access audit = %+v", recorder.events)
 	}
 }
 

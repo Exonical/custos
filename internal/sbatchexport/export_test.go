@@ -232,6 +232,12 @@ func TestRenderInlineScriptAffinityAndUnsupportedExecutionContext(t *testing.T) 
 
 	for _, unsupportedTask := range []workflowspec.Task{
 		{Name: "image", Image: &workflowspec.Image{URI: "oras://registry/image.sif"}, Command: []string{"true"}},
+		{Name: "image-pull-secret", Image: &workflowspec.Image{
+			URI: "docker://registry.example.com/team/app:1.2",
+			PullSecret: &workflowspec.ImagePullSecret{
+				Username: "robot$ci", PasswordSecret: "registry-token",
+			},
+		}, Command: []string{"true"}},
 		{Name: "multi", Multinode: &workflowspec.Multinode{Nodes: 2, Implementation: "generic"}, Command: []string{"true"}},
 	} {
 		_, err := sbatchexport.Render(workflow, unsupportedTask, nil)

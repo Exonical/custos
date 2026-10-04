@@ -280,6 +280,19 @@ func pyxisImageURI(uri string) string {
 	return rest
 }
 
+func dockerRegistryHost(uri string) string {
+	rest := strings.TrimPrefix(uri, "docker://")
+	registry, _, hasPath := strings.Cut(rest, "/")
+	if registry == "" {
+		return "docker.io"
+	}
+	if registry == "localhost" || strings.Contains(registry, ".") ||
+		(hasPath && strings.Contains(registry, ":")) {
+		return registry
+	}
+	return "docker.io"
+}
+
 func resolveContainer(image *workflowspec.Image, runtime *validation.ContainerRuntime,
 	multinode *workflowspec.Multinode) (*ContainerSpec, *Denial) {
 	if image == nil {
@@ -290,6 +303,12 @@ func resolveContainer(image *workflowspec.Image, runtime *validation.ContainerRu
 			"the target cluster has no container runtime configured")
 	}
 	uri := image.URI
+	if image.PullSecret != nil &&
+		!strings.HasPrefix(uri, "docker://") &&
+		(runtime.Type != "apptainer" || !strings.HasPrefix(uri, "oras://")) {
+		return nil, deny("PULL_SECRET_INVALID", "image.pullSecret",
+			"pullSecret requires docker://, or oras:// with Apptainer")
+	}
 	if runtime.RequireDigest && !containerDigestRe.MatchString(uri) {
 		return nil, deny("IMAGE_DIGEST_REQUIRED", "image.uri",
 			"the cluster requires images pinned by sha256 digest")
@@ -316,6 +335,10 @@ func resolveContainer(image *workflowspec.Image, runtime *validation.ContainerRu
 		}
 	case "pyxis":
 		if strings.HasPrefix(uri, "oras://") {
+			if image.PullSecret != nil {
+				return nil, deny("PULL_SECRET_INVALID", "image.pullSecret",
+					"Pyxis pull secrets require a docker:// image URI")
+			}
 			return nil, deny("IMAGE_RUNTIME_UNSUPPORTED", "image.uri",
 				"pyxis accepts docker image references or absolute paths")
 		}
@@ -329,6 +352,18 @@ func resolveContainer(image *workflowspec.Image, runtime *validation.ContainerRu
 	default:
 		return nil, deny("CONTAINER_RUNTIME_UNAVAILABLE", "image",
 			"the target cluster has an unsupported container runtime")
+	}
+	if pull := image.PullSecret; pull != nil {
+		container.PullSecret = true
+		if pull.UsernameSecret != "" {
+			container.PullUsernameSecret = true
+		} else {
+			container.PullUsername = pull.Username
+		}
+		if runtime.Type == "pyxis" {
+			container.RegistryHost = dockerRegistryHost(uri)
+			container.EnrootImage = "docker://" + container.Image
+		}
 	}
 	if multinode != nil && multinode.EffectiveImplementation() == "generic" &&
 		!runtime.SlurmInContainer {
@@ -385,6 +420,11 @@ func cpuBind(affinity string) (string, *Denial) {
 // freezes the spec on success.
 func Build(in BuildInput) (ExecutionSpec, *Denial) {
 	spec := in.Spec
+	if in.Image != nil && in.Image.PullSecret != nil &&
+		(in.Multinode != nil || in.Request.Nodes > 1) {
+		return ExecutionSpec{}, deny("PULL_SECRET_MULTINODE_UNSUPPORTED",
+			"image.pullSecret", "pullSecret is only supported for single-node tasks")
+	}
 	spec.Multinode = resolvedMultinode(in.Multinode, in.Cluster.ContainerRuntime, in.Request)
 	container, denial := resolveContainer(in.Image, in.Cluster.ContainerRuntime, in.Multinode)
 	if denial != nil {

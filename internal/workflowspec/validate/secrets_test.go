@@ -3,6 +3,8 @@ package validate_test
 import (
 	"testing"
 
+	"github.com/Exonical/custos/internal/admission"
+	"github.com/Exonical/custos/internal/validation"
 	"github.com/Exonical/custos/internal/workflowspec"
 	"github.com/Exonical/custos/internal/workflowspec/validate"
 )
@@ -40,6 +42,12 @@ func TestSecretStaticValidation(t *testing.T) {
 			u.EnvName = "bad-name"
 			w.Spec.Secrets["hf-token"] = u
 		}, "SECRET_ENV_NAME_INVALID"},
+		{"image pull env name", func(w *workflowspec.Workflow) {
+			u := w.Spec.Secrets["hf-token"]
+			u.Use = "image_pull"
+			u.EnvName = "PULL_TOKEN"
+			w.Spec.Secrets["hf-token"] = u
+		}, "SECRET_ENV_NAME_UNUSED"},
 		{"env collision", func(w *workflowspec.Workflow) { w.Spec.Tasks[0].Env["HF_TOKEN"] = "literal" }, "SECRET_ENV_COLLISION"},
 		{"controlled env", func(w *workflowspec.Workflow) {
 			u := w.Spec.Secrets["hf-token"]
@@ -71,6 +79,87 @@ func TestSecretStaticValidation(t *testing.T) {
 	w.Spec.Secrets["other"] = workflowspec.SecretUse{Ref: "other", Use: "env", EnvName: "TOKEN"}
 	if errs := validate.Static(w); !hasCode(errs, "SECRET_ENV_COLLISION") {
 		t.Fatalf("collision: %+v", errs)
+	}
+}
+
+func TestImagePullSecretContextualValidation(t *testing.T) {
+	w := workflowspec.Workflow{Spec: workflowspec.Spec{
+		Secrets: map[string]workflowspec.SecretUse{
+			"registry-user":  {Ref: "registry-user", Use: "image_pull"},
+			"registry-token": {Ref: "registry-token", Use: "image_pull"},
+		},
+		Tasks: []workflowspec.Task{{
+			Name: "run", Command: []string{"true"},
+			Image: &workflowspec.Image{
+				URI: "docker://registry.example.com/team/app:1.2",
+				PullSecret: &workflowspec.ImagePullSecret{
+					UsernameSecret: "registry-user", PasswordSecret: "registry-token",
+				},
+			},
+		}},
+	}}
+	infos := map[string]validate.SecretReferenceInfo{
+		"registry-user": {
+			ID: "user-id", Kind: "generic", AllowedUses: []string{"image_pull"},
+			ConnectorKind: "openbao",
+		},
+		"registry-token": {
+			ID: "token-id", Kind: "generic", AllowedUses: []string{"image_pull"},
+			ConnectorKind: "openbao",
+		},
+	}
+	secretContext := validate.Context{SecretReference: func(name string) (validate.SecretReferenceInfo, bool) {
+		info, ok := infos[name]
+		return info, ok
+	}}
+	if errs := validate.Contextual(w, secretContext); len(errs) != 0 {
+		t.Fatalf("valid image pull references rejected: %+v", errs)
+	}
+	infos["registry-token"] = validate.SecretReferenceInfo{
+		ID: "token-id", Kind: "generic", ConnectorKind: "openbao",
+	}
+	if errs := validate.Contextual(w, secretContext); !hasCode(errs, "SECRET_USE_NOT_ALLOWED") {
+		t.Fatalf("missing image_pull allowed use accepted: %+v", errs)
+	}
+	infos["registry-token"] = validate.SecretReferenceInfo{
+		ID: "token-id", Kind: "api_token", AllowedUses: []string{"image_pull"},
+		ConnectorKind: "openbao",
+	}
+	if errs := validate.Contextual(w, secretContext); !hasCode(errs, "PULL_SECRET_INVALID") {
+		t.Fatalf("non-generic image pull reference accepted: %+v", errs)
+	}
+	w.Spec.Tasks[0].Image.URI = "oras://registry.example.com/team/app:1.2"
+	infos["registry-token"] = validate.SecretReferenceInfo{
+		ID: "token-id", Kind: "generic", AllowedUses: []string{"image_pull"},
+		ConnectorKind: "openbao",
+	}
+	pyxisContext := secretContext
+	pyxisContext.DefaultCluster = "cluster"
+	pyxisContext.Cluster = func(string) (admission.Binding, validation.ClusterSnapshot, bool) {
+		return admission.Binding{}, validation.ClusterSnapshot{
+			ContainerRuntime: &validation.ContainerRuntime{Type: "pyxis"},
+		}, true
+	}
+	if errs := validate.Contextual(w, pyxisContext); !hasCode(errs, "PULL_SECRET_INVALID") {
+		t.Fatalf("Pyxis oras pull secret accepted: %+v", errs)
+	}
+}
+
+func TestImagePullEnvironmentNamesAreReserved(t *testing.T) {
+	w := secretWorkflow(workflowspec.SecretUse{Ref: "hf", Use: "env", EnvName: "HF_TOKEN"})
+	w.Spec.Tasks[0].Env["CUSTOS_IMAGE_PULL_USERNAME"] = "user-value"
+	w.Spec.Defaults = &workflowspec.Defaults{Env: map[string]string{
+		"CUSTOS_IMAGE_PULL_PASSWORD": "user-value",
+	}}
+	errs := validate.Static(w)
+	reserved := 0
+	for _, err := range errs {
+		if err.Code == "SECRET_ENV_CONTROLLED" {
+			reserved++
+		}
+	}
+	if reserved != 2 {
+		t.Fatalf("pull secret internal names were not reserved: %+v", errs)
 	}
 }
 

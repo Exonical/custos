@@ -377,7 +377,7 @@ func TestWrapperKeepsCleanupTrap(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !strings.Contains(w, `trap 'rm -rf "$CUSTOS_JOB_DIR"' EXIT`) {
+		if !strings.Contains(w, `trap 'if [ -n "${creds_dir:-}" ]; then rm -rf "$creds_dir" || true; fi; rm -rf "$CUSTOS_JOB_DIR"' EXIT`) {
 			t.Fatalf("%s: cleanup trap missing:\n%s", launch, w)
 		}
 		if line := lastLine(w); strings.HasPrefix(line, "exec") {
