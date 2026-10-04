@@ -4854,6 +4854,7 @@ components:
         cpusPerTask: {type: integer, minimum: 0}
         memory: {type: string}
         walltime: {type: string}
+        memoryPerCpu: {type: string}
         memoryPerNode: {type: string}
         gpu:
           type: object

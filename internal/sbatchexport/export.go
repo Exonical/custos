@@ -152,7 +152,7 @@ func RenderWithOptions(w workflowspec.Workflow, task workflowspec.Task, script [
 		directives = append(directives, fmt.Sprintf("#SBATCH --mem=%dM", resources.MemoryPerNodeMiB))
 	}
 	if resources.MemoryPerCPUMiB > 0 {
-		return "", unsupported("spec.tasks."+task.Name+".resources.memoryPerCpu", "memory-per-cpu cannot be represented by TaskResources")
+		directives = append(directives, fmt.Sprintf("#SBATCH --mem-per-cpu=%dM", resources.MemoryPerCPUMiB))
 	}
 	if resources.GPU != nil && resources.GPU.Count > 0 {
 		gres := "gpu"

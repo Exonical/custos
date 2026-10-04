@@ -272,6 +272,8 @@ tasks_per_node, cpus_per_task, memory_per_node/memory_per_cpu, tres_per_node
 standard_output, standard_error, environment (explicit, no inheritance),
 dependency, array, nice, name, comment. Mail is never set. Anything the
 spec cannot express cannot reach Slurm.
+Workflow `resources.memoryPerCpu` maps to `memory_per_cpu`; it is mutually
+exclusive with `memory` and `memoryPerNode`.
 
 ## Per-cluster container runtime
 

@@ -50,8 +50,21 @@ func CheckResourcePolicy(req workflowspec.Resources, pol ResourcePolicy) *Denial
 	if d := bump(pol.MaxCPUsPerTask, req.CPUsPerTask, "cpus_per_task", "cpus_per_task"); d != nil {
 		return d
 	}
-	if pol.MaxMemoryPerNodeMiB > 0 && req.MemoryPerNodeMiB > pol.MaxMemoryPerNodeMiB {
-		return deny("RESOURCE_LIMIT", "memory_per_node_mib", "memory exceeds policy limit")
+	if pol.MaxMemoryPerNodeMiB > 0 {
+		effectiveMemory := req.MemoryPerNodeMiB
+		if req.MemoryPerCPUMiB > 0 {
+			if cpusPerNode, ok := cpusPerNode(req); ok {
+				perCPU := req.MemoryPerCPUMiB
+				if perCPU > maxInt64()/cpusPerNode {
+					effectiveMemory = maxInt64()
+				} else if multiplied := perCPU * cpusPerNode; multiplied > effectiveMemory {
+					effectiveMemory = multiplied
+				}
+			}
+		}
+		if effectiveMemory > pol.MaxMemoryPerNodeMiB {
+			return deny("RESOURCE_LIMIT", "memory_per_node_mib", "effective per-node memory exceeds policy limit")
+		}
 	}
 	if req.GPU != nil {
 		if d := bump(pol.MaxGPUsPerJob, req.GPU.Count, "gpu", "gpus"); d != nil {
@@ -74,6 +87,33 @@ func CheckResourcePolicy(req workflowspec.Resources, pol ResourcePolicy) *Denial
 		return deny("RESOURCE_LIMIT", "array", "array size exceeds policy limit")
 	}
 	return nil
+}
+
+func cpusPerNode(req workflowspec.Resources) (int64, bool) {
+	cpusPerTask := req.CPUsPerTask
+	if cpusPerTask < 1 {
+		cpusPerTask = 1
+	}
+	tasksPerNode := req.TasksPerNode
+	if tasksPerNode < 1 {
+		if req.Nodes != 1 && (req.Nodes > 1 || req.Tasks > 1) {
+			return 0, false
+		}
+		tasksPerNode = req.Tasks
+		if tasksPerNode < 1 {
+			tasksPerNode = 1
+		}
+	}
+	cpus := int64(cpusPerTask)
+	tasks := int64(tasksPerNode)
+	if cpus > maxInt64()/tasks {
+		return maxInt64(), true
+	}
+	return cpus * tasks, true
+}
+
+func maxInt64() int64 {
+	return int64(^uint64(0) >> 1)
 }
 
 // Binding is the project↔cluster entitlement.

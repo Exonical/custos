@@ -802,7 +802,7 @@ func uniqueWorkflowTaskName(value string, used map[string]bool) string {
 	}
 }
 
-func importedTaskResources(src workflowspec.Resources, taskIndex int) (workflowspec.TaskResources, *workflowspec.ArraySpecYAML, []validation.Diagnostic) {
+func importedTaskResources(src workflowspec.Resources) (workflowspec.TaskResources, *workflowspec.ArraySpecYAML, []validation.Diagnostic) {
 	var out workflowspec.TaskResources
 	var array *workflowspec.ArraySpecYAML
 	out.Nodes = src.Nodes
@@ -814,6 +814,9 @@ func importedTaskResources(src workflowspec.Resources, taskIndex int) (workflows
 	out.Exclusive = src.Exclusive
 	if src.MemoryPerNodeMiB > 0 {
 		out.Memory = fmt.Sprintf("%dMi", src.MemoryPerNodeMiB)
+	}
+	if src.MemoryPerCPUMiB > 0 {
+		out.MemoryPerCPU = fmt.Sprintf("%dMi", src.MemoryPerCPUMiB)
 	}
 	if src.Walltime > 0 {
 		out.Walltime = time.Duration(src.Walltime).String()
@@ -827,15 +830,7 @@ func importedTaskResources(src workflowspec.Resources, taskIndex int) (workflows
 			Step: src.Array.Step, MaxConcurrent: src.Array.MaxConcurrent,
 		}
 	}
-	var diagnostics []validation.Diagnostic
-	if src.MemoryPerCPUMiB > 0 {
-		diagnostics = append(diagnostics, validation.Diagnostic{
-			Source: "sbatchimport", Code: "CUSTOS202", Severity: validation.SeverityWarning,
-			Field:   fmt.Sprintf("spec.tasks[%d].resources.memoryPerCpu", taskIndex),
-			Message: "--mem-per-cpu is not representable by the workflow resource model and was not imported",
-		})
-	}
-	return out, array, diagnostics
+	return out, array, nil
 }
 
 // ImportWorkflowSbatch proposes a new workflow made of independent script tasks.
@@ -913,7 +908,7 @@ func (s *Service) ImportWorkflowSbatch(ctx context.Context, p authn.Principal,
 			stem = fmt.Sprintf("task-%d", i+1)
 		}
 		taskName := uniqueWorkflowTaskName(stem, used)
-		resources, array, resourceDiagnostics := importedTaskResources(proposal.Resources, i)
+		resources, array, resourceDiagnostics := importedTaskResources(proposal.Resources)
 		diagnostics := make([]validation.Diagnostic, 0, len(proposal.Diagnostics)+len(resourceDiagnostics))
 		diagnostics = append(diagnostics, proposal.Diagnostics...)
 		diagnostics = append(diagnostics, resourceDiagnostics...)

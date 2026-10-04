@@ -298,3 +298,36 @@ func TestResolveMultinodeResources(t *testing.T) {
 		t.Fatalf("explicit cpusPerTask multinode conflict errors = %+v", errs)
 	}
 }
+
+func TestResolveMemoryPerCPUResources(t *testing.T) {
+	task := workflowspec.Task{
+		Name:      "run",
+		Resources: workflowspec.TaskResources{CPU: 4, MemoryPerCPU: "4GiB", Walltime: "30m"},
+	}
+	resolved, errs := task.ResolveResources("spec.tasks[0].resources")
+	if len(errs) != 0 || resolved.MemoryPerCPUMiB != 4096 || resolved.MemoryPerNodeMiB != 0 {
+		t.Fatalf("memoryPerCpu resolution = %+v errors=%+v", resolved, errs)
+	}
+	if task.Resources.Empty() {
+		t.Fatal("memoryPerCpu must make the resources block non-empty")
+	}
+
+	multinode := workflowspec.Task{
+		Name: "mpi",
+		Multinode: &workflowspec.Multinode{
+			Nodes: 2, Implementation: "openmpi",
+		},
+		Resources: workflowspec.TaskResources{CPU: 4, MemoryPerCPU: "512MiB", Walltime: "30m"},
+	}
+	resolved, errs = multinode.ResolveResources("spec.tasks[0].resources")
+	if len(errs) != 0 || resolved.MemoryPerCPUMiB != 512 ||
+		resolved.CPUsPerTask != 1 || resolved.TasksPerNode != 4 {
+		t.Fatalf("multinode memoryPerCpu resolution = %+v errors=%+v", resolved, errs)
+	}
+
+	invalid := workflowspec.Task{Resources: workflowspec.TaskResources{MemoryPerCPU: "four"}}
+	_, errs = invalid.ResolveResources("spec.tasks[0].resources")
+	if len(errs) != 1 || errs[0].Path != "spec.tasks[0].resources.memoryPerCpu" || errs[0].Code != "RESOURCE_UNIT" {
+		t.Fatalf("invalid memoryPerCpu errors = %+v", errs)
+	}
+}

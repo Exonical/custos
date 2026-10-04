@@ -87,6 +87,22 @@ func TestMemoryFormats(t *testing.T) {
 	}
 }
 
+func TestMemoryPerCPUDirective(t *testing.T) {
+	proposal, err := Import([]byte("#!/bin/bash\n#SBATCH --mem-per-cpu=1024M\n"), workflowspec.LanguageBash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if proposal.Resources.MemoryPerCPUMiB != 1024 {
+		t.Fatalf("memory per cpu = %d MiB, want 1024", proposal.Resources.MemoryPerCPUMiB)
+	}
+	if len(proposal.Diagnostics) != 0 {
+		t.Fatalf("unexpected diagnostics: %+v", proposal.Diagnostics)
+	}
+	if len(proposal.Imported) != 1 || proposal.Imported[0] != "memoryPerCpu" {
+		t.Fatalf("memory-per-cpu directive not recorded as imported: %v", proposal.Imported)
+	}
+}
+
 func TestUnmappableDirectives(t *testing.T) {
 	script := "#SBATCH --uid=root\n" +
 		"#SBATCH --export=ALL\n" +

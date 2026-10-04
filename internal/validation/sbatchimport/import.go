@@ -55,8 +55,10 @@ func fieldOf(opt *sbatchscan.Option) string {
 		return string(opt.Field)
 	case "gres", "gpus", "gpus-per-node":
 		return "gres"
-	case "mem", "mem-per-cpu":
+	case "mem":
 		return "memory"
+	case "mem-per-cpu":
+		return "memoryPerCpu"
 	case "time":
 		return "walltime"
 	default:

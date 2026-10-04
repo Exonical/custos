@@ -447,6 +447,10 @@ func TestAPIWorkflows(t *testing.T) {
 	if secondScript["language"] != "sh" {
 		t.Fatalf("/bin/sh script language = %v", secondScript["language"])
 	}
+	secondResources, _ := importDocumentTasks[1].(map[string]any)["resources"].(map[string]any)
+	if secondResources["memoryPerCpu"] != "1024Mi" {
+		t.Fatalf("--mem-per-cpu was not imported: resources=%v", secondResources)
+	}
 	importYAML, _ := imported["yaml"].(string)
 	if !strings.Contains(importYAML, "launch: sbatch") || !strings.Contains(importYAML, "worker-2") {
 		t.Fatalf("workflow import YAML/names: %s", importYAML)
@@ -456,20 +460,16 @@ func TestAPIWorkflows(t *testing.T) {
 		t.Fatalf("import task count: %v", imported["tasks"])
 	}
 	diagnosticCodes := map[string]bool{}
-	memPerCPUFieldScoped := false
 	for _, rawTask := range importTasks {
 		taskResult, _ := rawTask.(map[string]any)
 		for _, rawDiagnostic := range taskResult["diagnostics"].([]any) {
 			diagnostic, _ := rawDiagnostic.(map[string]any)
 			code := diagnostic["code"].(string)
 			diagnosticCodes[code] = true
-			if code == "CUSTOS202" && strings.Contains(diagnostic["field"].(string), "resources.memoryPerCpu") {
-				memPerCPUFieldScoped = true
-			}
 		}
 	}
-	if !diagnosticCodes["CUSTOS201"] || !diagnosticCodes["CUSTOS202"] || !memPerCPUFieldScoped {
-		t.Fatalf("unmappable directive/memory warnings missing or unscoped: codes=%v scoped=%v", diagnosticCodes, memPerCPUFieldScoped)
+	if !diagnosticCodes["CUSTOS201"] || diagnosticCodes["CUSTOS202"] {
+		t.Fatalf("unmappable directive diagnostic missing or obsolete mem-per-cpu warning remains: codes=%v", diagnosticCodes)
 	}
 	importSpecJSON, err := json.Marshal(importSpec)
 	if err != nil {

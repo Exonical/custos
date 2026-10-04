@@ -42,6 +42,40 @@ func TestCheckResourcePolicy(t *testing.T) {
 	}
 }
 
+func TestMemoryPerCPUResourcePolicyUsesDeterminablePerNodeCPUCount(t *testing.T) {
+	req := workflowspec.Resources{
+		Nodes: 2, TasksPerNode: 4, CPUsPerTask: 1, MemoryPerCPUMiB: 512,
+	}
+	if denial := admission.CheckResourcePolicy(req, admission.ResourcePolicy{MaxMemoryPerNodeMiB: 2048}); denial != nil {
+		t.Fatalf("per-node limit should allow exactly 2048 MiB: %v", denial)
+	}
+	if denial := admission.CheckResourcePolicy(req, admission.ResourcePolicy{MaxMemoryPerNodeMiB: 2047}); denial == nil || denial.Code != "RESOURCE_LIMIT" {
+		t.Fatalf("expected memory-per-cpu limit denial, got %v", denial)
+	}
+
+	singleNode := workflowspec.Resources{Nodes: 1, CPUsPerTask: 3, MemoryPerCPUMiB: 512}
+	if denial := admission.CheckResourcePolicy(singleNode, admission.ResourcePolicy{MaxMemoryPerNodeMiB: 1535}); denial == nil || denial.Code != "RESOURCE_LIMIT" {
+		t.Fatalf("single-node CPU count was not applied to memory-per-cpu: %v", denial)
+	}
+
+	multinodeTask := workflowspec.Task{
+		Multinode: &workflowspec.Multinode{Nodes: 2, Implementation: "generic"},
+		Resources: workflowspec.TaskResources{CPU: 2, MemoryPerCPU: "512Mi", Walltime: "5m"},
+	}
+	multinode, errs := multinodeTask.ResolveResources("resources")
+	if len(errs) != 0 {
+		t.Fatalf("multinode request resolution failed: %+v", errs)
+	}
+	if denial := admission.CheckResourcePolicy(multinode, admission.ResourcePolicy{MaxMemoryPerNodeMiB: 1023}); denial == nil || denial.Code != "RESOURCE_LIMIT" {
+		t.Fatalf("multinode per-node CPU count was not applied: %v", denial)
+	}
+
+	undetermined := workflowspec.Resources{Nodes: 2, Tasks: 8, CPUsPerTask: 2, MemoryPerCPUMiB: 512}
+	if denial := admission.CheckResourcePolicy(undetermined, admission.ResourcePolicy{MaxMemoryPerNodeMiB: 1024}); denial != nil {
+		t.Fatalf("unknown per-node task distribution should not fabricate a limit denial: %v", denial)
+	}
+}
+
 func TestCheckEntitlement(t *testing.T) {
 	b := admission.Binding{Account: "proj", DefaultPartition: "main",
 		AllowedPartitions: []string{"main", "gpu"}, AllowedQoS: []string{"normal"}}

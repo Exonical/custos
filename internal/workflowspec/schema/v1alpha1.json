@@ -140,6 +140,7 @@
         "tasks": {"type": "integer", "minimum": 0},
         "tasksPerNode": {"type": "integer", "minimum": 0},
         "cpusPerTask": {"type": "integer", "minimum": 0},
+        "memoryPerCpu": {"type": "string"},
         "memoryPerNode": {"type": "string"},
         "licenses": {"type": "array", "items": {"type": "string"}},
         "constraints": {"type": "string"},

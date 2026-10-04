@@ -421,6 +421,12 @@ func checkShapes(w workflowspec.Workflow) []FieldError {
 	var errs []FieldError
 	for i, t := range w.Spec.Tasks {
 		base := fmt.Sprintf("spec.tasks[%d]", i)
+		if t.Resources.MemoryPerCPU != "" &&
+			(t.Resources.Memory != "" || t.Resources.MemoryPerNode != "") {
+			errs = append(errs, fe(base+".resources.memoryPerCpu",
+				"MEMORY_CONFLICT",
+				"memoryPerCpu is mutually exclusive with memory and memoryPerNode"))
+		}
 		ty := t.Type
 		if ty == "" {
 			ty = TypeBatch

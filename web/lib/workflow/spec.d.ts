@@ -164,6 +164,7 @@ export interface TaskResources {
   tasks?: number;
   tasksPerNode?: number;
   cpusPerTask?: number;
+  memoryPerCpu?: string;
   memoryPerNode?: string;
   licenses?: string[];
   constraints?: string;

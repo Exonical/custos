@@ -107,6 +107,30 @@ func TestRenderHybridAndRoundTripSbatchDirectives(t *testing.T) {
 	}
 }
 
+func TestRenderMemoryPerCPU(t *testing.T) {
+	workflow := workflowspec.Workflow{Metadata: workflowspec.Metadata{Name: "mem-per-cpu"}}
+	task := workflowspec.Task{
+		Name:      "run",
+		Resources: workflowspec.TaskResources{MemoryPerCPU: "512Mi", Walltime: "5m"},
+		Command:   []string{"./run"},
+	}
+	exported, err := sbatchexport.Render(workflow, task, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(exported, "#SBATCH --mem-per-cpu=512M") {
+		t.Fatalf("memory-per-cpu directive missing:\n%s", exported)
+	}
+	validateBash(t, exported)
+	proposal, err := sbatchimport.Import([]byte(exported), workflowspec.LanguageBash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if proposal.Resources.MemoryPerCPUMiB != 512 {
+		t.Fatalf("round-trip memory per cpu = %d MiB, want 512", proposal.Resources.MemoryPerCPUMiB)
+	}
+}
+
 func TestRenderQuotesLiteralsAndParameterDefaults(t *testing.T) {
 	workflow := workflowspec.Workflow{
 		APIVersion: workflowspec.APIVersionV1Alpha1,

@@ -236,11 +236,13 @@ grammar is a security feature.
 
 `cpu: 4`, `memory: 8Gi|8G|8192Mi|1GB|512MiB`,
 `walltime: 30m|4h|1-12:00:00`, `gpu: {count, type?}`, `nodes`,
-`tasksPerNode`, `cpusPerTask`, `memoryPerNode`. Decimal `KB` through `EB`
+`tasksPerNode`, `cpusPerTask`, `memoryPerNode`, `memoryPerCpu`. `memory` and
+`memoryPerNode` request per-node memory; `memoryPerCpu` requests memory per
+allocated CPU and cannot be combined with either. Decimal `KB` through `EB`
 units scale by 1000; `KiB` through `EiB` scale by 1024; suffix matching is
-case-insensitive. Memory resolves to per-node MiB, including for multinode
-requests. Parsed with `k8s.io/apimachinery/pkg/api/resource`-compatible
-semantics reimplemented locally (avoid importing apimachinery for one type).
+case-insensitive. Memory resolves to MiB, including for multinode requests.
+Parsed with `k8s.io/apimachinery/pkg/api/resource`-compatible semantics
+reimplemented locally (avoid importing apimachinery for one type).
 
 ## Validation (backend, always)
 

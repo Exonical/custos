@@ -100,6 +100,9 @@ func TestJobDescValues(t *testing.T) {
 	if d.MemoryPerNode == nil || *d.MemoryPerNode.Number != 4096 {
 		t.Errorf("MemoryPerNode = %+v", d.MemoryPerNode)
 	}
+	if d.MemoryPerCpu == nil || d.MemoryPerCpu.Number == nil || *d.MemoryPerCpu.Number != 512 {
+		t.Errorf("MemoryPerCpu = %+v, want 512 MiB", d.MemoryPerCpu)
+	}
 	if d.Nice == nil || *d.Nice != -5 {
 		t.Errorf("Nice = %v", d.Nice)
 	}

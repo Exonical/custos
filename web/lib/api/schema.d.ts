@@ -2694,6 +2694,7 @@ export interface components {
             cpusPerTask?: number;
             memory?: string;
             walltime?: string;
+            memoryPerCpu?: string;
             memoryPerNode?: string;
             gpu?: {
                 type?: string;

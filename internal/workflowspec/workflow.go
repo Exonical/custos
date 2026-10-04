@@ -344,6 +344,7 @@ type TaskResources struct {
 	Tasks         int         `json:"tasks,omitempty"`
 	TasksPerNode  int         `json:"tasksPerNode,omitempty"`
 	CPUsPerTask   int         `json:"cpusPerTask,omitempty"`
+	MemoryPerCPU  string      `json:"memoryPerCpu,omitempty"`
 	MemoryPerNode string      `json:"memoryPerNode,omitempty"`
 	Licenses      []string    `json:"licenses,omitempty"`
 	Constraints   string      `json:"constraints,omitempty"`
@@ -364,13 +365,14 @@ func (t TaskResources) Empty() bool {
 	return t.CPU == 0 && t.CPUAffinity == "" && t.Memory == "" && t.Walltime == "" &&
 		t.GPU == nil && t.Nodes == 0 && t.Tasks == 0 &&
 		t.TasksPerNode == 0 && t.CPUsPerTask == 0 &&
-		t.MemoryPerNode == "" && len(t.Licenses) == 0 &&
+		t.MemoryPerCPU == "" && t.MemoryPerNode == "" && len(t.Licenses) == 0 &&
 		t.Constraints == "" && !t.Exclusive
 }
 
 // Resolve converts TaskResources to the normalized Resources. CPU maps
-// to CPUsPerTask (per-task cpu count); memory maps to
-// MemoryPerNodeMiB. Errors are path-relative to the resources block.
+// to CPUsPerTask (per-task cpu count); memory and memoryPerNode map to
+// MemoryPerNodeMiB, while memoryPerCpu maps to MemoryPerCPUMiB. Errors
+// are path-relative to the resources block.
 func (t TaskResources) Resolve(path string) (Resources, []FieldError) {
 	var errs []FieldError
 	r := Resources{
@@ -389,6 +391,15 @@ func (t TaskResources) Resolve(path string) (Resources, []FieldError) {
 				Code: "RESOURCE_UNIT", Message: err.Error()})
 		} else {
 			r.MemoryPerNodeMiB = mib
+		}
+	}
+	if t.MemoryPerCPU != "" {
+		mib, err := units.ParseMemoryMiB(t.MemoryPerCPU)
+		if err != nil {
+			errs = append(errs, FieldError{Path: path + ".memoryPerCpu",
+				Code: "RESOURCE_UNIT", Message: err.Error()})
+		} else {
+			r.MemoryPerCPUMiB = mib
 		}
 	}
 	if t.MemoryPerNode != "" {

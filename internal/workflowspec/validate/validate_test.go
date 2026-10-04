@@ -174,6 +174,18 @@ apiVersion: custos.io/v1alpha1
 kind: Workflow
 metadata: { name: x }
 spec: { tasks: [{name: a, type: array, command: ["true"]}] }`, "ARRAY_REQUIRED"},
+		{"memory per cpu conflicts with memory", `
+apiVersion: custos.io/v1alpha1
+kind: Workflow
+metadata: { name: x }
+spec: { tasks: [{name: a, command: ["true"], resources: {memory: 1GiB, memoryPerCpu: 512MiB}}] }`,
+			"MEMORY_CONFLICT"},
+		{"memory per cpu conflicts with memory per node", `
+apiVersion: custos.io/v1alpha1
+kind: Workflow
+metadata: { name: x }
+spec: { tasks: [{name: a, command: ["true"], resources: {memoryPerNode: 1GiB, memoryPerCpu: 512MiB}}] }`,
+			"MEMORY_CONFLICT"},
 		{"unknown param", `
 apiVersion: custos.io/v1alpha1
 kind: Workflow
@@ -242,6 +254,24 @@ spec: { tasks: [{name: a, command: ["true"], onDependencyFailure: skip}] }`,
 			}
 		})
 	}
+}
+
+func TestMemoryPerCPUConflictPath(t *testing.T) {
+	errs := validate.Static(wf(t, `
+apiVersion: custos.io/v1alpha1
+kind: Workflow
+metadata: { name: x }
+spec: { tasks: [{name: a, command: ["true"], resources: {memory: 1GiB, memoryPerCpu: 512MiB}}] }
+`))
+	for _, err := range errs {
+		if err.Code == "MEMORY_CONFLICT" {
+			if err.Path != "spec.tasks[0].resources.memoryPerCpu" {
+				t.Fatalf("memory conflict path = %q", err.Path)
+			}
+			return
+		}
+	}
+	t.Fatalf("MEMORY_CONFLICT not found in %+v", errs)
 }
 
 func TestTasksRefAncestorOK(t *testing.T) {
