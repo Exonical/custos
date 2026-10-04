@@ -39,7 +39,7 @@
           "protocol": "openid-connect",
           "protocolMapper": "oidc-audience-mapper",
           "config": {
-            "included.client.audience": "custos",
+            "included.custom.audience": "custos",
             "id.token.claim": "false",
             "access.token.claim": "true",
             "userinfo.token.claim": "false"
@@ -77,11 +77,25 @@
       },
       "protocolMappers": [
         {
+          "name": "groups",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-group-membership-mapper",
+          "config": {
+            "full.path": "false",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "false",
+            "introspection.token.claim": "true",
+            "multivalued": "true",
+            "claim.name": "groups"
+          }
+        },
+        {
           "name": "custos-api-audience",
           "protocol": "openid-connect",
           "protocolMapper": "oidc-audience-mapper",
           "config": {
-            "included.client.audience": "custos",
+            "included.custom.audience": "custos",
             "id.token.claim": "false",
             "access.token.claim": "true",
             "userinfo.token.claim": "false"

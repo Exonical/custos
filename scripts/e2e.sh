@@ -31,30 +31,34 @@ cexec() {
 }
 
 cmd_up() {
-	bash deploy/compose/init-secrets.sh
-	bash deploy/e2e/init-secrets.sh
-	# Rebuild application images so repeated local runs never reuse a stale
-	# binary after migrations/config fields change.
-	compose build migrate custos worker web
+	if [ "${CUSTOS_E2E_STACK_ALREADY_UP:-0}" != "1" ]; then
+		bash deploy/compose/init-secrets.sh
+		bash deploy/e2e/init-secrets.sh
+		# Rebuild application images so repeated local runs never reuse a stale
+		# binary after migrations/config fields change.
+		compose build migrate custos worker web
 
-	# The validator sidecars share the custos/worker network namespaces
-	# (network_mode: service:*), so they must be recreated whenever their
-	# parent is — a stale sidecar stays bound to a dead netns and
-	# 127.0.0.1:8481 goes unreachable inside the new container. A plain
-	# `up --force-recreate` fails: the engine refuses to remove a parent
-	# while a dependent container still exists, and even `up -d` cannot
-	# recreate custos/worker for a new image while the sidecars hold
-	# their netns. Tear the four down in dependency order first (no-op
-	# on a cold stack), then a single `up --wait` builds them fresh.
-	compose rm -sf validator-api validator-worker >/dev/null 2>&1 || true
-	compose rm -sf custos worker >/dev/null 2>&1 || true
-	compose rm -f migrate openbao-init >/dev/null 2>&1 || true
+		# The validator sidecars share the custos/worker network namespaces
+		# (network_mode: service:*), so they must be recreated whenever their
+		# parent is - a stale sidecar stays bound to a dead netns and
+		# 127.0.0.1:8481 goes unreachable inside the new container. A plain
+		# `up --force-recreate` fails: the engine refuses to remove a parent
+		# while a dependent container still exists, and even `up -d` cannot
+		# recreate custos/worker for a new image while the sidecars hold
+		# their netns. Tear the four down in dependency order first (no-op
+		# on a cold stack), then a single `up --wait` builds them fresh.
+		compose rm -sf validator-api validator-worker >/dev/null 2>&1 || true
+		compose rm -sf custos worker >/dev/null 2>&1 || true
+		compose rm -f migrate openbao-init >/dev/null 2>&1 || true
 
-	compose up -d --wait || {
-		echo "e2e: stack failed to become healthy; recent logs:" >&2
-		compose logs --tail=40 >&2 || true
-		exit 1
-	}
+		compose up -d --wait || {
+			echo "e2e: stack failed to become healthy; recent logs:" >&2
+			compose logs --tail=40 >&2 || true
+			exit 1
+		}
+	else
+		echo "e2e: resuming bootstrap on the already-running stack"
+	fi
 
 	echo "e2e: waiting for the shellcheck sidecars..."
 	probe8481() { # probe8481 <service> — from a throwaway container in the parent netns
