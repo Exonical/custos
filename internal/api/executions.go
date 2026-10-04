@@ -30,6 +30,7 @@ func execDTO(e executions.Execution) map[string]any {
 		"workflowId":        e.WorkflowID,
 		"workflowVersionId": e.WorkflowVersionID,
 		"specHash":          "sha256:" + hexOf(e.SpecHash),
+		"test":              e.IsTest,
 		"parameters":        json.RawMessage(e.Parameters),
 		"strategy":          e.Strategy,
 		"state":             e.State,
@@ -78,6 +79,7 @@ type executeRequest struct {
 	WorkflowID string          `json:"workflow"`
 	VersionID  string          `json:"version"`
 	Parameters json.RawMessage `json:"parameters"`
+	Test       bool            `json:"test"`
 }
 
 func (h *executionHandlers) execute(w http.ResponseWriter, r *http.Request) {
@@ -124,6 +126,7 @@ func (h *executionHandlers) execute(w http.ResponseWriter, r *http.Request) {
 	res, err := h.svc.Execute(ctx, authn.MustPrincipal(ctx),
 		tenants.MustTenantContext(ctx), execsvc.ExecuteInput{
 			WorkflowID: wid, VersionID: vid, Parameters: in.Parameters,
+			Test: in.Test,
 		}, key, sha256.Sum256(raw))
 	if err != nil {
 		httpx.WriteError(ctx, w, err)
@@ -151,6 +154,15 @@ func (h *executionHandlers) list(w http.ResponseWriter, r *http.Request) {
 	}
 	if q := r.URL.Query().Get("state"); q != "" {
 		f.States = append(f.States, executions.ExecutionState(q))
+	}
+	if values, ok := r.URL.Query()["test"]; ok {
+		if len(values) != 1 || (values[0] != "true" && values[0] != "false") {
+			httpx.WriteError(ctx, w, apperr.New(apperr.Invalid,
+				"TEST_FILTER_INVALID", "test filter must be true or false"))
+			return
+		}
+		value := values[0] == "true"
+		f.Test = &value
 	}
 	es, next, err := h.svc.List(ctx, authn.MustPrincipal(ctx),
 		tenants.MustTenantContext(ctx), f, pageOf(r))

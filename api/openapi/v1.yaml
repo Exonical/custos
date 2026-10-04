@@ -2024,7 +2024,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/WorkflowVersion"
         "409":
-          description: Version immutable or stale expected version.
+          description: Version immutable, stale expected version, or DRAFT_LOCKED while a non-terminal test execution uses the draft.
           content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
 
   /tenants/{tenant}/workflows/{workflow}/versions/{version}/layout:
@@ -2242,12 +2242,15 @@ paths:
 
   /tenants/{tenant}/workflow-executions:
     post:
-      summary: Execute a published workflow version (workflow.execute; Idempotency-Key required)
+      summary: Execute a workflow version (workflow.execute; Idempotency-Key required)
       operationId: executeWorkflow
       description: >
         Creates a PENDING WorkflowExecution pinned to the version's spec
-        hash and enqueues the engine. The idempotency key scopes replay
-        to (tenant, key); a reused key with a different body is a 409.
+        hash and enqueues the engine. Normal runs require a published version.
+        Test runs set test=true, require an explicit draft version, and require
+        both workflow.create and workflow.execute on the project. The
+        idempotency key scopes replay to (tenant, key); a reused key with a
+        different body is a 409.
       security:
         - bearerAuth: []
       parameters:
@@ -2273,13 +2276,16 @@ paths:
           description: Unauthenticated.
           content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
         "403":
-          description: Requires workflow.execute on the project.
+          description: Requires workflow.execute, and workflow.create for test runs, on the project.
           content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
         "404":
           description: Workflow not found.
           content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
         "409":
-          description: Idempotency-Key reused with a different body, no published version, or the version is not published.
+          description: Idempotency-Key reused with a different body, no published version, or draft changed before test creation.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "422":
+          description: Test runs require a draft version; draft versions require test=true.
           content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
     get:
       summary: List workflow executions (execution.read.self|tenant)
@@ -2298,6 +2304,10 @@ paths:
           in: query
           description: Execution state filter.
           schema: {type: string}
+        - name: test
+          in: query
+          description: Filter test runs (true) or normal runs (false); omitted returns both.
+          schema: {type: boolean}
       responses:
         "200":
           description: Execution list.
@@ -2310,6 +2320,9 @@ paths:
           content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
         "403":
           description: Requires execution.read.self.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "400":
+          description: Invalid test filter.
           content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
 
   /tenants/{tenant}/workflow-executions/{execution}:
@@ -4685,6 +4698,10 @@ components:
           type: object
           additionalProperties: true
           description: Runtime parameter values validated against spec.parameters.
+        test:
+          type: boolean
+          default: false
+          description: Test a draft version; requires an explicit version and workflow.create plus workflow.execute.
 
     WorkflowExecution:
       type: object
@@ -4695,6 +4712,7 @@ components:
         projectId: {type: string, format: uuid}
         workflowId: {type: string, format: uuid}
         workflowVersionId: {type: string, format: uuid}
+        test: {type: boolean}
         specHash: {type: string}
         parameters: {type: object}
         strategy: {type: string, enum: [auto, engine, native]}

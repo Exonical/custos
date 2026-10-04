@@ -357,6 +357,9 @@ func (s *Service) UpdateDraft(ctx context.Context, p authn.Principal,
 		return workflows.Version{}, apperr.New(apperr.Conflict,
 			"VERSION_IMMUTABLE", "only draft versions may be edited")
 	}
+	if err := s.d.Repo.CheckDraftEditable(ctx, scope, v); err != nil {
+		return workflows.Version{}, err
+	}
 	_, canon, hash, err := s.decodeSpec(ctx, p, tc, body, contentType)
 	if err != nil {
 		return workflows.Version{}, err

@@ -73,6 +73,10 @@ requires the tenant `ValidationPolicy` flag `allowLegacySbatchImport`
 (`docs/script-validation.md`). `ValidationPolicy` itself is edited under
 `policy.manage`; platform admins own cluster-scope policies.
 
+Test runs of draft workflow versions require both `workflow.create` and
+`workflow.execute` on the workflow's project. Normal runs of published
+versions continue to require only `workflow.execute`.
+
 ## Roles (RBAC v1)
 
 Roles are named bundles of permissions. Bindings exist at three scopes:

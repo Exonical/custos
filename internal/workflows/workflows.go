@@ -79,6 +79,8 @@ type Repository interface {
 		workflowID, versionID uuid.UUID) (Version, error)
 	ListVersions(ctx context.Context, scope tenants.Scope, tenantID,
 		workflowID uuid.UUID) ([]Version, error)
+	CheckDraftEditable(ctx context.Context, scope tenants.Scope,
+		v Version) error
 	UpdateDraftSpec(ctx context.Context, scope tenants.Scope, v Version,
 		expectVersion int64) error
 	UpdateLayout(ctx context.Context, scope tenants.Scope, v Version,

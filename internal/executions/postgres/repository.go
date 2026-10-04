@@ -33,7 +33,7 @@ func New(pool *pgxpool.Pool) *Repository { return &Repository{pool: pool} }
 const execCols = `id, tenant_id, project_id, workflow_id,
 	workflow_version_id, spec_hash, parameters, strategy, state,
 	state_reason, requested_by, created_at, started_at, ended_at,
-	updated_at, version`
+	updated_at, version, is_test`
 
 func scanExec(row pgx.Row) (executions.Execution, error) {
 	var e executions.Execution
@@ -43,7 +43,7 @@ func scanExec(row pgx.Row) (executions.Execution, error) {
 	err := row.Scan(&e.ID, &e.TenantID, &e.ProjectID, &e.WorkflowID,
 		&e.WorkflowVersionID, &hash, &e.Parameters, &strategy, &state,
 		&reason, &e.RequestedBy, &e.CreatedAt, &e.StartedAt, &e.EndedAt,
-		&e.UpdatedAt, &e.Version)
+		&e.UpdatedAt, &e.Version, &e.IsTest)
 	if err != nil {
 		return e, db.MapError(err)
 	}
@@ -114,13 +114,37 @@ func (r *Repository) CreateWithIdempotency(ctx context.Context,
 			}
 			return nil
 		}
+		if e.IsTest {
+			var versionState string
+			var versionHash []byte
+			err := tx.QueryRow(ctx, `
+				SELECT state, spec_hash FROM workflow_versions
+				WHERE tenant_id=$1 AND workflow_id=$2 AND id=$3
+				FOR UPDATE`,
+				tid, e.WorkflowID, e.WorkflowVersionID).
+				Scan(&versionState, &versionHash)
+			if errors.Is(err, pgx.ErrNoRows) {
+				return db.ErrNotFound
+			}
+			if err != nil {
+				return db.MapError(err)
+			}
+			if versionState != "draft" {
+				return apperr.New(apperr.Validation, "TEST_RUN_REQUIRES_DRAFT",
+					"test runs can only be created from a draft version")
+			}
+			if !bytes.Equal(versionHash, e.SpecHash[:]) {
+				return apperr.New(apperr.Conflict, "VERSION_CONFLICT",
+					"draft changed before the test run could be created")
+			}
+		}
 		if _, err := tx.Exec(ctx, `
 			INSERT INTO workflow_executions (`+execCols+`)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
 			e.ID, tid, e.ProjectID, e.WorkflowID, e.WorkflowVersionID,
 			e.SpecHash[:], e.Parameters, e.Strategy, string(e.State),
 			nilStr(e.StateReason), e.RequestedBy, e.CreatedAt,
-			e.StartedAt, e.EndedAt, e.UpdatedAt, e.Version); err != nil {
+			e.StartedAt, e.EndedAt, e.UpdatedAt, e.Version, e.IsTest); err != nil {
 			return db.MapError(err)
 		}
 		if enqueue != nil {
@@ -172,6 +196,9 @@ func (r *Repository) List(ctx context.Context, scope tenants.Scope,
 		}
 		if f.WorkflowID != nil {
 			add("workflow_id = $%d", *f.WorkflowID)
+		}
+		if f.Test != nil {
+			add("is_test = $%d", *f.Test)
 		}
 		if f.RequestedBy != nil {
 			add("requested_by = $%d", *f.RequestedBy)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -11,6 +12,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/Exonical/custos/internal/executions"
+	execpg "github.com/Exonical/custos/internal/executions/postgres"
 	"github.com/Exonical/custos/internal/platform/apperr"
 	"github.com/Exonical/custos/internal/platform/db"
 	"github.com/Exonical/custos/internal/platform/db/dbtest"
@@ -166,6 +169,52 @@ func TestVersionLifecycle(t *testing.T) {
 	if err := repo.SetVersionState(ctx, ps, v,
 		workflows.VersionDeprecated, 3); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestUpdateDraftSpecRejectsActiveTestExecution(t *testing.T) {
+	ctx := context.Background()
+	pool := dbtest.Pool(t)
+	tid := mkTenant(t, pool, "draft-lock-a")
+	uid := mkUser(t, pool, "draft-lock-u")
+	pid := mkProject(t, pool, tid, "draft-lock-p")
+	ps := tenants.PlatformScope()
+	wfRepo := wfpg.New(pool)
+	w := mkWorkflow(t, wfRepo, ps, tid, pid, uid, "draft-lock")
+	v := mkDraft(t, wfRepo, ps, w, uid, 1)
+
+	now := time.Now().UTC()
+	active := executions.Execution{
+		ID: uuid.Must(uuid.NewV7()), TenantID: tid, ProjectID: pid,
+		WorkflowID: w.ID, WorkflowVersionID: v.ID, SpecHash: v.SpecHash,
+		IsTest: true, Parameters: []byte(`{}`), Strategy: "auto",
+		State: executions.ExecPending, RequestedBy: uid,
+		CreatedAt: now, UpdatedAt: now, Version: 1,
+	}
+	if _, err := execpg.New(pool).CreateWithIdempotency(ctx, ps, active,
+		executions.IdemRecord{
+			Key: "test-" + active.ID.String(), Status: 202,
+			ResourceID: active.ID, ExpiresAt: now.Add(time.Hour),
+		}, nil); err != nil {
+		t.Fatalf("insert test execution: %v", err)
+	}
+	v.Layout = []byte(`{"nodes":{}}`)
+	if err := wfRepo.UpdateLayout(ctx, ps, v, 1); err != nil {
+		t.Fatalf("layout update was blocked by active test execution: %v", err)
+	}
+
+	v.Spec = []byte(`{"apiVersion":"custos.io/v1alpha1","kind":"Workflow","metadata":{"name":"changed"},"spec":{"tasks":[]}}`)
+	v.SpecHash = [32]byte{2}
+	err := wfRepo.CheckDraftEditable(ctx, ps, v)
+	var domainErr *apperr.Error
+	if !errors.As(err, &domainErr) || domainErr.Code != "DRAFT_LOCKED" ||
+		!strings.Contains(domainErr.Message, active.ID.String()) {
+		t.Fatalf("draft edit check = %v, want DRAFT_LOCKED naming %s", err, active.ID)
+	}
+	err = wfRepo.UpdateDraftSpec(ctx, ps, v, 1)
+	if !errors.As(err, &domainErr) || domainErr.Code != "DRAFT_LOCKED" ||
+		!strings.Contains(domainErr.Message, active.ID.String()) {
+		t.Fatalf("draft update error = %v, want DRAFT_LOCKED naming %s", err, active.ID)
 	}
 }
 

@@ -4,6 +4,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -219,11 +220,62 @@ func (r *Repository) ListVersions(ctx context.Context,
 	return out, err
 }
 
+func checkDraftEditable(ctx context.Context, tx pgx.Tx,
+	v workflows.Version) error {
+	var state string
+	err := tx.QueryRow(ctx, `
+		SELECT state FROM workflow_versions
+		WHERE tenant_id=$1 AND workflow_id=$2 AND id=$3
+		FOR UPDATE`,
+		v.TenantID, v.WorkflowID, v.ID).Scan(&state)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return db.ErrNotFound
+	}
+	if err != nil {
+		return db.MapError(err)
+	}
+	if state != string(workflows.VersionDraft) {
+		return apperr.New(apperr.Conflict, "VERSION_IMMUTABLE",
+			"only draft versions may be edited")
+	}
+	var activeTestID uuid.UUID
+	err = tx.QueryRow(ctx, `
+		SELECT id FROM workflow_executions
+		WHERE tenant_id=$1 AND workflow_id=$2 AND workflow_version_id=$3
+		  AND is_test
+		  AND state IN ('PENDING','VALIDATING','QUEUED','RUNNING','CANCELING')
+		ORDER BY created_at, id
+		LIMIT 1`,
+		v.TenantID, v.WorkflowID, v.ID).Scan(&activeTestID)
+	if err == nil {
+		return apperr.New(apperr.Conflict, "DRAFT_LOCKED",
+			fmt.Sprintf("draft is locked by active test execution %s", activeTestID))
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return db.MapError(err)
+	}
+	return nil
+}
+
+// CheckDraftEditable serializes a draft edit check with test-run creation.
+func (r *Repository) CheckDraftEditable(ctx context.Context,
+	scope tenants.Scope, v workflows.Version) error {
+	return db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
+		if err := db.ApplyScope(ctx, tx, scope); err != nil {
+			return err
+		}
+		return checkDraftEditable(ctx, tx, v)
+	})
+}
+
 // UpdateDraftSpec replaces a draft's canonical spec and hash.
 func (r *Repository) UpdateDraftSpec(ctx context.Context,
 	scope tenants.Scope, v workflows.Version, expectVersion int64) error {
 	return db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
 		if err := db.ApplyScope(ctx, tx, scope); err != nil {
+			return err
+		}
+		if err := checkDraftEditable(ctx, tx, v); err != nil {
 			return err
 		}
 		tag, err := tx.Exec(ctx, `

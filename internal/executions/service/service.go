@@ -91,6 +91,7 @@ type ExecuteInput struct {
 	WorkflowID uuid.UUID
 	VersionID  *uuid.UUID // nil → latest published
 	Parameters json.RawMessage
+	Test       bool
 }
 
 // Result is Execute's outcome.
@@ -115,23 +116,43 @@ func (s *Service) Execute(ctx context.Context, p authn.Principal,
 		}
 		return Result{}, err
 	}
+	projectResource := authz.Resource{
+		Kind: "project", ID: wf.ProjectID.String(),
+		TenantID: wf.TenantID.String(), ProjectID: wf.ProjectID.String(),
+		OwnerID: p.UserID.String(),
+	}
+	if in.Test {
+		if err := authz.Require(ctx, s.d.AZ, p, authz.WorkflowCreate,
+			projectResource, s.d.Audit); err != nil {
+			return Result{}, err
+		}
+	}
 	if err := authz.Require(ctx, s.d.AZ, p, authz.WorkflowExecute,
-		authz.Resource{
-			Kind:      "project",
-			ID:        wf.ProjectID.String(),
-			TenantID:  wf.TenantID.String(),
-			ProjectID: wf.ProjectID.String(),
-		}, s.d.Audit); err != nil {
+		projectResource, s.d.Audit); err != nil {
 		return Result{}, err
 	}
 	var v workflows.Version
+	if in.Test && in.VersionID == nil {
+		return Result{}, apperr.New(apperr.Validation, "TEST_RUN_REQUIRES_DRAFT",
+			"test runs require an explicit draft version")
+	}
 	if in.VersionID != nil {
 		v, err = s.d.Workflows.GetVersion(ctx, scope, tc.Tenant.ID,
 			wf.ID, *in.VersionID)
 		if err != nil {
 			return Result{}, err
 		}
-		if v.State != workflows.VersionPublished {
+		if in.Test && v.State != workflows.VersionDraft {
+			return Result{}, apperr.New(apperr.Validation,
+				"TEST_RUN_REQUIRES_DRAFT",
+				"test runs require a draft version")
+		}
+		if !in.Test && v.State == workflows.VersionDraft {
+			return Result{}, apperr.New(apperr.Validation,
+				"DRAFT_REQUIRES_TEST_RUN",
+				"draft versions can only be executed as test runs")
+		}
+		if !in.Test && v.State != workflows.VersionPublished {
 			return Result{}, apperr.New(apperr.Conflict, "VERSION_STATE",
 				"only published versions can be executed")
 		}
@@ -161,6 +182,7 @@ func (s *Service) Execute(ctx context.Context, p authn.Principal,
 		ID: uuid.Must(uuid.NewV7()), TenantID: tc.Tenant.ID,
 		ProjectID: wf.ProjectID, WorkflowID: wf.ID,
 		WorkflowVersionID: v.ID, SpecHash: v.SpecHash,
+		IsTest:     in.Test,
 		Parameters: params, Strategy: strategy,
 		State: executions.ExecPending, RequestedBy: p.UserID,
 		CreatedAt: now, UpdatedAt: now, Version: 1,
@@ -187,13 +209,17 @@ func (s *Service) Execute(ctx context.Context, p authn.Principal,
 		return Result{Execution: res.Execution, Replayed: true,
 			Status: res.Status, Body: res.Body}, nil
 	}
+	details := map[string]any{
+		"workflow":  wf.Name,
+		"version":   v.Number,
+		"spec_hash": fmt.Sprintf("%x", e.SpecHash),
+		"strategy":  strategy,
+	}
+	if in.Test {
+		details["test"] = true
+	}
 	s.auditEvent(ctx, p, e.TenantID, "workflow.execution.submitted",
-		e.ID.String(), "", audit.ResultAllow, map[string]any{
-			"workflow":  wf.Name,
-			"version":   v.Number,
-			"spec_hash": fmt.Sprintf("%x", e.SpecHash),
-			"strategy":  strategy,
-		})
+		e.ID.String(), "", audit.ResultAllow, details)
 	return Result{Execution: e}, nil
 }
 

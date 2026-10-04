@@ -176,8 +176,10 @@ func validateStage(ctx context.Context, d Deps,
 	if err != nil {
 		return err
 	}
-	if v.State != workflows.VersionPublished ||
-		v.SpecHash != e.SpecHash {
+	versionStateAllowed := v.State == workflows.VersionPublished ||
+		(e.IsTest && (v.State == workflows.VersionDraft ||
+			v.State == workflows.VersionDeprecated))
+	if !versionStateAllowed || v.SpecHash != e.SpecHash {
 		d.record(ctx, audit.Event{
 			Actor:    audit.Actor{Type: audit.ActorSystem, ID: "custos"},
 			Action:   "workflow.execution.spec_tampered",

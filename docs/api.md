@@ -184,7 +184,7 @@ POST   /api/v1/tenants/{tenant}/workflows/{workflow}/versions  workflow.create; 
 GET    /api/v1/tenants/{tenant}/workflows/{workflow}/versions
 POST   /api/v1/tenants/{tenant}/workflows/{workflow}/versions/validate   workflow.read; full steps 1-8, persists nothing
 GET    /api/v1/tenants/{tenant}/workflows/{workflow}/versions/{version}  `Accept: application/yaml` returns YAML
-PUT    /api/v1/tenants/{tenant}/workflows/{workflow}/versions/{version}  replaces a draft spec; 409 VERSION_IMMUTABLE otherwise
+PUT    /api/v1/tenants/{tenant}/workflows/{workflow}/versions/{version}  replaces a draft spec; 409 DRAFT_LOCKED while a test run is active, VERSION_IMMUTABLE otherwise
 PUT    /api/v1/tenants/{tenant}/workflows/{workflow}/versions/{version}/layout   editor layout; draft and published only
 POST   /api/v1/tenants/{tenant}/workflows/{workflow}/versions/{version}/publish  workflow.publish; steps 1-8 + current valid ScriptValidation per script task; immutable on success
 POST   /api/v1/tenants/{tenant}/workflows/{workflow}/versions/{version}/deprecate  workflow.publish
@@ -196,8 +196,8 @@ GET    /api/v1/tenants/{tenant}/workflows/{workflow}/versions/{version}/validati
 POST   /api/v1/tenants/{tenant}/scripts                        workflow.create; stores bytes, returns `{digest, size}`; rate-limited
 POST   /api/v1/tenants/{tenant}/scripts/validate                workflow.create; ad-hoc editor validation (see script-validation.md); rate-limited 30/min per principal
 POST   /api/v1/tenants/{tenant}/scripts/import-sbatch           workflow.create; ad-hoc legacy import proposal; default-on, 403 IMPORT_DISABLED when effective policy disables it; rate-limited
-POST   /api/v1/tenants/{tenant}/workflow-executions              workflow.execute; 202; body `{workflow, version?, parameters}`; `version` defaults to latest published; Idempotency-Key required
-GET    /api/v1/tenants/{tenant}/workflow-executions              execution.read.self/project/tenant; `?workflow=` and `?state=` filters
+POST   /api/v1/tenants/{tenant}/workflow-executions              workflow.execute; 202; body `{workflow, version?, parameters, test?}`; `version` defaults to latest published; Idempotency-Key required
+GET    /api/v1/tenants/{tenant}/workflow-executions              execution.read.self/project/tenant; `?workflow=`, `?state=`, `?test=true|false` filters
 GET    /api/v1/tenants/{tenant}/workflow-executions/{execution}  execution.read.self/project/tenant
 GET    /api/v1/tenants/{tenant}/workflow-executions/{execution}/tasks/{task}/execution-spec   frozen spec; `{task}` is the task execution UUID
 GET    /api/v1/tenants/{tenant}/workflow-executions/{execution}/tasks/{task}/validation       linked ScriptValidation
@@ -240,6 +240,12 @@ GET    /api/v1/audit-events                         platform auditor
 GET    /api/v1/openapi.json
 GET    /health/live  /health/ready  /metrics       (metrics on a separate listener/port by default)
 ```
+
+Set `test: true` to execute a draft version. Test runs require an explicit
+draft `version` and both `workflow.create` and `workflow.execute` on the
+project; normal runs continue to require a published version and only
+`workflow.execute`. Drafts with active test runs reject spec updates with
+`409 DRAFT_LOCKED`; layout updates and publishing remain allowed.
 
 Cluster responses include `policy_management` (`inherit`, `enforce`, or `report`)
 and `policy_parent_account`. The global `slurm.policy_management` default is

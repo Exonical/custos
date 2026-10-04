@@ -181,6 +181,42 @@ func (f fixture) seedVersion(t *testing.T, name string,
 	return w, v
 }
 
+func (f fixture) seedDraftVersion(t *testing.T, name string,
+	spec workflowspec.Workflow) (workflows.Workflow, workflows.Version) {
+	t.Helper()
+	ctx := context.Background()
+	scope := tenants.PlatformScope()
+	w := workflows.Workflow{
+		ID: uuid.Must(uuid.NewV7()), TenantID: f.tenantID,
+		ProjectID: f.projectID, Name: name,
+		State: workflows.StateActive, CreatedBy: f.userID,
+		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
+		Version: 1,
+	}
+	if err := f.wfRepo.Create(ctx, scope, w); err != nil {
+		t.Fatal(err)
+	}
+	canon, err := workflowspec.Canonical(spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hash, err := workflowspec.SpecHash(spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	v := workflows.Version{
+		ID: uuid.Must(uuid.NewV7()), WorkflowID: w.ID,
+		TenantID: w.TenantID, Number: 1, State: workflows.VersionDraft,
+		SchemaVersion: "custos.io/v1alpha1", Spec: canon,
+		SpecHash: hash, Layout: []byte(`{}`),
+		CreatedBy: f.userID, CreatedAt: time.Now().UTC(), Version: 1,
+	}
+	if err := f.wfRepo.CreateVersion(ctx, scope, v); err != nil {
+		t.Fatal(err)
+	}
+	return w, v
+}
+
 // seedExec inserts a PENDING execution pinned to the version.
 func (f fixture) seedExec(t *testing.T, w workflows.Workflow,
 	v workflows.Version, params []byte) executions.Execution {
@@ -200,6 +236,32 @@ func (f fixture) seedExec(t *testing.T, w workflows.Workflow,
 	_, err := f.repo.CreateWithIdempotency(context.Background(),
 		tenants.PlatformScope(), e, executions.IdemRecord{
 			Key: "k-" + e.ID.String(), ExpiresAt: now.Add(time.Hour),
+		}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return e
+}
+
+func (f fixture) seedTestExec(t *testing.T, w workflows.Workflow,
+	v workflows.Version, params []byte) executions.Execution {
+	t.Helper()
+	if len(params) == 0 {
+		params = []byte(`{}`)
+	}
+	now := time.Now().UTC()
+	e := executions.Execution{
+		ID: uuid.Must(uuid.NewV7()), TenantID: f.tenantID,
+		ProjectID: f.projectID, WorkflowID: w.ID,
+		WorkflowVersionID: v.ID, SpecHash: v.SpecHash,
+		IsTest: true, Parameters: params, Strategy: "auto",
+		State: executions.ExecPending, RequestedBy: f.userID,
+		CreatedAt: now, UpdatedAt: now, Version: 1,
+	}
+	_, err := f.repo.CreateWithIdempotency(context.Background(),
+		tenants.PlatformScope(), e, executions.IdemRecord{
+			Key: "test-" + e.ID.String(), Status: 202,
+			ResourceID: e.ID, ExpiresAt: now.Add(time.Hour),
 		}, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -382,6 +444,47 @@ func TestLinearChain(t *testing.T) {
 	e = f.getExec(t, e.ID)
 	if e.State != executions.ExecSucceeded {
 		t.Fatalf("state %s (%s), want SUCCEEDED", e.State, e.StateReason)
+	}
+}
+
+func TestTestExecutionAcceptsPinnedDraftPublishedAndDeprecatedVersions(t *testing.T) {
+	for _, target := range []workflows.VersionState{
+		workflows.VersionDraft, workflows.VersionPublished, workflows.VersionDeprecated,
+	} {
+		t.Run(string(target), func(t *testing.T) {
+			f := setup(t)
+			w, v := f.seedDraftVersion(t, "test-"+string(target),
+				f.cmdSpec(cmd("run")))
+			e := f.seedTestExec(t, w, v, nil)
+			if target == workflows.VersionPublished || target == workflows.VersionDeprecated {
+				if err := f.wfRepo.SetVersionState(context.Background(),
+					tenants.PlatformScope(), v, workflows.VersionPublished, 1); err != nil {
+					t.Fatalf("publish draft with active test: %v", err)
+				}
+			}
+			if target == workflows.VersionDeprecated {
+				if err := f.wfRepo.SetVersionState(context.Background(),
+					tenants.PlatformScope(), v, workflows.VersionDeprecated, 2); err != nil {
+					t.Fatalf("deprecate version with active test: %v", err)
+				}
+			}
+			f.advance(t, e)
+			got := f.getExec(t, e.ID)
+			if got.State != executions.ExecQueued || !got.IsTest {
+				t.Fatalf("test execution after advance = %+v", got)
+			}
+		})
+	}
+}
+
+func TestNormalExecutionStillRejectsDraftVersion(t *testing.T) {
+	f := setup(t)
+	w, v := f.seedDraftVersion(t, "normal-draft", f.cmdSpec(cmd("run")))
+	e := f.seedExec(t, w, v, nil)
+	f.advance(t, e)
+	got := f.getExec(t, e.ID)
+	if got.State != executions.ExecFailed || got.StateReason != "SPEC_TAMPERED" {
+		t.Fatalf("normal draft execution = %+v, want SPEC_TAMPERED failure", got)
 	}
 }
 

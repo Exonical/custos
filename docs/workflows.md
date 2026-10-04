@@ -13,6 +13,11 @@
 Drafts are editable in place; publishing freezes them. Editing a published
 version creates a new draft. Executions reference `workflow_version_id` and
 also store a copy of `spec_hash` so tampering is detectable.
+Normal executions require a published version. A draft may be run only with
+`test: true`; while a non-terminal test execution exists, spec updates return
+`DRAFT_LOCKED` (layout updates and publishing remain allowed). Test executions
+remain pinned to their captured hash if the version is later published or
+deprecated.
 
 The UI layout (node positions, collapsed groups, colors) is stored in
 `layout` and is **never** read by the engine.

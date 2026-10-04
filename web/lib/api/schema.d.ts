@@ -1029,8 +1029,8 @@ export interface paths {
         get: operations["listWorkflowExecutions"];
         put?: never;
         /**
-         * Execute a published workflow version (workflow.execute; Idempotency-Key required)
-         * @description Creates a PENDING WorkflowExecution pinned to the version's spec hash and enqueues the engine. The idempotency key scopes replay to (tenant, key); a reused key with a different body is a 409.
+         * Execute a workflow version (workflow.execute; Idempotency-Key required)
+         * @description Creates a PENDING WorkflowExecution pinned to the version's spec hash and enqueues the engine. Normal runs require a published version. Test runs set test=true, require an explicit draft version, and require both workflow.create and workflow.execute on the project. The idempotency key scopes replay to (tenant, key); a reused key with a different body is a 409.
          */
         post: operations["executeWorkflow"];
         delete?: never;
@@ -2562,6 +2562,11 @@ export interface components {
             parameters?: {
                 [key: string]: unknown;
             };
+            /**
+             * @description Test a draft version; requires an explicit version and workflow.create plus workflow.execute.
+             * @default false
+             */
+            test: boolean;
         };
         WorkflowExecution: {
             /** Format: uuid */
@@ -2574,6 +2579,7 @@ export interface components {
             workflowId: string;
             /** Format: uuid */
             workflowVersionId: string;
+            test?: boolean;
             specHash?: string;
             parameters?: Record<string, never>;
             /** @enum {string} */
@@ -6484,7 +6490,7 @@ export interface operations {
                     "application/json": components["schemas"]["WorkflowVersion"];
                 };
             };
-            /** @description Version immutable or stale expected version. */
+            /** @description Version immutable, stale expected version, or DRAFT_LOCKED while a non-terminal test execution uses the draft. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -6810,6 +6816,8 @@ export interface operations {
                 workflow?: string;
                 /** @description Execution state filter. */
                 state?: string;
+                /** @description Filter test runs (true) or normal runs (false); omitted returns both. */
+                test?: boolean;
             };
             header?: never;
             path: {
@@ -6827,6 +6835,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WorkflowExecutionList"];
+                };
+            };
+            /** @description Invalid test filter. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
                 };
             };
             /** @description Unauthenticated. */
@@ -6894,7 +6911,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Requires workflow.execute on the project. */
+            /** @description Requires workflow.execute, and workflow.create for test runs, on the project. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -6912,8 +6929,17 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Idempotency-Key reused with a different body, no published version, or the version is not published. */
+            /** @description Idempotency-Key reused with a different body, no published version, or draft changed before test creation. */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Test runs require a draft version; draft versions require test=true. */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

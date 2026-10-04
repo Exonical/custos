@@ -101,6 +101,7 @@ type Execution struct {
 	WorkflowID        uuid.UUID
 	WorkflowVersionID uuid.UUID
 	SpecHash          [32]byte
+	IsTest            bool
 	Parameters        []byte // jsonb
 	Strategy          string
 	State             ExecutionState
@@ -158,6 +159,7 @@ type ExecPatch struct {
 // ExecFilter scopes List.
 type ExecFilter struct {
 	WorkflowID  *uuid.UUID
+	Test        *bool
 	States      []ExecutionState
 	RequestedBy *uuid.UUID // self-only listing
 }
