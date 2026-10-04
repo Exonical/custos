@@ -1,10 +1,8 @@
 import "server-only";
-import { customFetch } from "@auth/core";
-import type { OIDCConfig } from "@auth/core/providers";
-import NextAuth, { type NextAuthConfig, type Profile } from "next-auth";
+import NextAuth, { type NextAuthConfig } from "next-auth";
 import { getConfig } from "@/lib/config";
-import { createSafeFetch } from "@/lib/http";
 import { jwtCallback, sessionCallback } from "@/lib/auth/callbacks";
+import { AUTH_BASE_PATH, createCustosOIDCProvider } from "@/lib/auth/provider";
 
 export function buildAuthConfig(): NextAuthConfig {
   const config = getConfig();
@@ -14,22 +12,12 @@ export function buildAuthConfig(): NextAuthConfig {
     secure: config.cookieSecure,
     sameSite: "lax" as const,
   };
-  const provider: OIDCConfig<Profile> = {
-    id: "custos",
-    name: "Custos",
-    type: "oidc",
-    issuer: config.issuer.toString(),
-    clientId: config.clientId,
-    clientSecret: config.clientSecret,
-    checks: ["pkce", "state", "nonce"],
-    authorization: { params: { scope: "openid profile email" } },
-    [customFetch]: createSafeFetch(config.webCaFile, 10_000),
-  };
+  const provider = createCustosOIDCProvider(config);
 
   return {
     secret: [...config.authSecrets],
     trustHost: true,
-    basePath: "/api/auth",
+    basePath: AUTH_BASE_PATH,
     useSecureCookies: config.cookieSecure,
     session: { strategy: "jwt", maxAge: 8 * 60 * 60 },
     pages: { signIn: "/auth/login", error: "/auth/error" },
