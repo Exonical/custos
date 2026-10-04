@@ -213,6 +213,64 @@ test("login, workflows, executions, jobs, CSRF-protected mutations, and logout",
     await expect(page).toHaveURL(/\/t\/acme\/workflows\/[0-9a-f-]+$/);
     await expect(page.getByRole("heading", { name: "Smoke MPI template", level: 1 })).toBeVisible();
     await expect(page.getByRole("link", { name: "v1", exact: true })).toBeVisible();
+    await page.getByRole("link", { name: "v1", exact: true }).click();
+    await page.getByRole("link", { name: "Edit draft" }).click();
+    await expect(page.getByRole("heading", { name: "Edit draft", level: 1 })).toBeVisible();
+    await page.getByLabel("CPU").fill("3");
+    await page.getByRole("tab", { name: "YAML" }).click();
+    await expect(page.locator(".monaco-editor .view-lines")).toContainText("cpu: 3");
+
+    const invalidEditorYaml = `apiVersion: custos.io/v1alpha1
+kind: Workflow
+metadata:
+  name: smoke-mpi-template
+spec:
+  tasks:
+    - name: prep
+      launch: sbatch
+      resources:
+        cpu: 1
+        memory: 1Gi
+        walltime: 5m
+      script: |
+        #!/bin/bash
+    - name: run
+      launch: sbatch
+      dependsOn:
+        - missing-task
+      resources:
+        cpu: 3
+        memory: 1Gi
+        walltime: 5m
+      script: |
+        #!/bin/bash
+`;
+    const validEditorYaml = invalidEditorYaml.replace("missing-task", "prep");
+    const replaceEditorYaml = async (text: string) => {
+      await page.context().grantPermissions(["clipboard-read", "clipboard-write"], { origin: baseURL ?? "http://localhost:3005" });
+      await page.evaluate(async (value) => { await navigator.clipboard.writeText(value); }, text);
+      await page.locator(".monaco-editor").click();
+      await page.keyboard.press("ControlOrMeta+A");
+      await page.keyboard.press("ControlOrMeta+V");
+    };
+    await replaceEditorYaml(invalidEditorYaml);
+    await expect(page.getByText(/unknown dependency missing-task/)).toBeVisible();
+    await replaceEditorYaml(validEditorYaml);
+    await expect(page.getByRole("status").filter({ hasText: /^Valid$/ })).toBeVisible();
+    await page.getByRole("button", { name: "Save draft" }).click();
+    await expect(page.getByText("Draft saved.")).toBeVisible();
+    await page.getByRole("button", { name: "Publish", exact: true }).click();
+    await expect(page.getByRole("dialog", { name: "Publish workflow version?" })).toBeVisible();
+    await page.getByRole("button", { name: "Confirm publish" }).click();
+    await expect(page).toHaveURL(/\/t\/acme\/workflows\/[0-9a-f-]+\/versions\/[0-9a-f-]+$/);
+    await expect(page.getByRole("button", { name: "Deprecate" })).toBeVisible();
+    await page.getByRole("button", { name: "Deprecate" }).click();
+    await expect(page.getByRole("dialog", { name: "Deprecate version?" })).toBeVisible();
+    await page.getByRole("button", { name: "Confirm deprecate" }).click();
+    await expect(page.getByRole("button", { name: "Deprecate" })).toHaveCount(0);
+    await page.getByRole("button", { name: "New draft from this version" }).click();
+    await expect(page).toHaveURL(/\/t\/acme\/workflows\/[0-9a-f-]+\/versions\/[0-9a-f-]+\/edit$/);
+    await expect(page.getByRole("heading", { name: "Edit draft", level: 1 })).toBeVisible();
 
     await page.goto("/t/acme/workflows");
     await page.getByRole("link", { name: "Import sbatch" }).click();

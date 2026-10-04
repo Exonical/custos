@@ -1,7 +1,7 @@
 // @ts-check
 import { createHash, randomUUID } from "node:crypto";
 import http from "node:http";
-import { stringify } from "yaml";
+import { parseDocument, stringify } from "yaml";
 import { createMockData, userNameFromAccessToken } from "./data.mjs";
 import { loadWorkflowTemplates, templateSummary } from "./templates.mjs";
 
@@ -71,6 +71,12 @@ function sendEmpty(response, status) {
 
 /** @param {http.IncomingMessage} request @param {number} [maxBytes] @returns {Promise<{raw: Buffer, value: unknown}>} */
 async function readJsonBody(request, maxBytes = 1_048_576) {
+  const raw = await readRawBody(request, maxBytes);
+  return { raw, value: raw.length ? JSON.parse(raw.toString("utf8")) : null };
+}
+
+/** @param {http.IncomingMessage} request @param {number} [maxBytes] @returns {Promise<Buffer>} */
+async function readRawBody(request, maxBytes = 2 * 1024 * 1024) {
   const chunks = [];
   let length = 0;
   for await (const chunk of request) {
@@ -79,8 +85,111 @@ async function readJsonBody(request, maxBytes = 1_048_576) {
     if (length > maxBytes) throw new RangeError("body too large");
     chunks.push(bytes);
   }
-  const raw = Buffer.concat(chunks);
-  return { raw, value: raw.length ? JSON.parse(raw.toString("utf8")) : null };
+  return Buffer.concat(chunks);
+}
+
+/** @param {string} raw @param {string} contentType */
+function parseWorkflowBody(raw, contentType) {
+  const mediaType = contentType.split(";")[0]?.trim().toLowerCase();
+  if (mediaType === "application/yaml" || mediaType === "text/yaml") {
+    const document = parseDocument(raw);
+    if (document.errors.length > 0) {
+      return {
+        value: null,
+        errors: document.errors.map((error) => {
+          const pos = error.linePos?.[0];
+          return {
+            path: "",
+            code: "YAML_PARSE",
+            message: `${error.message}${pos ? ` (line ${String(pos.line)}, column ${String(pos.col)})` : ""}`,
+          };
+        }),
+      };
+    }
+    return { value: document.toJS(), errors: [] };
+  }
+  if (mediaType === "application/json") {
+    return { value: raw ? JSON.parse(raw) : null, errors: [] };
+  }
+  throw new TypeError("workflow spec Content-Type must be application/yaml or application/json");
+}
+
+/** @param {unknown} value @returns {{path:string,code:string,message:string}[]} */
+function validateMockWorkflow(value) {
+  /** @type {{path:string,code:string,message:string}[]} */
+  const errors = [];
+  const document = objectRecord(value);
+  const spec = objectRecord(document?.spec);
+  const tasks = spec?.tasks;
+  if (document?.apiVersion !== "custos.io/v1alpha1") {
+    errors.push({ path: "apiVersion", code: "API_VERSION", message: "apiVersion must be custos.io/v1alpha1" });
+  }
+  if (document?.kind !== "Workflow") {
+    errors.push({ path: "kind", code: "KIND", message: "kind must be Workflow" });
+  }
+  if (!Array.isArray(tasks) || tasks.length === 0) {
+    errors.push({ path: "spec.tasks", code: "TASKS_REQUIRED", message: "at least one task is required" });
+    return errors;
+  }
+
+  /** @type {Map<string,number>} */
+  const names = new Map();
+  /** @type {Map<string,string[]>} */
+  const dependencies = new Map();
+  tasks.forEach((entry, index) => {
+    const task = objectRecord(entry);
+    const path = `spec.tasks[${String(index)}]`;
+    if (!task || typeof task.name !== "string" || !task.name) {
+      errors.push({ path: `${path}.name`, code: "NAME_REQUIRED", message: "task name is required" });
+      return;
+    }
+    if (names.has(task.name)) {
+      errors.push({ path: `${path}.name`, code: "NAME_DUPLICATE", message: `task name ${task.name} is duplicated` });
+    } else {
+      names.set(task.name, index);
+    }
+    if (task.launch !== undefined && task.launch !== "sbatch" && task.launch !== "srun") {
+      errors.push({ path: `${path}.launch`, code: "LAUNCH_INVALID", message: "launch must be sbatch or srun" });
+    }
+    if (task.dependsOn !== undefined && (!Array.isArray(task.dependsOn) || task.dependsOn.some((name) => typeof name !== "string"))) {
+      errors.push({ path: `${path}.dependsOn`, code: "DEPENDS_ON_INVALID", message: "dependsOn must be a list of task names" });
+      dependencies.set(task.name, []);
+      return;
+    }
+    /** @type {string[]} */
+    const namesForTask = Array.isArray(task.dependsOn)
+      ? task.dependsOn.filter((name) => typeof name === "string")
+      : [];
+    dependencies.set(task.name, namesForTask);
+    namesForTask.forEach((dependency) => {
+      if (!tasks.some((candidate) => objectRecord(candidate)?.name === dependency)) {
+        errors.push({ path: `${path}.dependsOn`, code: "DEPENDS_ON_UNKNOWN", message: `unknown dependency ${String(dependency)}` });
+      }
+    });
+  });
+
+  const active = new Set();
+  const visited = new Set();
+  /** @type {Set<string>} */
+  const cycles = new Set();
+  /** @param {string} name */
+  function visit(name) {
+    if (active.has(name)) {
+      const index = names.get(name);
+      cycles.add(`spec.tasks[${String(index)}].dependsOn`);
+      return;
+    }
+    if (visited.has(name)) return;
+    active.add(name);
+    for (const dependency of dependencies.get(name) ?? []) {
+      if (names.has(dependency)) visit(dependency);
+    }
+    active.delete(name);
+    visited.add(name);
+  }
+  for (const name of names.keys()) visit(name);
+  for (const path of cycles) errors.push({ path, code: "DEPENDENCY_CYCLE", message: "task dependencies contain a cycle" });
+  return errors;
 }
 
 /** @param {unknown} value @returns {Record<string, unknown> | undefined} */
@@ -521,6 +630,9 @@ const server = http.createServer(async (request, response) => {
   const tenantSbatchImport = url.pathname.match(/^\/api\/v1\/tenants\/([^/]+)\/workflow-imports\/sbatch$/);
   const tenantWorkflows = url.pathname.match(/^\/api\/v1\/tenants\/([^/]+)\/workflows$/);
   const workflowVersion = url.pathname.match(/^\/api\/v1\/tenants\/([^/]+)\/workflows\/([^/]+)\/versions\/([^/]+)$/);
+  const workflowVersionValidate = url.pathname.match(/^\/api\/v1\/tenants\/([^/]+)\/workflows\/([^/]+)\/versions\/validate$/);
+  const workflowVersionPublish = url.pathname.match(/^\/api\/v1\/tenants\/([^/]+)\/workflows\/([^/]+)\/versions\/([^/]+)\/publish$/);
+  const workflowVersionDeprecate = url.pathname.match(/^\/api\/v1\/tenants\/([^/]+)\/workflows\/([^/]+)\/versions\/([^/]+)\/deprecate$/);
   const workflowTaskSbatch = url.pathname.match(/^\/api\/v1\/tenants\/([^/]+)\/workflows\/([^/]+)\/versions\/([^/]+)\/tasks\/([^/]+)\/sbatch$/);
   const workflowVersions = url.pathname.match(/^\/api\/v1\/tenants\/([^/]+)\/workflows\/([^/]+)\/versions$/);
   const workflowDetail = url.pathname.match(/^\/api\/v1\/tenants\/([^/]+)\/workflows\/([^/]+)$/);
@@ -634,22 +746,20 @@ const server = http.createServer(async (request, response) => {
   if (workflowVersions && request.method === "POST" && tenant) {
     const workflowId = workflowVersions[2];
     if (!data.workflows[tenant].some((item) => item.id === workflowId)) return sendError(response, 404, "WORKFLOW_UNKNOWN", "Workflow not found", id);
-    if (!String(request.headers["content-type"] ?? "").startsWith("application/json")) {
-      return sendError(response, 415, "UNSUPPORTED_MEDIA_TYPE", "mock accepts application/json documents", id);
-    }
+    const contentType = String(request.headers["content-type"] ?? "");
     let raw;
-    let spec;
+    let decoded;
     try {
-      ({ raw, value: spec } = await readJsonBody(request));
-    } catch {
-      return sendError(response, 400, "MALFORMED", "invalid JSON body", id);
+      raw = (await readRawBody(request)).toString("utf8");
+      decoded = parseWorkflowBody(raw, contentType);
+    } catch (error) {
+      const status = error instanceof RangeError ? 413 : error instanceof TypeError ? 415 : 400;
+      const code = status === 413 ? "BODY_TOO_LARGE" : status === 415 ? "UNSUPPORTED_MEDIA_TYPE" : "MALFORMED";
+      return sendError(response, status, code, "Invalid workflow spec body", id);
     }
-    const document = objectRecord(spec);
-    const tasks = objectRecord(document?.spec)?.tasks;
-    const details = [];
-    if (document?.apiVersion !== "custos.io/v1alpha1") details.push({ field: "apiVersion", reason: "apiVersion must be custos.io/v1alpha1" });
-    if (document?.kind !== "Workflow") details.push({ field: "kind", reason: "kind must be Workflow" });
-    if (!Array.isArray(tasks) || tasks.length === 0) details.push({ field: "spec.tasks", reason: "at least one task is required" });
+    const document = objectRecord(decoded.value);
+    const errors = [...decoded.errors, ...validateMockWorkflow(decoded.value)];
+    const details = errors.map((error) => ({ field: error.path, reason: `${error.code}: ${error.message}` }));
     if (details.length) {
       /** @type {ApiErrorBody} */
       const body = { error: { code: "SPEC_INVALID", message: "Workflow spec is invalid", request_id: id, details } };
@@ -696,6 +806,21 @@ const server = http.createServer(async (request, response) => {
     }));
     return send(response, 200, { versions });
   }
+  if (workflowVersionValidate && request.method === "POST" && tenant) {
+    const workflowId = workflowVersionValidate[2];
+    if (!data.workflows[tenant].some((item) => item.id === workflowId)) return sendError(response, 404, "WORKFLOW_UNKNOWN", "Workflow not found", id);
+    let decoded;
+    try {
+      const raw = (await readRawBody(request)).toString("utf8");
+      decoded = parseWorkflowBody(raw, String(request.headers["content-type"] ?? ""));
+    } catch (error) {
+      if (error instanceof RangeError) return sendError(response, 413, "BODY_TOO_LARGE", "Workflow spec body is too large", id);
+      if (error instanceof TypeError) return sendError(response, 415, "UNSUPPORTED_MEDIA_TYPE", "Expected application/yaml or application/json", id);
+      return sendError(response, 400, "MALFORMED", "Invalid workflow spec body", id);
+    }
+    const errors = [...decoded.errors, ...validateMockWorkflow(decoded.value)];
+    return send(response, 200, { valid: errors.length === 0, errors });
+  }
   if (workflowTaskSbatch && request.method === "GET" && tenant) {
     const workflowId = workflowTaskSbatch[2];
     const versionId = workflowTaskSbatch[3];
@@ -731,6 +856,81 @@ const server = http.createServer(async (request, response) => {
       return sendText(response, 200, stringify(version.spec), "application/yaml; charset=utf-8");
     }
     return version ? send(response, 200, version) : sendError(response, 404, "VERSION_UNKNOWN", "Workflow version not found", id);
+  }
+  if (workflowVersion && request.method === "PUT" && tenant) {
+    const workflowId = workflowVersion[2];
+    const versionId = workflowVersion[3];
+    if (!data.workflows[tenant].some((item) => item.id === workflowId)) return sendError(response, 404, "WORKFLOW_UNKNOWN", "Workflow not found", id);
+    const version = (data.workflowVersions[workflowId] ?? []).find((item) => item.id === versionId);
+    if (!version) return sendError(response, 404, "VERSION_UNKNOWN", "Workflow version not found", id);
+    if (version.state !== "draft") return sendError(response, 409, "VERSION_IMMUTABLE", "Only draft versions can be updated", id);
+    const expectedHeader = request.headers["x-expected-version"];
+    const expectedVersion = typeof expectedHeader === "string" ? Number(expectedHeader) : 0;
+    if (expectedVersion > 0 && expectedVersion !== version.version) {
+      return sendError(response, 409, "VERSION_CONFLICT", "Draft version changed since it was loaded", id);
+    }
+    let decoded;
+    try {
+      const raw = (await readRawBody(request)).toString("utf8");
+      decoded = parseWorkflowBody(raw, String(request.headers["content-type"] ?? ""));
+    } catch (error) {
+      if (error instanceof RangeError) return sendError(response, 413, "BODY_TOO_LARGE", "Workflow spec body is too large", id);
+      if (error instanceof TypeError) return sendError(response, 415, "UNSUPPORTED_MEDIA_TYPE", "Expected application/yaml or application/json", id);
+      return sendError(response, 400, "MALFORMED", "Invalid workflow spec body", id);
+    }
+    const validationErrors = [...decoded.errors, ...validateMockWorkflow(decoded.value)];
+    if (validationErrors.length > 0) {
+      return send(response, 422, {
+        error: {
+          code: "SPEC_INVALID",
+          message: "Workflow spec is invalid",
+          request_id: id,
+          details: validationErrors.map((error) => ({ field: error.path, reason: `${error.code}: ${error.message}` })),
+        },
+      });
+    }
+    const document = objectRecord(decoded.value);
+    if (!document) return sendError(response, 422, "SPEC_INVALID", "Workflow document must be an object", id);
+    version.spec = /** @type {import("../lib/workflow/spec").CustosWorkflow} */ (/** @type {unknown} */ (document));
+    version.specHash = `sha256:${createHash("sha256").update(JSON.stringify(document)).digest("hex")}`;
+    version.version += 1;
+    return send(response, 200, version);
+  }
+  if (workflowVersionPublish && request.method === "POST" && tenant) {
+    const workflowId = workflowVersionPublish[2];
+    const versionId = workflowVersionPublish[3];
+    const workflow = data.workflows[tenant].find((item) => item.id === workflowId);
+    if (!workflow) return sendError(response, 404, "WORKFLOW_UNKNOWN", "Workflow not found", id);
+    const version = (data.workflowVersions[workflowId] ?? []).find((item) => item.id === versionId);
+    if (!version) return sendError(response, 404, "VERSION_UNKNOWN", "Workflow version not found", id);
+    if (version.state !== "draft") return sendError(response, 409, "VERSION_IMMUTABLE", "Only draft versions can be published", id);
+    const errors = validateMockWorkflow(version.spec);
+    if (errors.length > 0) {
+      return send(response, 422, {
+        error: {
+          code: "SPEC_INVALID",
+          message: "Workflow spec is invalid",
+          request_id: id,
+          details: errors.map((error) => ({ field: error.path, reason: `${error.code}: ${error.message}` })),
+        },
+      });
+    }
+    version.state = "published";
+    version.publishedAt = new Date().toISOString();
+    version.version += 1;
+    workflow.latestPublishedVersionId = version.id;
+    return send(response, 200, version);
+  }
+  if (workflowVersionDeprecate && request.method === "POST" && tenant) {
+    const workflowId = workflowVersionDeprecate[2];
+    const versionId = workflowVersionDeprecate[3];
+    if (!data.workflows[tenant].some((item) => item.id === workflowId)) return sendError(response, 404, "WORKFLOW_UNKNOWN", "Workflow not found", id);
+    const version = (data.workflowVersions[workflowId] ?? []).find((item) => item.id === versionId);
+    if (!version) return sendError(response, 404, "VERSION_UNKNOWN", "Workflow version not found", id);
+    if (version.state !== "published") return sendError(response, 409, "VERSION_STATE", "Only published versions can be deprecated", id);
+    version.state = "deprecated";
+    version.version += 1;
+    return sendEmpty(response, 204);
   }
 
   if (tenantProjects && request.method === "GET" && tenant) {

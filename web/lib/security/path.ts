@@ -30,7 +30,7 @@ export function sanitizeBffPath(pathname: string): string | null {
   return safe.join("/");
 }
 
-const REQUEST_HEADERS = ["accept", "content-type", "idempotency-key", "if-match"] as const;
+const REQUEST_HEADERS = ["accept", "content-type", "idempotency-key", "if-match", "x-expected-version"] as const;
 const HOP_BY_HOP = new Set([
   "connection",
   "keep-alive",
@@ -47,7 +47,9 @@ export function allowedRequestHeaders(headers: Headers): Headers {
   const allowed = new Headers();
   for (const name of REQUEST_HEADERS) {
     const value = headers.get(name);
-    if (value !== null) allowed.set(name, value);
+    if (value === null) continue;
+    if (name === "x-expected-version" && !/^\d{1,19}$/.test(value)) continue;
+    allowed.set(name, value);
   }
   return allowed;
 }

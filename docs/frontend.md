@@ -155,6 +155,8 @@ pages download YAML and selected executable tasks offer standalone sbatch
 downloads through the BFF, which forwards `Accept` and `Content-Disposition`.
 Platform admins can edit per-cluster container-runtime and software-module
 settings from the cluster detail Settings tab using optimistic version checks.
+Draft workflow versions open a Graph/YAML editor at `/t/{tenant}/workflows/{workflow}/versions/{version}/edit`.
+The YAML remains the source of truth; validation is debounced, saves use optimistic version checks, and publish/deprecate actions follow the version lifecycle.
 The Job API currently exposes job reads, cancellation, and ExecutionSpec only;
 there are no Events or Logs endpoints, so the detail view shows a Details tab.
 

@@ -5,6 +5,7 @@ import { ApiAccessDenied } from "@/components/api-access-denied";
 import { ApiErrorNotice } from "@/components/api-error-notice";
 import { BreadcrumbEntity } from "@/components/tenant-shell";
 import { DownloadWorkflowYamlButton } from "@/components/workflows/download-buttons";
+import { WorkflowVersionLifecycleActions } from "@/components/workflows/workflow-version-actions";
 import { WorkflowVersionTabs, type WorkflowVersionTab } from "@/components/workflows/workflow-version-tabs";
 import { StateBadge } from "@/components/ui/badge";
 import { createApiClient, parseWorkflowVersion, toApiError } from "@/lib/api/client";
@@ -66,6 +67,13 @@ export default async function WorkflowVersionPage({
         </div>
         <div className="flex flex-wrap items-start gap-3">
           <StateBadge state={version.state} />
+          <WorkflowVersionLifecycleActions
+            tenant={tenant}
+            workflowId={workflow.id}
+            versionId={version.id}
+            state={version.state}
+            csrfToken={session.csrfToken}
+          />
           <DownloadWorkflowYamlButton
             tenant={tenant}
             workflow={workflow.id}

@@ -27,3 +27,27 @@ export async function sendJson(method: "POST" | "PATCH" | "PUT", url: string, bo
   const payload: unknown = await response.json().catch(() => null);
   return { status: response.status, payload };
 }
+
+export async function sendText(
+  method: "POST" | "PUT",
+  url: string,
+  body: string,
+  contentType: string,
+  csrfToken: string,
+  extraHeaders: Record<string, string> = {},
+) {
+  const response = await fetch(url, {
+    method,
+    credentials: "same-origin",
+    cache: "no-store",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": contentType,
+      "X-CSRF-Token": csrfToken,
+      ...extraHeaders,
+    },
+    body,
+  });
+  const payload: unknown = await response.json().catch(() => null);
+  return { status: response.status, payload };
+}
