@@ -15,6 +15,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -434,6 +435,18 @@ func advanceStage(ctx context.Context, d Deps,
 			return err
 		}
 		to, reason, ok := mirrorTaskState(j)
+		if ok && e.State != executions.ExecCanceling &&
+			t.StateReason == "SERVICE_STOP_REQUESTED" &&
+			j.State == jobs.StateCanceled {
+			to, reason = executions.TaskCompleted, "SERVICE_STOPPED"
+		}
+		if ok && j.State == jobs.StateFailed && j.SlurmState == "TIMEOUT" {
+			taskSpec := findTaskSpec(spec, t.TaskName)
+			if taskSpec != nil && taskSpec.Service != nil &&
+				!taskSpec.Service.AutoStopEnabled() {
+				to, reason = executions.TaskCompleted, "SERVICE_WALLTIME"
+			}
+		}
 		if !ok || to == t.State {
 			continue
 		}
@@ -494,57 +507,8 @@ func advanceStage(ctx context.Context, d Deps,
 		byName[t.TaskName] = replaceTask(byName[t.TaskName], nt)
 	}
 
-	// 3. Unblock BLOCKED tasks; evaluate `when`; condition tasks
-	//    complete immediately.
-	for _, t := range tasks {
-		if t.State != executions.TaskBlocked {
-			continue
-		}
-		st := findTaskSpec(spec, t.TaskName)
-		if st == nil {
-			continue
-		}
-		depOK, depDone := depsState(st, byName)
-		var to executions.TaskState
-		var reason string
-		switch {
-		case !depDone:
-			continue
-		case depOK || st.OnDependencyFailure == "run":
-			if st.When != "" && !evalWhen(st.When, spec, wf, v, e,
-				params, tasks) {
-				to, reason = executions.TaskSkipped, "WHEN_FALSE"
-				break
-			}
-			if st.Type == "condition" {
-				to = executions.TaskCompleted
-				break
-			}
-			to = executions.TaskReady
-		default:
-			to, reason = executions.TaskSkipped, "DEP_FAILED"
-		}
-		var enq executions.EnqueueFunc
-		if to == executions.TaskReady {
-			taskID := t.ID
-			enq = func(ex executions.Execer) error {
-				_, err := enqueueAdmit(ctx, ex, e, taskID)
-				return err
-			}
-		}
-		var rp *string
-		if reason != "" {
-			rp = &reason
-		}
-		nt, err := d.Execs.TransitionTask(ctx, scope, t.ID, t.State,
-			t.Version, executions.TaskPatch{State: &to, Reason: rp}, enq)
-		if err != nil {
-			if executions.IsStale(err) {
-				continue
-			}
-			return err
-		}
-		byName[t.TaskName] = replaceTask(byName[t.TaskName], nt)
+	if _, err = unblockTasks(ctx, d, e, wf, v, spec, params); err != nil {
+		return err
 	}
 
 	// Refresh once more for terminal accounting.
@@ -563,14 +527,32 @@ func advanceStage(ctx context.Context, d Deps,
 	if spec.Spec.Execution != nil && spec.Spec.Execution.FailurePolicy != "" {
 		policy = spec.Spec.Execution.FailurePolicy
 	}
-	if policy == "fail" && anyFailed(tasks) && anyRunning(tasks) {
-		if err := cancelRemaining(ctx, d, e, tasks); err != nil {
+	failFast := policy == "fail" && anyFailed(tasks) && anyRunning(tasks)
+	if failFast {
+		if err := cancelRemaining(ctx, d, e, tasks, spec); err != nil {
 			return err
 		}
 		tasks, err = d.Execs.ListTasks(ctx, scope, e.TenantID, e.ID)
 		if err != nil {
 			return err
 		}
+	}
+	for {
+		stopped, err := stopAutoStopServices(ctx, d, e, tasks, spec, failFast)
+		if err != nil {
+			return err
+		}
+		if !stopped {
+			break
+		}
+		tasks, err = unblockTasks(ctx, d, e, wf, v, spec, params)
+		if err != nil {
+			return err
+		}
+	}
+	tasks, err = d.Execs.ListTasks(ctx, scope, e.TenantID, e.ID)
+	if err != nil {
+		return err
 	}
 
 	// 6. Settle when every task is terminal.
@@ -601,6 +583,80 @@ func advanceStage(ctx context.Context, d Deps,
 	return nil
 }
 
+func unblockTasks(ctx context.Context, d Deps, e executions.Execution,
+	wf workflows.Workflow, v workflows.Version, spec workflowspec.Workflow,
+	params map[string]any) ([]executions.TaskExecution, error) {
+	scope := tenants.PlatformScope()
+	for {
+		tasks, err := d.Execs.ListTasks(ctx, scope, e.TenantID, e.ID)
+		if err != nil {
+			return nil, err
+		}
+		byName := make(map[string][]executions.TaskExecution)
+		for _, task := range tasks {
+			byName[task.TaskName] = append(byName[task.TaskName], task)
+		}
+		changed := false
+		for _, t := range tasks {
+			if t.State != executions.TaskBlocked {
+				continue
+			}
+			st := findTaskSpec(spec, t.TaskName)
+			if st == nil {
+				continue
+			}
+			depOK, depDone := depsState(st, byName, spec)
+			var to executions.TaskState
+			var reason string
+			switch {
+			case !depDone:
+				continue
+			case depOK || st.OnDependencyFailure == "run":
+				if st.When != "" && !evalWhen(st.When, spec, wf, v, e,
+					params, tasks) {
+					to, reason = executions.TaskSkipped, "WHEN_FALSE"
+					break
+				}
+				if st.Type == "condition" {
+					to = executions.TaskCompleted
+					break
+				}
+				to = executions.TaskReady
+			case hasFailedServiceDependency(st, byName, spec):
+				to, reason = executions.TaskCanceled, "DEPENDENCY_FAILED"
+			default:
+				to, reason = executions.TaskSkipped, "DEP_FAILED"
+			}
+			var enqueue executions.EnqueueFunc
+			if to == executions.TaskReady {
+				taskID := t.ID
+				enqueue = func(ex executions.Execer) error {
+					_, err := enqueueAdmit(ctx, ex, e, taskID)
+					return err
+				}
+			}
+			var reasonPtr *string
+			if reason != "" {
+				reasonPtr = &reason
+			}
+			nt, err := d.Execs.TransitionTask(ctx, scope, t.ID, t.State,
+				t.Version, executions.TaskPatch{State: &to, Reason: reasonPtr},
+				enqueue)
+			if err != nil {
+				if executions.IsStale(err) {
+					continue
+				}
+				return nil, err
+			}
+			byName[t.TaskName] = replaceTask(byName[t.TaskName], nt)
+			changed = true
+		}
+		if !changed {
+			return tasks, nil
+		}
+	}
+}
+
 // mirrorTaskState maps a job state to the task transition it implies;
 // ok=false means the job state maps to nothing.
 func mirrorTaskState(j jobs.Job) (executions.TaskState, string, bool) {
@@ -618,22 +674,43 @@ func mirrorTaskState(j jobs.Job) (executions.TaskState, string, bool) {
 		}
 		return executions.TaskFailed, reason, true
 	case jobs.StateCanceled:
+		if j.StateReason == "DEPENDENCY_FAILED" {
+			return executions.TaskCanceled, "DEPENDENCY_FAILED", true
+		}
 		return executions.TaskCanceled, "JOB_CANCELED", true
 	}
 	return "", "", false
 }
 
-// depsState reports (all-deps-terminal-ok, all-deps-terminal) for a
-// task spec across every fan-out index of each dependency.
+// depsState reports whether every dependency is satisfied and whether all
+// dependencies have reached a terminal state.
 func depsState(st *workflowspec.Task,
-	byName map[string][]executions.TaskExecution) (ok, done bool) {
+	byName map[string][]executions.TaskExecution,
+	spec workflowspec.Workflow) (ok, done bool) {
 	ok, done = true, true
 	for _, dep := range st.DependsOn {
 		depTasks := byName[dep]
 		if len(depTasks) == 0 {
 			return false, false
 		}
+		depSpec := findTaskSpec(spec, dep)
+		serviceDependency := depSpec != nil && depSpec.Service != nil
 		for _, dt := range depTasks {
+			if serviceDependency {
+				switch dt.State {
+				case executions.TaskQueued, executions.TaskRunning:
+				case executions.TaskCompleted:
+					if dt.JobID == nil {
+						ok = false
+					}
+				case executions.TaskFailed, executions.TaskSkipped,
+					executions.TaskCanceled:
+					ok = false
+				default:
+					done = false
+				}
+				continue
+			}
 			if !executions.Terminal(dt.State) {
 				done = false
 				continue
@@ -644,6 +721,30 @@ func depsState(st *workflowspec.Task,
 		}
 	}
 	return ok, done
+}
+
+func hasFailedServiceDependency(st *workflowspec.Task,
+	byName map[string][]executions.TaskExecution,
+	spec workflowspec.Workflow) bool {
+	for _, dep := range st.DependsOn {
+		depSpec := findTaskSpec(spec, dep)
+		if depSpec == nil || depSpec.Service == nil {
+			continue
+		}
+		for _, task := range byName[dep] {
+			if serviceTaskFailed(task) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func serviceTaskFailed(task executions.TaskExecution) bool {
+	return task.State == executions.TaskFailed ||
+		task.State == executions.TaskSkipped ||
+		task.State == executions.TaskCanceled ||
+		(task.State == executions.TaskCompleted && task.JobID == nil)
 }
 
 // evalWhen evaluates a `when` expression; an evaluation error is
@@ -706,13 +807,126 @@ func settleCancel(ctx context.Context, d Deps, e executions.Execution,
 	return nil
 }
 
+func stopAutoStopServices(ctx context.Context, d Deps, e executions.Execution,
+	tasks []executions.TaskExecution, spec workflowspec.Workflow,
+	force bool) (bool, error) {
+	scope := tenants.PlatformScope()
+	changed := false
+	byName := make(map[string][]executions.TaskExecution)
+	for _, task := range tasks {
+		byName[task.TaskName] = append(byName[task.TaskName], task)
+	}
+	nonServiceCount, allNonServiceTerminal := 0, true
+	for _, taskSpec := range spec.Spec.Tasks {
+		if taskSpec.Service != nil {
+			continue
+		}
+		nonServiceCount++
+		taskRows := byName[taskSpec.Name]
+		if len(taskRows) == 0 {
+			allNonServiceTerminal = false
+		}
+		for _, task := range taskRows {
+			if !executions.Terminal(task.State) {
+				allNonServiceTerminal = false
+			}
+		}
+	}
+	globalStop := nonServiceCount > 0 && allNonServiceTerminal
+	for _, serviceSpec := range spec.Spec.Tasks {
+		if serviceSpec.Service == nil || !serviceSpec.Service.AutoStopEnabled() {
+			continue
+		}
+		directCount, directTerminal := 0, true
+		for _, dependentSpec := range spec.Spec.Tasks {
+			if !slices.Contains(dependentSpec.DependsOn, serviceSpec.Name) {
+				continue
+			}
+			directCount++
+			dependentRows := byName[dependentSpec.Name]
+			if len(dependentRows) == 0 {
+				directTerminal = false
+			}
+			for _, dependent := range dependentRows {
+				if !executions.Terminal(dependent.State) {
+					directTerminal = false
+				}
+			}
+		}
+		directStop := directCount > 0 && directTerminal
+		if !force && !directStop && !globalStop {
+			continue
+		}
+		for _, service := range byName[serviceSpec.Name] {
+			if executions.Terminal(service.State) ||
+				service.StateReason == "SERVICE_STOP_REQUESTED" {
+				continue
+			}
+			if service.State == executions.TaskSubmitting {
+				continue
+			}
+			var err error
+			if service.JobID == nil {
+				to, reason := executions.TaskCompleted, "SERVICE_STOPPED"
+				_, err = d.Execs.TransitionTask(ctx, scope, service.ID,
+					service.State, service.Version,
+					executions.TaskPatch{State: &to, Reason: &reason},
+					func(ex executions.Execer) error {
+						_, err := enqueueExecutionAdvance(ctx, ex, e)
+						return err
+					})
+			} else {
+				reason := "SERVICE_STOP_REQUESTED"
+				jobID := *service.JobID
+				_, err = d.Execs.TransitionTask(ctx, scope, service.ID,
+					service.State, service.Version,
+					executions.TaskPatch{Reason: &reason},
+					func(ex executions.Execer) error {
+						_, err := enqueueJobCancel(ctx, ex, e.TenantID, jobID)
+						return err
+					})
+			}
+			if err != nil {
+				if executions.IsStale(err) {
+					continue
+				}
+				return changed, err
+			}
+			changed = true
+			details := map[string]any{
+				"service": service.TaskName,
+				"reason":  "AUTO_STOP",
+			}
+			if force {
+				details["reason"] = "FAIL_FAST"
+			}
+			if service.JobID != nil {
+				details["job_id"] = service.JobID.String()
+			}
+			d.record(ctx, audit.Event{
+				Actor:    audit.Actor{Type: audit.ActorSystem, ID: "custos"},
+				Action:   "workflow.execution.service_stopped",
+				Result:   audit.ResultAllow,
+				Target:   audit.Target{Type: "task_execution", ID: service.ID.String()},
+				TenantID: &e.TenantID,
+				Details:  details,
+			})
+		}
+	}
+	return changed, nil
+}
+
 // cancelRemaining applies failurePolicy=fail: non-terminal tasks are
 // canceled (their jobs get job.cancel) or skipped.
 func cancelRemaining(ctx context.Context, d Deps, e executions.Execution,
-	tasks []executions.TaskExecution) error {
+	tasks []executions.TaskExecution, spec workflowspec.Workflow) error {
 	scope := tenants.PlatformScope()
 	for _, t := range tasks {
 		if executions.Terminal(t.State) {
+			continue
+		}
+		if taskSpec := findTaskSpec(spec, t.TaskName); taskSpec != nil &&
+			taskSpec.Service != nil && taskSpec.Service.AutoStopEnabled() {
 			continue
 		}
 		to := executions.TaskCanceled
@@ -860,6 +1074,15 @@ func enqueueAdmit(ctx context.Context, ex executions.Execer,
 		Key:      "task:" + taskID.String(),
 		TenantID: &e.TenantID,
 		Payload:  map[string]string{"task_id": taskID.String()},
+	})
+}
+
+func enqueueExecutionAdvance(ctx context.Context, ex executions.Execer,
+	e executions.Execution) (bool, error) {
+	return workqueue.Enqueue(ctx, ex, workqueue.EnqueueRequest{
+		Kind: KindAdvance, Key: "execution:" + e.ID.String(),
+		TenantID: &e.TenantID,
+		Payload:  map[string]string{"execution_id": e.ID.String()},
 	})
 }
 

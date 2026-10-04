@@ -164,7 +164,7 @@ type JobSubmission struct {
     Licenses        []string
     Walltime        time.Duration
     Array           *ArraySpec        // {Start,End,Step,MaxConcurrent}
-    Dependencies    []Dependency      // {Kind: afterok|afternotok|afterany|singleton, JobIDs}
+    Dependencies    []Dependency      // {Kind: after|afterok|afternotok|afterany|singleton, JobIDs}
     Nice            *int
     Comment         string            // "custos:<execution-id>/<task-id>" for reconciliation
     UserName        string            // slurmrestd X-SLURM-USER-NAME when acting on behalf
@@ -274,6 +274,11 @@ dependency, array, nice, name, comment. Mail is never set. Anything the
 spec cannot express cannot reach Slurm.
 Workflow `resources.memoryPerCpu` maps to `memory_per_cpu`; it is mutually
 exclusive with `memory` and `memoryPerNode`.
+
+Service-task edges use Slurm's native `after:<job-id>` dependency: the
+dependent allocation becomes eligible once the service job starts, rather
+than waiting for it to complete. Other workflow edges remain engine-driven;
+Custos still applies `onDependencyFailure` before submitting the dependent.
 
 ## Per-cluster container runtime
 

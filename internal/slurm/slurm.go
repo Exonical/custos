@@ -135,6 +135,7 @@ type DependencyKind string
 
 // Dependency kinds accepted by Slurm.
 const (
+	DepAfter      DependencyKind = "after"
 	DepAfterOK    DependencyKind = "afterok"
 	DepAfterNotOK DependencyKind = "afternotok"
 	DepAfterAny   DependencyKind = "afterany"

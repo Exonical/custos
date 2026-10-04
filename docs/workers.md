@@ -91,8 +91,9 @@ Dead items are visible at `/api/v1/admin/work-items?state=dead` with a
 
 Implemented in M4-C: `job.submit`, `job.reconcile`, `job.cancel`,
 `jobs.sweep`, `idempotency.expire` (plus `cluster.sync`,
-`maintenance.partitions`, `tenant.delete` from earlier slices). M5-A
-moved script validation into the durable pipeline
+`maintenance.partitions`, `tenant.delete` from earlier slices). Phase E adds
+`job.sweep_canceled` for submission/cancellation races. M5-A moved script
+validation into the durable pipeline
 (`internal/validation/pipeline`): submissions run concurrent validators
 (panic/timeout → `CUSTOS900`, fail closed) under the effective
 `ValidationPolicy`, persist a `script_validations` row, and store its ID
@@ -109,7 +110,8 @@ windowed accounting collector and dirty-day daily aggregation.
 | --- | --- | --- | --- |
 | `job.submit` | implemented | job admitted (ad-hoc jobs go through the same admission step) | reconcile-by-name first; build `JobSubmission` from the persisted `ExecutionSpec`; resolve credentials; `SubmitJob`; persist `slurm_job_id`; transition to QUEUED; enqueue `job.reconcile`; only version conflicts during lost-submit adoption reschedule (capped at 10), while unique conflicts use normal queue backoff |
 | `job.reconcile` | implemented | after submit; periodic while non-terminal; on demand | `GetJob`; require the returned name to equal `custos-<job-uuid>` before applying state; reused IDs take the unknown/accounting-by-name/LOST path; guarded transition; reschedule with interval growing 5s→60s (age-based); if Slurm says "unknown job" and accounting has a record → terminal from accounting; if unknown everywhere for >10 minutes after submit → FAILED (`LOST`) |
-| `job.cancel` | implemented | cancel request | `CancelJob` (`ErrNotFound` = done); SUBMITTING jobs go CANCELED directly and the submit handler skips them; enqueue reconcile ≈+2s |
+| `job.cancel` | implemented | cancel request | `CancelJob` (`ErrNotFound` = done); SUBMITTING jobs go CANCELED directly and schedule orphan sweeps |
+| `job.sweep_canceled` | implemented | +30s and +5m after canceling SUBMITTING | name/comment-verified scheduler lookup; cancel any still-live orphan job idempotently |
 | `jobs.sweep` | implemented | periodic per cluster (60s) | `ListJobs(name prefix custos-)` once; bulk-reconcile all non-terminal jobs on that cluster; jobs absent for >10min → FAILED (`LOST`) (see cadence below) |
 | `task.admit` | implemented | task READY | verify script digest ↔ `ScriptValidation` currency — the pipeline runs **synchronously** here and persists a fresh `ScriptValidation` when stale (there is no async `script.validate` work item; see below); freeze + persist `ExecutionSpec`; transition `ADMITTING → SUBMITTING`; enqueue `job.submit` |
 | `execution.advance` | implemented | any task terminal transition | evaluate DAG: unblock READY tasks, evaluate `when`, fan-out, decide execution terminal state |

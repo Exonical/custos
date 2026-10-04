@@ -309,6 +309,19 @@ func TestBuildImagePullSecretFreezesOnlyNonSecretConfiguration(t *testing.T) {
 	}
 }
 
+func TestValidServiceSlurmJobID(t *testing.T) {
+	for _, value := range []string{"1", "123456", "123_4"} {
+		if !admission.ValidServiceSlurmJobID(value) {
+			t.Errorf("valid Slurm job id %q rejected", value)
+		}
+	}
+	for _, value := range []string{"", "0;rm", "1\n", "1_2_3", "-1"} {
+		if admission.ValidServiceSlurmJobID(value) {
+			t.Errorf("invalid Slurm job id %q accepted", value)
+		}
+	}
+}
+
 func TestMultinodeRuntimeReferencesAreGenericOnly(t *testing.T) {
 	spec := admission.ExecutionSpec{
 		Payload:   admission.PayloadRef{Digest: validation.DigestOf([]byte("x"))},

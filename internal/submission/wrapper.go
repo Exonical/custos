@@ -28,6 +28,7 @@ import (
 type SafeToken string
 
 var safeTokenRe = regexp.MustCompile(`^[A-Za-z0-9_.:@/=-]+$`)
+var serviceEnvSuffixRe = regexp.MustCompile(`^[A-Z0-9_]+$`)
 
 func safeToken(s string) (SafeToken, error) {
 	if !safeTokenRe.MatchString(s) {
@@ -74,6 +75,7 @@ export MULTINODE_SSH_WRAPPER="$CUSTOS_JOB_DIR/rsh" MULTINODE_RSH_WRAPPER="$CUSTO
 {{ range .Env }}{{ if .Runtime }}export {{ .Name }}={{ .Quoted }}
 {{ else }}export {{ .Name }}={{ q .Value }}
 {{ end }}{{ end }}{{ if .SlurmCPUBind }}export SLURM_CPU_BIND={{ q .SlurmCPUBind }}
+{{ end }}{{ range .ServiceSetup }}{{ . }}
 {{ end }}{{ if .HasPayload }}
 # --- payload (base64, verified) ---
 base64 -d > "$CUSTOS_JOB_DIR/payload.in" <<'CUSTOS_PAYLOAD_{{ .Nonce }}'
@@ -103,6 +105,7 @@ type wrapperData struct {
 	TaskName          string
 	Modules           []string
 	Env               []envKV
+	ServiceSetup      []string
 	Nonce             SafeToken
 	HasPayload        bool
 	PayloadBase64     string
@@ -235,6 +238,17 @@ func containerEnvNames(spec admission.ExecutionSpec) ([]string, error) {
 		}
 		set[ref.Name] = true
 	}
+	for _, dep := range spec.ServiceDependencies {
+		for _, name := range []string{
+			workflowspec.ServiceJobIDEnvName(dep.TaskName),
+			workflowspec.ServiceHostEnvName(dep.TaskName),
+		} {
+			if _, err := safeToken(name); err != nil {
+				return nil, err
+			}
+			set[name] = true
+		}
+	}
 	if spec.Multinode != nil && spec.Multinode.Implementation == "generic" {
 		for _, name := range []string{
 			admission.RuntimeMultinodeHostlist,
@@ -366,6 +380,33 @@ func imagePullSetup(spec admission.ExecutionSpec) ([]string, error) {
 	return lines, nil
 }
 
+func serviceHostSetup(spec admission.ExecutionSpec) ([]string, error) {
+	lines := make([]string, 0, len(spec.ServiceDependencies))
+	for _, dep := range spec.ServiceDependencies {
+		if dep.EnvName == "" || !serviceEnvSuffixRe.MatchString(dep.EnvName) ||
+			dep.EnvName != workflowspec.ServiceEnvSuffix(dep.TaskName) {
+			return nil, apperr.New(apperr.Internal, "INTERNAL",
+				"submission: invalid frozen service environment name")
+		}
+		hostName, err := safeToken(workflowspec.ServiceHostEnvName(dep.TaskName))
+		if err != nil {
+			return nil, err
+		}
+		jobIDName, err := safeToken(workflowspec.ServiceJobIDEnvName(dep.TaskName))
+		if err != nil {
+			return nil, err
+		}
+		lines = append(lines,
+			fmt.Sprintf("export %s=", hostName),
+			fmt.Sprintf(`if [ -n "$%s" ]; then`, jobIDName),
+			fmt.Sprintf(
+				`  %s=$( { scontrol show hostnames "$(squeue -h -j "$%s" -o %%N || true)" || true; } | head -n1)`,
+				hostName, jobIDName),
+			"fi")
+	}
+	return lines, nil
+}
+
 func containerEnvPrefix(spec admission.ExecutionSpec) ([]string, error) {
 	values := containerEnvValues(spec)
 	if len(values) == 0 {
@@ -448,6 +489,10 @@ func Wrapper(spec admission.ExecutionSpec, payload []byte) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	serviceSetup, err := serviceHostSetup(spec)
+	if err != nil {
+		return "", err
+	}
 	varsToExport := []map[string]string{spec.Environment.Controlled}
 	if spec.Container == nil {
 		varsToExport = append(varsToExport, spec.Environment.User)
@@ -511,6 +556,7 @@ func Wrapper(spec admission.ExecutionSpec, payload []byte) (string, error) {
 		TaskName:          spec.TaskName,
 		Modules:           modules,
 		Env:               env,
+		ServiceSetup:      serviceSetup,
 		Nonce:             SafeToken(nonce),
 		HasPayload:        hasPayload,
 		PayloadBase64:     body,
@@ -589,6 +635,14 @@ func JobSubmission(spec admission.ExecutionSpec, wrapper string) slurm.JobSubmis
 		Constraints:      spec.Resources.Constraints,
 		Licenses:         spec.Resources.Licenses,
 		Walltime:         time.Duration(spec.Resources.WalltimeSeconds) * time.Second,
+	}
+	for _, dep := range spec.ServiceDependencies {
+		if dep.After && dep.SlurmJobID != 0 {
+			sub.Dependencies = append(sub.Dependencies, slurm.Dependency{
+				Kind:   slurm.DepAfter,
+				JobIDs: []slurm.JobID{{ID: dep.SlurmJobID}},
+			})
+		}
 	}
 	if spec.Resources.GPUCount > 0 {
 		sub.GRES = []slurm.GRESRequest{{

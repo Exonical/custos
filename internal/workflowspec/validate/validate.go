@@ -171,8 +171,45 @@ func Static(w workflowspec.Workflow) []FieldError {
 	errs = append(errs, checkNames(w)...)
 	cycle, depErrs := checkGraph(w)
 	errs = append(errs, depErrs...)
+	errs = append(errs, checkServiceClusterPlacements(w)...)
 	errs = append(errs, checkShapes(w)...)
 	errs = append(errs, checkExprs(w, cycle)...)
+	return errs
+}
+
+func explicitTaskCluster(w workflowspec.Workflow, task workflowspec.Task) string {
+	if task.Placement != nil && task.Placement.Cluster != "" {
+		return task.Placement.Cluster
+	}
+	if w.Spec.Placement != nil {
+		return w.Spec.Placement.Cluster
+	}
+	return ""
+}
+
+func checkServiceClusterPlacements(w workflowspec.Workflow) []FieldError {
+	byName := make(map[string]workflowspec.Task, len(w.Spec.Tasks))
+	for _, task := range w.Spec.Tasks {
+		byName[task.Name] = task
+	}
+	var errs []FieldError
+	for i, dependent := range w.Spec.Tasks {
+		for k, dependencyName := range dependent.DependsOn {
+			service := byName[dependencyName]
+			if service.Service == nil {
+				continue
+			}
+			serviceCluster := explicitTaskCluster(w, service)
+			dependentCluster := explicitTaskCluster(w, dependent)
+			if serviceCluster != "" && dependentCluster != "" &&
+				serviceCluster != dependentCluster {
+				errs = append(errs, fe(
+					fmt.Sprintf("spec.tasks[%d].dependsOn[%d]", i, k),
+					"SERVICE_CLUSTER_MISMATCH",
+					"service and dependent tasks must use the same Slurm cluster"))
+			}
+		}
+	}
 	return errs
 }
 
@@ -215,9 +252,22 @@ func checkDocument(w workflowspec.Workflow) []FieldError {
 			"requirement-based placement is reserved for a later version"))
 	}
 	envNames := map[string]string{}
+	serviceNames := map[string]string{}
 	for i, task := range w.Spec.Tasks {
+		if task.Service != nil {
+			suffix := workflowspec.ServiceEnvSuffix(task.Name)
+			if previous, ok := serviceNames[suffix]; ok {
+				errs = append(errs, fe(fmt.Sprintf("spec.tasks[%d].name", i),
+					"SERVICE_NAME_COLLISION",
+					fmt.Sprintf("service name collides with task %q after environment-name normalization", previous)))
+			} else {
+				serviceNames[suffix] = task.Name
+			}
+		}
 		for name := range task.Env {
-			if strings.HasPrefix(name, "CUSTOS_SECRET_") || name == "CUSTOS_BAO_ADDR" ||
+			if strings.HasPrefix(name, "CUSTOS_SECRET_") ||
+				strings.HasPrefix(name, "CUSTOS_SERVICE_") ||
+				name == "CUSTOS_BAO_ADDR" ||
 				name == "CUSTOS_BAO_NAMESPACE" ||
 				name == admission.ImagePullUsernameEnvName ||
 				name == admission.ImagePullPasswordEnvName {
@@ -228,7 +278,8 @@ func checkDocument(w workflowspec.Workflow) []FieldError {
 	}
 	if w.Spec.Defaults != nil {
 		for name := range w.Spec.Defaults.Env {
-			if name == admission.ImagePullUsernameEnvName ||
+			if strings.HasPrefix(name, "CUSTOS_SERVICE_") ||
+				name == admission.ImagePullUsernameEnvName ||
 				name == admission.ImagePullPasswordEnvName {
 				errs = append(errs, fe("spec.defaults.env."+name,
 					"SECRET_ENV_CONTROLLED", "environment name is reserved for image pull secret delivery"))
@@ -500,11 +551,43 @@ func checkTaskFeatures(t workflowspec.Task, base string, ty string) []FieldError
 			errs = append(errs, fe(base+".multinode", "MULTINODE_INVALID", "total multinode slot count overflows"))
 		}
 	}
+	if t.Service != nil {
+		errs = append(errs, checkServiceTask(t, base, ty)...)
+	}
 	if affinity := t.Resources.CPUAffinity; affinity != "" {
 		if affinity != "none" && affinity != "core" && affinity != "socket" && affinity != "numa" {
 			errs = append(errs, fe(base+".resources.cpuAffinity", "CPU_AFFINITY_INVALID", "cpuAffinity must be none, core, socket, or numa"))
 		} else if !slurmBacked(t) {
 			errs = append(errs, fe(base+".resources.cpuAffinity", "CPU_AFFINITY_TASK_KIND", "cpuAffinity is only valid on Slurm-backed tasks"))
+		}
+	}
+	return errs
+}
+
+func checkServiceTask(t workflowspec.Task, base, ty string) []FieldError {
+	var errs []FieldError
+	if !slurmBacked(t) || ty == TypeCondition || ty == TypeArray || ty == "approval" {
+		errs = append(errs, fe(base+".service", "SERVICE_FIELD_UNSUPPORTED",
+			"service tasks require a Slurm-backed task kind"))
+	}
+	if strings.TrimSpace(t.Resources.Walltime) == "" {
+		errs = append(errs, fe(base+".resources.walltime",
+			"SERVICE_WALLTIME_REQUIRED", "service tasks require resources.walltime"))
+	}
+	for _, field := range []struct {
+		name string
+		set  bool
+	}{
+		{"array", t.Array != nil},
+		{"fanOut", t.FanOut != nil},
+		{"retry", t.Retry != nil},
+		{"when", t.When != ""},
+		{"outputs", t.Outputs != nil},
+	} {
+		if field.set {
+			errs = append(errs, fe(base+"."+field.name,
+				"SERVICE_FIELD_UNSUPPORTED",
+				field.name+" is not supported on service tasks"))
 		}
 	}
 	return errs

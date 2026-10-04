@@ -131,6 +131,34 @@ func TestRenderMemoryPerCPU(t *testing.T) {
 	}
 }
 
+func TestRenderServiceTaskAndServiceDependent(t *testing.T) {
+	workflow := workflowspec.Workflow{Metadata: workflowspec.Metadata{Name: "services"}}
+	service := workflowspec.Task{
+		Name: "db", Service: &workflowspec.ServiceTask{},
+		Resources: workflowspec.TaskResources{Walltime: "2h"},
+		Command:   []string{"postgres", "-D", "/var/lib/pg"},
+	}
+	exported, err := sbatchexport.Render(workflow, service, nil)
+	if err != nil {
+		t.Fatalf("service export: %v", err)
+	}
+	if !strings.Contains(exported, "# Custos service lifecycle and autoStop behavior are not represented") {
+		t.Fatalf("service comment missing:\n%s", exported)
+	}
+	dependent := workflowspec.Task{
+		Name: "client", DependsOn: []string{"db"},
+		Resources: workflowspec.TaskResources{Walltime: "30m"},
+		Command:   []string{"./client"},
+	}
+	exported, err = sbatchexport.Render(workflow, dependent, nil)
+	if err != nil {
+		t.Fatalf("service-dependent task export: %v", err)
+	}
+	if !strings.Contains(exported, "# Custos dependencies are not represented: db") {
+		t.Fatalf("service dependency comment missing:\n%s", exported)
+	}
+}
+
 func TestRenderQuotesLiteralsAndParameterDefaults(t *testing.T) {
 	workflow := workflowspec.Workflow{
 		APIVersion: workflowspec.APIVersionV1Alpha1,

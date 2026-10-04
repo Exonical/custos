@@ -483,7 +483,8 @@ For an image task only, `PATH` and `LD_LIBRARY_PATH` are reclassified as
 user-configurable; other controlled and filtered names remain protected.
 Apptainer and Pyxis pass user values through `/usr/bin/env KEY=VALUE` inside
 the container, so images must include `/usr/bin/env`. Pyxis `--container-env`
-is reserved for runtime, env/wrapped-secret, and `MULTINODE_*` names whose
+is reserved for runtime, env/wrapped-secret, `MULTINODE_*`, and
+`CUSTOS_SERVICE_*` names whose
 host-provided values must override image defaults. `image_pull` references are
 never included in the container environment. In both cases user environment values are
 omitted from `JobSubmission.Environment` and never exported on the host;

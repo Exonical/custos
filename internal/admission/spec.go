@@ -8,6 +8,7 @@ package admission
 
 import (
 	"encoding/json"
+	"regexp"
 	"time"
 
 	"github.com/google/uuid"
@@ -89,6 +90,24 @@ type EnvSet struct {
 	// Runtime maps an env name to an allow-listed Slurm runtime variable.
 	Runtime    map[string]string `json:"runtime,omitempty"`
 	SecretRefs []SecretEnvRef    `json:"secret_refs,omitempty"`
+}
+
+// ServiceDependency freezes one service task required by this job.
+type ServiceDependency struct {
+	TaskExecutionID uuid.UUID `json:"task_execution_id"`
+	ClusterID       uuid.UUID `json:"cluster_id"`
+	TaskName        string    `json:"task_name"`
+	EnvName         string    `json:"env_name"`
+	SlurmJobID      uint32    `json:"slurm_job_id,omitempty"`
+	After           bool      `json:"after,omitempty"`
+	OnFailureRun    bool      `json:"on_failure_run,omitempty"`
+}
+
+var serviceSlurmJobIDRE = regexp.MustCompile(`^[0-9]+(_[0-9]+)?$`)
+
+// ValidServiceSlurmJobID validates an ID before placing it in a frozen task environment.
+func ValidServiceSlurmJobID(value string) bool {
+	return serviceSlurmJobIDRE.MatchString(value)
 }
 
 const (
@@ -214,11 +233,12 @@ type ExecutionSpec struct {
 	QoS         string     `json:"qos,omitempty"`
 	Reservation string     `json:"reservation,omitempty"`
 
-	Resources    ResolvedResources  `json:"resources"`
-	Placement    PlacementDecision  `json:"placement"`
-	Software     []ResolvedSoftware `json:"software,omitempty"`
-	Environment  EnvSet             `json:"environment"`
-	ContainerEnv map[string]string  `json:"container_env,omitempty"`
+	Resources           ResolvedResources   `json:"resources"`
+	Placement           PlacementDecision   `json:"placement"`
+	Software            []ResolvedSoftware  `json:"software,omitempty"`
+	Environment         EnvSet              `json:"environment"`
+	ContainerEnv        map[string]string   `json:"container_env,omitempty"`
+	ServiceDependencies []ServiceDependency `json:"service_dependencies,omitempty"`
 
 	// Payload is the script payload; zero Digest means a command task —
 	// Argv then carries the program with Argv[0] a literal. Script tasks

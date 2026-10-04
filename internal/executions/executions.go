@@ -69,11 +69,11 @@ var ExecutionTransitions = map[ExecutionState][]ExecutionState{
 // mermaid diagram in docs/workflows.md.
 var TaskTransitions = map[TaskState][]TaskState{
 	TaskPending:    {TaskBlocked, TaskReady},
-	TaskBlocked:    {TaskReady, TaskSkipped, TaskCanceled},
-	TaskReady:      {TaskAdmitting, TaskCanceled},
-	TaskAdmitting:  {TaskSubmitting, TaskReady, TaskFailed},
-	TaskSubmitting: {TaskQueued, TaskReady, TaskFailed},
-	TaskQueued:     {TaskRunning, TaskCanceled},
+	TaskBlocked:    {TaskReady, TaskSkipped, TaskCanceled, TaskCompleted},
+	TaskReady:      {TaskAdmitting, TaskCanceled, TaskCompleted},
+	TaskAdmitting:  {TaskSubmitting, TaskReady, TaskFailed, TaskCanceled, TaskCompleted},
+	TaskSubmitting: {TaskQueued, TaskReady, TaskFailed, TaskCanceled, TaskCompleted},
+	TaskQueued:     {TaskRunning, TaskCanceled, TaskCompleted},
 	TaskRunning:    {TaskCompleted, TaskFailed, TaskCanceled},
 	TaskFailed:     {TaskReady},
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/google/uuid"
@@ -180,6 +181,115 @@ func freezeImagePullSecretRefs(pull *workflowspec.ImagePullSecret,
 	return refs, nil
 }
 
+func resolveServiceDependencies(ctx context.Context, d Deps,
+	spec workflowspec.Workflow, task workflowspec.Task,
+	tasks []executions.TaskExecution,
+) ([]admission.ServiceDependency, bool, error) {
+	var out []admission.ServiceDependency
+	onFailureRun := task.OnDependencyFailure == "run"
+	for _, taskName := range task.DependsOn {
+		serviceSpec := findTaskSpec(spec, taskName)
+		if serviceSpec == nil || serviceSpec.Service == nil {
+			continue
+		}
+		var serviceTask *executions.TaskExecution
+		for i := range tasks {
+			if tasks[i].TaskName == taskName {
+				if serviceTask != nil {
+					return nil, false, denyFail("SPEC_TAMPERED", "dependsOn",
+						"service task has more than one execution instance")
+				}
+				serviceTask = &tasks[i]
+			}
+		}
+		if serviceTask == nil {
+			return nil, false, denyFail("SPEC_TAMPERED", "dependsOn",
+				"service task execution is missing")
+		}
+
+		taskFailed := serviceTaskFailed(*serviceTask)
+		dependencyFailed := taskFailed
+		if dependencyFailed && !onFailureRun {
+			return nil, true, nil
+		}
+		frozen := admission.ServiceDependency{
+			TaskExecutionID: serviceTask.ID,
+			ClusterID:       uuid.Nil,
+			TaskName:        taskName,
+			EnvName:         workflowspec.ServiceEnvSuffix(taskName),
+			OnFailureRun:    onFailureRun,
+		}
+		if serviceTask.JobID != nil {
+			if d.Jobs == nil {
+				return nil, false, apperr.New(apperr.Unavailable,
+					"SERVICE_DEPENDENCY_UNAVAILABLE", "service job store is unavailable")
+			}
+			job, err := d.Jobs.Get(ctx, tenants.PlatformScope(), *serviceTask.JobID)
+			if err != nil {
+				return nil, false, err
+			}
+			frozen.ClusterID = job.ClusterID
+			if job.SlurmJobID != nil {
+				id := *job.SlurmJobID
+				value := strconv.FormatInt(id, 10)
+				if id <= 0 || uint64(id) > uint64(^uint32(0)) ||
+					!admission.ValidServiceSlurmJobID(value) {
+					return nil, false, denyFail("SERVICE_JOB_ID_INVALID",
+						"dependsOn", "service has an invalid Slurm job id")
+				}
+				frozen.SlurmJobID = uint32(id)
+			}
+			engineStopped := serviceTask.StateReason == "SERVICE_STOP_REQUESTED" ||
+				(serviceTask.State == executions.TaskCompleted &&
+					(serviceTask.StateReason == "SERVICE_STOPPED" ||
+						serviceTask.StateReason == "SERVICE_WALLTIME"))
+			walltimeCompleted := serviceTask.State == executions.TaskCompleted &&
+				serviceTask.StateReason == "SERVICE_WALLTIME"
+			if (job.State == jobs.StateFailed && !walltimeCompleted) ||
+				(job.State == jobs.StateCanceled && !engineStopped) {
+				dependencyFailed = true
+				if !onFailureRun {
+					return nil, true, nil
+				}
+			}
+			if (job.State == jobs.StateCompleted ||
+				(job.State == jobs.StateCanceled && engineStopped) ||
+				(job.State == jobs.StateFailed && walltimeCompleted)) &&
+				!taskFailed {
+				dependencyFailed = false
+			}
+			if !dependencyFailed && frozen.SlurmJobID == 0 {
+				return nil, false, apperr.New(apperr.Unavailable,
+					"SERVICE_DEPENDENCY_NOT_READY",
+					"service has not received a Slurm job id")
+			}
+		} else if !dependencyFailed {
+			return nil, false, apperr.New(apperr.Unavailable,
+				"SERVICE_DEPENDENCY_NOT_READY",
+				"service job has not been admitted")
+		}
+		frozen.After = !dependencyFailed && frozen.SlurmJobID != 0
+		out = append(out, frozen)
+	}
+	return out, false, nil
+}
+
+func cancelDependencyFailed(ctx context.Context, d Deps,
+	e executions.Execution, task executions.TaskExecution) error {
+	to, reason := executions.TaskCanceled, "DEPENDENCY_FAILED"
+	_, err := d.Execs.TransitionTask(ctx, tenants.PlatformScope(), task.ID,
+		executions.TaskAdmitting, task.Version,
+		executions.TaskPatch{State: &to, Reason: &reason},
+		func(ex executions.Execer) error {
+			_, err := enqueueExecutionAdvance(ctx, ex, e)
+			return err
+		})
+	if executions.IsStale(err) {
+		return nil
+	}
+	return err
+}
+
 func asDeny(err error, out **denyError) bool {
 	if de, ok := err.(*denyError); ok {
 		*out = de
@@ -229,6 +339,14 @@ func admitTask(ctx context.Context, d Deps,
 		return err
 	}
 	sc.tasks = allTasks
+	serviceDependencies, dependencyFailed, err := resolveServiceDependencies(
+		ctx, d, spec, *st, allTasks)
+	if err != nil {
+		return err
+	}
+	if dependencyFailed {
+		return cancelDependencyFailed(ctx, d, e, t)
+	}
 
 	// Render argv/env/paths at admit time (templates over the admit
 	// scope; {{ array.taskId }} only as a whole element).
@@ -251,6 +369,16 @@ func admitTask(ctx context.Context, d Deps,
 	env, err := renderEnv(st.Env, sc, spec.Spec.Secrets, secretInfo)
 	if err != nil {
 		return denyFail("TEMPLATE", "env", err.Error())
+	}
+	if len(serviceDependencies) > 0 && env.Controlled == nil {
+		env.Controlled = map[string]string{}
+	}
+	for _, dependency := range serviceDependencies {
+		jobID := ""
+		if dependency.SlurmJobID > 0 {
+			jobID = strconv.FormatUint(uint64(dependency.SlurmJobID), 10)
+		}
+		env.Controlled[workflowspec.ServiceJobIDEnvName(dependency.TaskName)] = jobID
 	}
 	var wrapped []string
 	for handle, use := range spec.Spec.Secrets {
@@ -355,6 +483,13 @@ func admitTask(ctx context.Context, d Deps,
 		return denyFail("CLUSTER_UNKNOWN", "placement",
 			"task has no resolvable placement cluster")
 	}
+	for _, dependency := range serviceDependencies {
+		if dependency.ClusterID != uuid.Nil && dependency.ClusterID != cluster.ID {
+			return denyFail("SERVICE_CLUSTER_MISMATCH",
+				"dependsOn."+dependency.TaskName,
+				"service dependencies must use the same Slurm cluster as the dependent task")
+		}
+	}
 	if cluster.Capabilities == nil ||
 		cluster.State == clusters.StateDisabled {
 		return apperr.New(apperr.Conflict, "CLUSTER_UNAVAILABLE",
@@ -387,13 +522,14 @@ func admitTask(ctx context.Context, d Deps,
 			ID: cluster.ID, Name: cluster.Name,
 			APIVersion: cluster.APIVersion,
 		},
-		Partition:   st.Partition,
-		QoS:         st.QoS,
-		Environment: env,
-		Argv:        argv,
-		WorkingDir:  workDir,
-		Stdout:      stdout,
-		Stderr:      stderr,
+		Partition:           st.Partition,
+		QoS:                 st.QoS,
+		Environment:         env,
+		ServiceDependencies: serviceDependencies,
+		Argv:                argv,
+		WorkingDir:          workDir,
+		Stdout:              stdout,
+		Stderr:              stderr,
 		Security: admission.SecurityContext{
 			SlurmUser:         cluster.ServiceUser,
 			ImpersonationMode: string(cluster.IdentityMode),

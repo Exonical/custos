@@ -66,6 +66,17 @@ func TestJobDescAllowList(t *testing.T) {
 	}
 }
 
+func TestJobDependencyAfterServiceStart(t *testing.T) {
+	d := toJobDesc(slurm.JobSubmission{
+		Dependencies: []slurm.Dependency{{
+			Kind: slurm.DepAfter, JobIDs: []slurm.JobID{{ID: 42}},
+		}},
+	})
+	if d.Dependency == nil || *d.Dependency != "after:42" {
+		t.Fatalf("dependency = %v, want after:42", d.Dependency)
+	}
+}
+
 // TestJobDescValues asserts the mapping values.
 func TestJobDescValues(t *testing.T) {
 	d := toJobDesc(fullSubmission())

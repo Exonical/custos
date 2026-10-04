@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -18,6 +19,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 
+	"github.com/Exonical/custos/internal/admission"
 	"github.com/Exonical/custos/internal/audit"
 	"github.com/Exonical/custos/internal/clusters"
 	"github.com/Exonical/custos/internal/executions"
@@ -37,6 +39,7 @@ import (
 const (
 	KindReconcile              = "job.reconcile"
 	KindSweep                  = "jobs.sweep"
+	KindSweepCanceled          = "job.sweep_canceled"
 	KindIdemExpire             = "idempotency.expire"
 	lostAfter                  = 10 * time.Minute
 	sweepInterval              = 60 * time.Second
@@ -90,6 +93,12 @@ func Submit(d Deps) workqueue.Handler {
 		if err != nil {
 			return err // transient -> retry
 		}
+		if j.State.Terminal() {
+			if j.SlurmJobID == nil && d.Clusters != nil && d.Factory != nil {
+				return cancelOrphanByName(ctx, d, j)
+			}
+			return nil
+		}
 		if j.State != jobs.StateSubmitting {
 			return nil // canceled or already progressed; idempotent
 		}
@@ -111,6 +120,16 @@ func Submit(d Deps) workqueue.Handler {
 			return err // lookup failed -> retry
 		} else if found != nil {
 			return adopt(ctx, d, j, *found, wantComment)
+		}
+		failedServiceJobs, cancel, err := checkServiceDependencies(ctx, d, j)
+		if err != nil {
+			if isServiceClusterMismatch(err) {
+				return failServiceClusterMismatch(ctx, d, j)
+			}
+			return err
+		}
+		if cancel {
+			return cancelForDependencyFailure(ctx, d, j)
 		}
 
 		// Payload-bearing specs fetch and verify the script bytes;
@@ -138,6 +157,7 @@ func Submit(d Deps) workqueue.Handler {
 			return integrityFailure(ctx, d, j, err)
 		}
 		sub := submission.JobSubmission(j.ExecutionSpec, wrapper)
+		removeFailedServiceDependencies(&sub, failedServiceJobs)
 		values, err := deliverSecrets(ctx, d, j, &sub)
 		if err != nil {
 			for i := range values {
@@ -157,6 +177,17 @@ func Submit(d Deps) workqueue.Handler {
 				values[i].Wipe()
 			}
 		}()
+		failedServiceJobs, cancel, err = checkServiceDependencies(ctx, d, j)
+		if err != nil {
+			if isServiceClusterMismatch(err) {
+				return failServiceClusterMismatch(ctx, d, j)
+			}
+			return err
+		}
+		if cancel {
+			return cancelForDependencyFailure(ctx, d, j)
+		}
+		removeFailedServiceDependencies(&sub, failedServiceJobs)
 		ref, err := cl.SubmitJob(ctx, sub)
 		if err != nil {
 			if errors.Is(err, slurm.ErrUnavailable) {
@@ -175,17 +206,185 @@ func Submit(d Deps) workqueue.Handler {
 			return terr
 		}
 		now := time.Now().UTC()
-		sid := int64(ref.ID.ID)
-		if _, err := transition(ctx, d, j, jobs.Patch{
-			State:       ptr(jobs.StateQueued),
-			SlurmJobID:  &sid,
-			SlurmState:  ptr(string(ref.State)),
-			SubmittedAt: &now,
-		}); err != nil {
-			return err
-		}
+		return persistSubmittedJob(ctx, d, j, cl, ref, now)
+	}
+}
+
+func persistSubmittedJob(ctx context.Context, d Deps, j jobs.Job,
+	cl slurm.Cluster, ref slurm.JobRef, now time.Time) error {
+	sid := int64(ref.ID.ID)
+	_, err := transition(ctx, d, j, jobs.Patch{
+		State:       ptr(jobs.StateQueued),
+		SlurmJobID:  &sid,
+		SlurmState:  ptr(string(ref.State)),
+		SubmittedAt: &now,
+	})
+	if err == nil {
 		return enqueueReconcile(ctx, d, j.ID, now, 5*time.Second)
 	}
+	if !apperr.Is(err, apperr.Conflict) {
+		return err
+	}
+	current, readErr := d.Jobs.Get(ctx, tenants.PlatformScope(), j.ID)
+	if readErr != nil {
+		return readErr
+	}
+	if current.State.Terminal() {
+		return cancelOrphanSlurmJob(ctx, d, current, cl, ref.ID)
+	}
+	if current.SlurmJobID != nil {
+		if *current.SlurmJobID == sid {
+			return enqueueReconcile(ctx, d, current.ID, now, 5*time.Second)
+		}
+		if err := cancelOrphanSlurmJob(ctx, d, current, cl, ref.ID); err != nil {
+			return err
+		}
+		return enqueueReconcile(ctx, d, current.ID, now, 5*time.Second)
+	}
+	return err
+}
+
+func checkServiceDependencies(ctx context.Context, d Deps,
+	j jobs.Job) (map[uint32]bool, bool, error) {
+	dependencies := j.ExecutionSpec.ServiceDependencies
+	if len(dependencies) == 0 {
+		return nil, false, nil
+	}
+	if d.Execs == nil {
+		return nil, false, apperr.New(apperr.Unavailable,
+			"SERVICE_DEPENDENCY_UNAVAILABLE",
+			"execution store is unavailable for service dependency checks")
+	}
+	failedJobs := make(map[uint32]bool)
+	for _, dep := range dependencies {
+		if dep.TaskExecutionID == uuid.Nil || dep.EnvName == "" {
+			return nil, false, apperr.New(apperr.Internal,
+				"SERVICE_DEPENDENCY_INVALID", "frozen service dependency is incomplete")
+		}
+		task, err := d.Execs.GetTask(ctx, tenants.PlatformScope(),
+			j.TenantID, dep.TaskExecutionID)
+		if err != nil {
+			return nil, false, err
+		}
+		var serviceJob jobs.Job
+		hasServiceJob := task.JobID != nil
+		if hasServiceJob {
+			if d.Jobs == nil {
+				return nil, false, apperr.New(apperr.Unavailable,
+					"SERVICE_DEPENDENCY_UNAVAILABLE",
+					"job store is unavailable for service dependency checks")
+			}
+			serviceJob, err = d.Jobs.Get(ctx, tenants.PlatformScope(), *task.JobID)
+			if err != nil {
+				return nil, false, err
+			}
+			if dep.ClusterID == uuid.Nil ||
+				dep.ClusterID != j.ExecutionSpec.Cluster.ID ||
+				serviceJob.ClusterID != dep.ClusterID {
+				return nil, false, apperr.New(apperr.Validation,
+					"SERVICE_CLUSTER_MISMATCH",
+					"service dependency and dependent job must use the same Slurm cluster")
+			}
+		}
+		serviceStopped := task.StateReason == "SERVICE_STOP_REQUESTED" ||
+			(task.State == executions.TaskCompleted &&
+				task.StateReason == "SERVICE_STOPPED")
+		walltimeCompleted := task.State == executions.TaskCompleted &&
+			task.StateReason == "SERVICE_WALLTIME"
+		failed := task.State == executions.TaskFailed ||
+			task.State == executions.TaskSkipped ||
+			task.State == executions.TaskCanceled ||
+			(task.State == executions.TaskCompleted && !hasServiceJob) ||
+			(hasServiceJob && serviceJob.State == jobs.StateFailed &&
+				!walltimeCompleted) ||
+			(hasServiceJob && serviceJob.State == jobs.StateCanceled &&
+				!serviceStopped)
+		if failed {
+			if !dep.OnFailureRun {
+				return nil, true, nil
+			}
+			if dep.SlurmJobID != 0 {
+				failedJobs[dep.SlurmJobID] = true
+			}
+			continue
+		}
+		if !hasServiceJob || dep.SlurmJobID == 0 ||
+			serviceJob.SlurmJobID == nil {
+			return nil, false, apperr.New(apperr.Unavailable,
+				"SERVICE_DEPENDENCY_NOT_READY",
+				"service dependency has not been submitted to Slurm")
+		}
+		if !admission.ValidServiceSlurmJobID(
+			strconv.FormatUint(uint64(dep.SlurmJobID), 10)) {
+			return nil, false, apperr.New(apperr.Internal,
+				"SERVICE_JOB_ID_INVALID", "frozen service job id is invalid")
+		}
+		if *serviceJob.SlurmJobID != int64(dep.SlurmJobID) {
+			return nil, false, apperr.New(apperr.Conflict,
+				"SERVICE_DEPENDENCY_CHANGED",
+				"service Slurm job id no longer matches the admitted dependency")
+		}
+	}
+	return failedJobs, false, nil
+}
+
+func isServiceClusterMismatch(err error) bool {
+	var domainErr *apperr.Error
+	return errors.As(err, &domainErr) && domainErr.Code == "SERVICE_CLUSTER_MISMATCH"
+}
+
+func failServiceClusterMismatch(ctx context.Context, d Deps,
+	j jobs.Job) error {
+	reason := "SERVICE_CLUSTER_MISMATCH"
+	now := time.Now().UTC()
+	if _, err := transition(ctx, d, j, jobs.Patch{
+		State: ptr(jobs.StateFailed), Reason: &reason, EndedAt: &now,
+	}); err != nil {
+		if apperr.Is(err, apperr.Conflict) {
+			return nil
+		}
+		return err
+	}
+	d.Metrics.terminal(ctx, jobs.StateFailed)
+	auditJob(ctx, d, j, "job.submit_failed", audit.ResultError, reason)
+	return nil
+}
+
+func removeFailedServiceDependencies(sub *slurm.JobSubmission,
+	failed map[uint32]bool) {
+	if len(failed) == 0 {
+		return
+	}
+	filtered := sub.Dependencies[:0]
+	for _, dependency := range sub.Dependencies {
+		if dependency.Kind == slurm.DepAfter {
+			jobIDs := dependency.JobIDs[:0]
+			for _, id := range dependency.JobIDs {
+				if !failed[id.ID] {
+					jobIDs = append(jobIDs, id)
+				}
+			}
+			if len(jobIDs) == 0 {
+				continue
+			}
+			dependency.JobIDs = jobIDs
+		}
+		filtered = append(filtered, dependency)
+	}
+	sub.Dependencies = filtered
+}
+
+func cancelForDependencyFailure(ctx context.Context, d Deps,
+	j jobs.Job) error {
+	reason := "DEPENDENCY_FAILED"
+	now := time.Now().UTC()
+	_, err := transition(ctx, d, j, jobs.Patch{
+		State: ptr(jobs.StateCanceled), Reason: &reason, EndedAt: &now,
+	})
+	if apperr.Is(err, apperr.Conflict) {
+		return nil
+	}
+	return err
 }
 
 func deliverSecrets(ctx context.Context, d Deps, j jobs.Job,
@@ -530,20 +729,23 @@ func Cancel(d Deps) workqueue.Handler {
 		if err != nil {
 			return err
 		}
-		switch {
-		case j.State.Terminal():
-			return nil
-		case j.State == jobs.StateSubmitting:
-			// Race with job.submit: mark canceled; the submit handler
-			// re-reads state before calling Slurm.
-			now := time.Now().UTC()
-			if _, err := transition(ctx, d, j, jobs.Patch{
-				State: ptr(jobs.StateCanceled), Reason: ptr("CANCELED"),
-				EndedAt: &now,
-			}); err != nil && !apperr.Is(err, apperr.Conflict) {
-				return err
+		if j.State.Terminal() {
+			if j.State == jobs.StateCanceled && j.SlurmJobID == nil &&
+				j.StateReason == "CANCELED" {
+				return enqueueCanceledSubmitSweeps(ctx, d, j)
 			}
 			return nil
+		}
+		if j.State == jobs.StateSubmitting {
+			// A canceled SUBMITTING row has no Slurm ID to cancel directly;
+			// delayed name-based sweeps cover accepted-but-unrecorded submits.
+			j, err = cancelSubmittingJob(ctx, d, j)
+			if err != nil {
+				return err
+			}
+			if j.State.Terminal() {
+				return nil
+			}
 		}
 		sid, ok := j.SlurmJobIDRef()
 		if !ok {
@@ -573,6 +775,135 @@ func Cancel(d Deps) workqueue.Handler {
 		}
 		return enqueueReconcile(ctx, d, j.ID, time.Now(), 2*time.Second)
 	}
+}
+
+func cancelSubmittingJob(ctx context.Context, d Deps,
+	j jobs.Job) (jobs.Job, error) {
+	for attempts := 0; attempts < 3; attempts++ {
+		if j.State != jobs.StateSubmitting {
+			if j.State == jobs.StateCanceled && j.SlurmJobID == nil &&
+				j.StateReason == "CANCELED" {
+				return j, enqueueCanceledSubmitSweeps(ctx, d, j)
+			}
+			return j, nil
+		}
+		now := time.Now().UTC()
+		updated, err := transition(ctx, d, j, jobs.Patch{
+			State: ptr(jobs.StateCanceled), Reason: ptr("CANCELED"),
+			EndedAt: &now,
+		})
+		if err == nil {
+			return updated, enqueueCanceledSubmitSweeps(ctx, d, updated)
+		}
+		if !apperr.Is(err, apperr.Conflict) {
+			return j, err
+		}
+		j, err = d.Jobs.Get(ctx, tenants.PlatformScope(), j.ID)
+		if err != nil {
+			return j, err
+		}
+	}
+	return j, apperr.New(apperr.Conflict, "JOB_STATE",
+		"job state changed repeatedly while canceling a submitting job")
+}
+
+// SweepCanceled returns the delayed orphan check for a canceled SUBMITTING job.
+func SweepCanceled(d Deps) workqueue.Handler {
+	return func(ctx context.Context, it workqueue.Item) error {
+		id, err := jobID(it)
+		if err != nil {
+			return err
+		}
+		j, err := d.Jobs.Get(ctx, tenants.PlatformScope(), id)
+		if err != nil {
+			if apperr.Is(err, apperr.NotFound) {
+				return nil
+			}
+			return err
+		}
+		if j.State != jobs.StateCanceled {
+			return nil
+		}
+		return cancelOrphanByName(ctx, d, j)
+	}
+}
+
+func cancelOrphanByName(ctx context.Context, d Deps, j jobs.Job) error {
+	c, err := d.Clusters.GetByNameOrID(ctx, j.ClusterID.String())
+	if err != nil {
+		return err
+	}
+	cl, acct, err := d.Factory.Open(ctx, c.SlurmConfig())
+	if err != nil {
+		return err
+	}
+	wantName := "custos-" + j.ID.String()
+	wantComment := "custos:" + j.ID.String() + "/" + j.ExecutionSpec.TaskName
+	found, err := findByName(ctx, cl, acct, wantName)
+	if err != nil {
+		return err
+	}
+	if found == nil || found.Name != wantName || found.Comment != wantComment ||
+		found.ID.ID == 0 {
+		return nil
+	}
+	state, known := jobs.MapSlurmState(found.State)
+	if !known || state.Terminal() {
+		return nil
+	}
+	return cancelOrphanSlurmJob(ctx, d, j, cl, found.ID)
+}
+
+func cancelOrphanSlurmJob(ctx context.Context, d Deps, j jobs.Job,
+	cl slurm.Cluster, id slurm.JobID) error {
+	if err := cl.CancelJob(ctx, id, slurm.CancelOptions{}); err != nil &&
+		!errors.Is(err, slurm.ErrNotFound) {
+		return err
+	}
+	details := map[string]any{"slurm_job_id": id.ID}
+	if id.ArrayTaskID != nil {
+		details["array_task_id"] = *id.ArrayTaskID
+	}
+	if d.Audit != nil {
+		_ = d.Audit.Record(ctx, audit.Event{
+			Actor:    audit.Actor{Type: audit.ActorSystem, ID: "custos"},
+			Action:   "job.orphan_canceled",
+			Target:   audit.Target{Type: "job", ID: j.ID.String()},
+			Result:   audit.ResultAllow,
+			TenantID: &j.TenantID,
+			Details:  details,
+		})
+	}
+	return nil
+}
+
+func enqueueCanceledSubmitSweeps(ctx context.Context, d Deps,
+	j jobs.Job) error {
+	if d.Exec == nil {
+		return apperr.New(apperr.Unavailable, "QUEUE_UNAVAILABLE",
+			"work queue is unavailable for canceled-submit sweeps")
+	}
+	now := time.Now().UTC()
+	for _, sweep := range []struct {
+		name  string
+		delay time.Duration
+	}{
+		{name: "30s", delay: 30 * time.Second},
+		{name: "5m", delay: 5 * time.Minute},
+	} {
+		if _, err := workqueue.Enqueue(ctx, d.Exec, workqueue.EnqueueRequest{
+			Kind: KindSweepCanceled,
+			Key:  "job:" + j.ID.String() + ":orphan:" + sweep.name,
+			Payload: map[string]string{
+				"job_id": j.ID.String(),
+			},
+			TenantID: &j.TenantID,
+			RunAt:    now.Add(sweep.delay),
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // --- jobs.sweep ---------------------------------------------------------

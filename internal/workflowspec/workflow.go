@@ -240,6 +240,16 @@ type Multinode struct {
 	procsPerNodeSet bool
 }
 
+// ServiceTask marks a long-running Slurm task.
+type ServiceTask struct {
+	AutoStop *bool `json:"autoStop,omitempty"`
+}
+
+// AutoStopEnabled defaults an omitted autoStop field to true.
+func (s *ServiceTask) AutoStopEnabled() bool {
+	return s == nil || s.AutoStop == nil || *s.AutoStop
+}
+
 // UnmarshalJSON implements json.Unmarshaler and records optional slot presence.
 func (m *Multinode) UnmarshalJSON(data []byte) error {
 	type multinodeAlias Multinode
@@ -278,6 +288,7 @@ type Task struct {
 	Placement           *Placement            `json:"placement,omitempty"`
 	Image               *Image                `json:"image,omitempty"`
 	Multinode           *Multinode            `json:"multinode,omitempty"`
+	Service             *ServiceTask          `json:"service,omitempty"`
 	Command             []string              `json:"command,omitempty"`
 	Script              *ScriptRef            `json:"script,omitempty"`
 	Args                []string              `json:"args,omitempty"`
@@ -291,6 +302,32 @@ type Task struct {
 	WorkingDirectory    string                `json:"workingDirectory,omitempty"`
 	Stdout              string                `json:"stdout,omitempty"`
 	Stderr              string                `json:"stderr,omitempty"`
+}
+
+// ServiceEnvSuffix normalizes a task name for CUSTOS_SERVICE_* variables.
+func ServiceEnvSuffix(taskName string) string {
+	var suffix strings.Builder
+	for _, r := range taskName {
+		switch {
+		case r >= 'a' && r <= 'z':
+			suffix.WriteRune(r - ('a' - 'A'))
+		case r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+			suffix.WriteRune(r)
+		default:
+			suffix.WriteByte('_')
+		}
+	}
+	return suffix.String()
+}
+
+// ServiceJobIDEnvName returns the controlled Slurm job-id variable name.
+func ServiceJobIDEnvName(taskName string) string {
+	return "CUSTOS_SERVICE_" + ServiceEnvSuffix(taskName) + "_JOBID"
+}
+
+// ServiceHostEnvName returns the best-effort service host variable name.
+func ServiceHostEnvName(taskName string) string {
+	return "CUSTOS_SERVICE_" + ServiceEnvSuffix(taskName) + "_HOST"
 }
 
 // UnmarshalJSON implements json.Unmarshaler and decodes env maps or lists.

@@ -44,6 +44,198 @@ func TestStaticValid(t *testing.T) {
 	}
 }
 
+func TestServiceTaskStaticValidation(t *testing.T) {
+	valid := wf(t, `
+apiVersion: custos.io/v1alpha1
+kind: Workflow
+metadata: {name: services}
+spec:
+  tasks:
+    - name: prepare
+      resources: {walltime: 30m}
+      command: ["./prepare"]
+    - name: db
+      dependsOn: [prepare]
+      service: {}
+      launch: sbatch
+      resources: {cpu: 2, walltime: 2h}
+      script: |
+        #!/bin/bash
+        exec postgres -D "$CUSTOS_JOB_DIR/pg"
+    - name: cache
+      dependsOn: [db]
+      service: {autoStop: false}
+      multinode: {nodes: 2, implementation: generic}
+      image: {uri: docker://registry.example.com/cache:1}
+      resources: {cpu: 2, walltime: 1h}
+      command: ["./cache"]
+    - name: client
+      dependsOn: [db, cache]
+      resources: {walltime: 30m}
+      command: ["./client"]
+`)
+	if errs := validate.Static(valid); len(errs) != 0 {
+		t.Fatalf("valid service tasks rejected: %+v", errs)
+	}
+	autoStop := false
+	valid.Spec.Tasks[1].Service.AutoStop = &autoStop
+	if errs := validate.Static(valid); len(errs) != 0 {
+		t.Fatalf("autoStop=false service rejected: %+v", errs)
+	}
+
+	for _, tc := range []struct {
+		name string
+		yaml string
+		code string
+	}{
+		{
+			name: "walltime required",
+			yaml: `
+apiVersion: custos.io/v1alpha1
+kind: Workflow
+metadata: {name: services}
+spec: {tasks: [{name: db, service: {}, command: ["db"]}]}
+`,
+			code: "SERVICE_WALLTIME_REQUIRED",
+		},
+		{
+			name: "array unsupported",
+			yaml: `
+apiVersion: custos.io/v1alpha1
+kind: Workflow
+metadata: {name: services}
+spec: {tasks: [{name: db, service: {}, resources: {walltime: 2h}, array: {start: 0, end: 1}, command: ["db"]}]}
+`,
+			code: "SERVICE_FIELD_UNSUPPORTED",
+		},
+		{
+			name: "fanout unsupported",
+			yaml: `
+apiVersion: custos.io/v1alpha1
+kind: Workflow
+metadata: {name: services}
+spec: {tasks: [{name: db, service: {}, resources: {walltime: 2h}, fanOut: {count: 2}, command: ["db"]}]}
+`,
+			code: "SERVICE_FIELD_UNSUPPORTED",
+		},
+		{
+			name: "retry unsupported",
+			yaml: `
+apiVersion: custos.io/v1alpha1
+kind: Workflow
+metadata: {name: services}
+spec: {tasks: [{name: db, service: {}, resources: {walltime: 2h}, retry: {attempts: 1}, command: ["db"]}]}
+`,
+			code: "SERVICE_FIELD_UNSUPPORTED",
+		},
+		{
+			name: "when unsupported",
+			yaml: `
+apiVersion: custos.io/v1alpha1
+kind: Workflow
+metadata: {name: services}
+spec: {tasks: [{name: db, service: {}, resources: {walltime: 2h}, when: "true", command: ["db"]}]}
+`,
+			code: "SERVICE_FIELD_UNSUPPORTED",
+		},
+		{
+			name: "outputs unsupported",
+			yaml: `
+apiVersion: custos.io/v1alpha1
+kind: Workflow
+metadata: {name: services}
+spec: {tasks: [{name: db, service: {}, resources: {walltime: 2h}, outputs: {}, command: ["db"]}]}
+`,
+			code: "SERVICE_FIELD_UNSUPPORTED",
+		},
+		{
+			name: "condition unsupported",
+			yaml: `
+apiVersion: custos.io/v1alpha1
+kind: Workflow
+metadata: {name: services}
+spec: {tasks: [{name: gate, type: condition, service: {}, when: "true"}]}
+`,
+			code: "SERVICE_FIELD_UNSUPPORTED",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if errs := validate.Static(wf(t, tc.yaml)); !hasCode(errs, tc.code) {
+				t.Fatalf("errors = %+v, want %s", errs, tc.code)
+			}
+		})
+	}
+
+	collision := wf(t, `
+apiVersion: custos.io/v1alpha1
+kind: Workflow
+metadata: {name: services}
+spec:
+  tasks:
+    - {name: db-api, service: {}, resources: {walltime: 1h}, command: ["db"]}
+    - {name: db_api, service: {}, resources: {walltime: 1h}, command: ["db"]}
+`)
+	if !hasCode(validate.Static(collision), "SERVICE_NAME_COLLISION") {
+		t.Fatal("normalized service-name collision was not rejected")
+	}
+	reserved := wf(t, `
+apiVersion: custos.io/v1alpha1
+kind: Workflow
+metadata: {name: services}
+spec:
+  defaults:
+    env: {CUSTOS_SERVICE_DB_HOST: custom}
+  tasks:
+    - {name: db, service: {}, resources: {walltime: 1h}, command: ["db"]}
+    - {name: client, dependsOn: [db], resources: {walltime: 1h}, command: ["./client"], env: {CUSTOS_SERVICE_DB_JOBID: "123"}}
+`)
+	reservedErrors := 0
+	for _, fieldErr := range validate.Static(reserved) {
+		if fieldErr.Code == "SECRET_ENV_CONTROLLED" {
+			reservedErrors++
+		}
+	}
+	if reservedErrors != 2 {
+		t.Fatalf("service runtime names were not reserved in defaults and task env: %+v",
+			validate.Static(reserved))
+	}
+}
+
+func TestServiceClusterMismatchStaticValidation(t *testing.T) {
+	w := wf(t, `
+apiVersion: custos.io/v1alpha1
+kind: Workflow
+metadata: {name: services}
+spec:
+  placement: {cluster: compute-a}
+  tasks:
+    - name: db
+      service: {}
+      resources: {walltime: 2h}
+      command: ["db"]
+    - name: client
+      placement: {cluster: compute-b}
+      dependsOn: [db]
+      resources: {walltime: 30m}
+      command: ["./client"]
+`)
+	found := false
+	for _, fieldErr := range validate.Static(w) {
+		if fieldErr.Code == "SERVICE_CLUSTER_MISMATCH" &&
+			fieldErr.Path == "spec.tasks[1].dependsOn[0]" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("cross-cluster service dependency error missing: %+v", validate.Static(w))
+	}
+
+	w.Spec.Tasks[1].Placement.Cluster = "compute-a"
+	if errs := validate.Static(w); len(errs) != 0 {
+		t.Fatalf("same-cluster service dependency rejected: %+v", errs)
+	}
+}
+
 func TestArraySpecAndRuntimeReferenceAreNotLegacyTypeGated(t *testing.T) {
 	w := wf(t, `
 apiVersion: custos.io/v1alpha1

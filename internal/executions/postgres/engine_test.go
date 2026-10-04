@@ -3,12 +3,14 @@ package postgres_test
 import (
 	"context"
 	"encoding/json"
+	"strconv"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/Exonical/custos/internal/audit"
 	"github.com/Exonical/custos/internal/authz"
 	"github.com/Exonical/custos/internal/clusters"
 	clusterpg "github.com/Exonical/custos/internal/clusters/postgres"
@@ -17,6 +19,7 @@ import (
 	execpg "github.com/Exonical/custos/internal/executions/postgres"
 	"github.com/Exonical/custos/internal/jobs"
 	jobpg "github.com/Exonical/custos/internal/jobs/postgres"
+	jobsworker "github.com/Exonical/custos/internal/jobs/worker"
 	"github.com/Exonical/custos/internal/platform/db/dbtest"
 	"github.com/Exonical/custos/internal/platform/workqueue"
 	policypg "github.com/Exonical/custos/internal/policies/postgres"
@@ -26,6 +29,7 @@ import (
 	scriptpg "github.com/Exonical/custos/internal/scripts/postgres"
 	"github.com/Exonical/custos/internal/secrets"
 	"github.com/Exonical/custos/internal/slurm"
+	"github.com/Exonical/custos/internal/slurm/fake"
 	"github.com/Exonical/custos/internal/tenants"
 	tenantpg "github.com/Exonical/custos/internal/tenants/postgres"
 	"github.com/Exonical/custos/internal/validation/pipeline"
@@ -47,6 +51,36 @@ type fixture struct {
 	projectID uuid.UUID
 	userID    uuid.UUID
 	clusterID uuid.UUID
+	fakeSlurm *fake.Cluster
+}
+
+type fixtureSlurmFactory struct{ cluster *fake.Cluster }
+
+func (f fixtureSlurmFactory) Open(context.Context,
+	slurm.ClusterConfig) (slurm.Cluster, slurm.Accounting, error) {
+	return f.cluster, f.cluster, nil
+}
+
+type fixtureAudit struct{ events []audit.Event }
+
+func (a *fixtureAudit) Record(_ context.Context, event audit.Event) error {
+	a.events = append(a.events, event)
+	return nil
+}
+
+type alteredJobClusterStore struct {
+	engine.JobStore
+	jobID     uuid.UUID
+	clusterID uuid.UUID
+}
+
+func (s alteredJobClusterStore) Get(ctx context.Context, scope tenants.Scope,
+	id uuid.UUID) (jobs.Job, error) {
+	job, err := s.JobStore.Get(ctx, scope, id)
+	if err == nil && id == s.jobID {
+		job.ClusterID = s.clusterID
+	}
+	return job, err
 }
 
 func setup(t *testing.T) fixture {
@@ -112,6 +146,7 @@ func setup(t *testing.T) fixture {
 	projectRepo := projectpg.New(pool)
 	tenantRepo := tenantpg.New(pool)
 	vpolStore := vpolicypg.NewPolicyStore(pool)
+	fakeSlurm := fake.New()
 	return fixture{
 		pool:   pool,
 		repo:   execpg.New(pool),
@@ -135,6 +170,41 @@ func setup(t *testing.T) fixture {
 			Jobs:        jobpg.New(pool),
 		},
 		tenantID: tid, projectID: pid, userID: uid, clusterID: cid,
+		fakeSlurm: fakeSlurm,
+	}
+}
+
+func (f fixture) jobWorkerDeps() jobsworker.Deps {
+	return jobsworker.Deps{
+		Jobs: f.jobs, Scripts: scriptpg.New(f.pool),
+		Clusters: clusterpg.New(f.pool),
+		Factory:  fixtureSlurmFactory{cluster: f.fakeSlurm},
+		Exec:     f.pool, Execs: f.repo,
+		Metrics: jobsworker.NewMetrics(nil, f.jobs),
+	}
+}
+
+func (f fixture) submitJob(t *testing.T, id uuid.UUID) {
+	t.Helper()
+	if err := jobsworker.Submit(f.jobWorkerDeps())(context.Background(),
+		workqueue.Item{Kind: "job.submit", Key: "job:" + id.String()}); err != nil {
+		t.Fatalf("submit job %s: %v", id, err)
+	}
+}
+
+func (f fixture) cancelJob(t *testing.T, id uuid.UUID) {
+	t.Helper()
+	if err := jobsworker.Cancel(f.jobWorkerDeps())(context.Background(),
+		workqueue.Item{Kind: "job.cancel", Key: "job:" + id.String()}); err != nil {
+		t.Fatalf("cancel job %s: %v", id, err)
+	}
+}
+
+func (f fixture) reconcileJob(t *testing.T, id uuid.UUID) {
+	t.Helper()
+	if err := jobsworker.Reconcile(f.jobWorkerDeps())(context.Background(),
+		workqueue.Item{Kind: jobsworker.KindReconcile, Key: "job:" + id.String()}); err != nil {
+		t.Fatalf("reconcile job %s: %v", id, err)
 	}
 }
 
@@ -444,6 +514,419 @@ func TestLinearChain(t *testing.T) {
 	e = f.getExec(t, e.ID)
 	if e.State != executions.ExecSucceeded {
 		t.Fatalf("state %s (%s), want SUCCEEDED", e.State, e.StateReason)
+	}
+}
+
+func TestServiceDependencyAfterAndAutoStop(t *testing.T) {
+	f := setup(t)
+	recorder := &fixtureAudit{}
+	f.deps.Audit = recorder
+	service := cmd("db")
+	service.Service = &workflowspec.ServiceTask{}
+	service.Resources.Walltime = "2h"
+	client := cmd("client", "db")
+	w, v := f.seedVersion(t, "service", f.cmdSpec(service, client))
+	e := f.seedExec(t, w, v, nil)
+	f.advance(t, e)
+
+	dbTask := f.taskByName(t, e.ID, "db")
+	if dbTask.State != executions.TaskReady {
+		t.Fatalf("service ready state = %s", dbTask.State)
+	}
+	clientTask := f.taskByName(t, e.ID, "client")
+	if clientTask.State != executions.TaskBlocked {
+		t.Fatalf("client before service submit = %s, want BLOCKED", clientTask.State)
+	}
+	f.admit(t, dbTask.ID)
+	dbTask = f.taskByName(t, e.ID, "db")
+	if dbTask.JobID == nil {
+		t.Fatal("service admission did not create a job")
+	}
+	f.submitJob(t, *dbTask.JobID)
+	dbJob, err := f.jobs.Get(context.Background(), tenants.PlatformScope(), *dbTask.JobID)
+	if err != nil || dbJob.SlurmJobID == nil {
+		t.Fatalf("service Slurm job = %+v err=%v", dbJob, err)
+	}
+	f.advance(t, f.getExec(t, e.ID))
+	clientTask = f.taskByName(t, e.ID, "client")
+	if clientTask.State != executions.TaskReady {
+		t.Fatalf("client after service submit = %s, want READY", clientTask.State)
+	}
+
+	f.admit(t, clientTask.ID)
+	clientTask = f.taskByName(t, e.ID, "client")
+	clientJob, err := f.jobs.Get(context.Background(), tenants.PlatformScope(), *clientTask.JobID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(clientJob.ExecutionSpec.ServiceDependencies) != 1 ||
+		clientJob.ExecutionSpec.ServiceDependencies[0].TaskExecutionID != dbTask.ID ||
+		clientJob.ExecutionSpec.ServiceDependencies[0].SlurmJobID != uint32(*dbJob.SlurmJobID) {
+		t.Fatalf("frozen service dependency = %+v", clientJob.ExecutionSpec.ServiceDependencies)
+	}
+	f.submitJob(t, clientJob.ID)
+	submissions := f.fakeSlurm.Submissions()
+	if len(submissions) != 2 || len(submissions[1].Dependencies) != 1 ||
+		submissions[1].Dependencies[0].Kind != slurm.DepAfter ||
+		len(submissions[1].Dependencies[0].JobIDs) != 1 ||
+		submissions[1].Dependencies[0].JobIDs[0].ID != uint32(*dbJob.SlurmJobID) ||
+		submissions[1].Environment["CUSTOS_SERVICE_DB_JOBID"] !=
+			strconv.FormatInt(*dbJob.SlurmJobID, 10) {
+		t.Fatalf("dependent Slurm submission = %+v", submissions)
+	}
+
+	var clientSlurmID uint32
+	clientJob, err = f.jobs.Get(context.Background(), tenants.PlatformScope(), clientJob.ID)
+	if err != nil || clientJob.SlurmJobID == nil {
+		t.Fatalf("client Slurm job = %+v err=%v", clientJob, err)
+	}
+	clientSlurmID = uint32(*clientJob.SlurmJobID)
+	f.fakeSlurm.Advance(clientSlurmID, slurm.JobCompleted)
+	f.reconcileJob(t, clientJob.ID)
+	f.advance(t, f.getExec(t, e.ID))
+
+	dbTask = f.taskByName(t, e.ID, "db")
+	if dbTask.State != executions.TaskQueued ||
+		dbTask.StateReason != "SERVICE_STOP_REQUESTED" {
+		t.Fatalf("autoStop request = %+v", dbTask)
+	}
+	f.cancelJob(t, *dbTask.JobID)
+	f.reconcileJob(t, *dbTask.JobID)
+	f.advance(t, f.getExec(t, e.ID))
+	dbTask = f.taskByName(t, e.ID, "db")
+	got := f.getExec(t, e.ID)
+	if dbTask.State != executions.TaskCompleted ||
+		dbTask.StateReason != "SERVICE_STOPPED" ||
+		got.State != executions.ExecSucceeded {
+		t.Fatalf("service stop settlement: task=%+v execution=%+v", dbTask, got)
+	}
+	foundAudit := false
+	for _, event := range recorder.events {
+		if event.Action == "workflow.execution.service_stopped" &&
+			event.Target.ID == dbTask.ID.String() {
+			foundAudit = true
+		}
+	}
+	if !foundAudit {
+		t.Fatalf("service_stopped audit event missing: %+v", recorder.events)
+	}
+}
+
+func TestServiceDependencyRuntimeClusterMismatchFailsBeforeSubmit(t *testing.T) {
+	f := setup(t)
+	service := cmd("db")
+	service.Service = &workflowspec.ServiceTask{}
+	service.Resources.Walltime = "2h"
+	client := cmd("client", "db")
+	w, v := f.seedVersion(t, "service-cluster-mismatch",
+		f.cmdSpec(service, client))
+	e := f.seedExec(t, w, v, nil)
+	f.advance(t, e)
+	serviceTask := f.taskByName(t, e.ID, "db")
+	f.admit(t, serviceTask.ID)
+	serviceTask = f.taskByName(t, e.ID, "db")
+	f.submitJob(t, *serviceTask.JobID)
+	f.advance(t, f.getExec(t, e.ID))
+	clientTask := f.taskByName(t, e.ID, "client")
+	if clientTask.State != executions.TaskReady {
+		t.Fatalf("client state = %s, want READY", clientTask.State)
+	}
+
+	f.deps.Jobs = alteredJobClusterStore{
+		JobStore: f.deps.Jobs, jobID: *serviceTask.JobID,
+		clusterID: uuid.New(),
+	}
+	f.admit(t, clientTask.ID)
+	clientTask = f.taskByName(t, e.ID, "client")
+	if clientTask.State != executions.TaskFailed ||
+		clientTask.StateReason != "SERVICE_CLUSTER_MISMATCH" ||
+		clientTask.JobID != nil {
+		t.Fatalf("runtime cluster mismatch task = %+v", clientTask)
+	}
+	if len(f.fakeSlurm.Submissions()) != 1 {
+		t.Fatalf("foreign-cluster dependent was submitted: %+v", f.fakeSlurm.Submissions())
+	}
+}
+
+func TestServiceDependencyFailureBeforeDependentSubmit(t *testing.T) {
+	for _, onFailure := range []struct {
+		name string
+		run  bool
+	}{
+		{name: "default cancels", run: false},
+		{name: "run omits after", run: true},
+	} {
+		t.Run(onFailure.name, func(t *testing.T) {
+			f := setup(t)
+			service := cmd("db")
+			service.Service = &workflowspec.ServiceTask{}
+			service.Resources.Walltime = "2h"
+			client := cmd("client", "db")
+			spec := f.cmdSpec(service, client)
+			if onFailure.run {
+				client.OnDependencyFailure = "run"
+				spec.Spec.Tasks[1] = client
+				spec.Spec.Execution = &workflowspec.Execution{FailurePolicy: "continue"}
+			}
+			w, v := f.seedVersion(t, "service-failure", spec)
+			e := f.seedExec(t, w, v, nil)
+			f.advance(t, e)
+			serviceTask := f.taskByName(t, e.ID, "db")
+			f.admit(t, serviceTask.ID)
+			serviceTask = f.taskByName(t, e.ID, "db")
+			f.submitJob(t, *serviceTask.JobID)
+			serviceJob, err := f.jobs.Get(context.Background(), tenants.PlatformScope(), *serviceTask.JobID)
+			if err != nil || serviceJob.SlurmJobID == nil {
+				t.Fatalf("service job = %+v err=%v", serviceJob, err)
+			}
+			f.advance(t, f.getExec(t, e.ID))
+			clientTask := f.taskByName(t, e.ID, "client")
+			if clientTask.State != executions.TaskReady {
+				t.Fatalf("dependent ready state = %s", clientTask.State)
+			}
+			f.admit(t, clientTask.ID)
+			clientTask = f.taskByName(t, e.ID, "client")
+			clientJob, err := f.jobs.Get(context.Background(), tenants.PlatformScope(), *clientTask.JobID)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			f.fakeSlurm.Advance(uint32(*serviceJob.SlurmJobID), slurm.JobFailed)
+			f.reconcileJob(t, serviceJob.ID)
+			f.submitJob(t, clientJob.ID)
+			clientJob, err = f.jobs.Get(context.Background(), tenants.PlatformScope(), clientJob.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			submissions := f.fakeSlurm.Submissions()
+			if onFailure.run {
+				if clientJob.State != jobs.StateQueued || len(submissions) != 2 ||
+					len(submissions[1].Dependencies) != 0 {
+					t.Fatalf("run-on-failure submission: job=%+v submissions=%+v", clientJob, submissions)
+				}
+			} else {
+				if clientJob.State != jobs.StateCanceled ||
+					clientJob.StateReason != "DEPENDENCY_FAILED" ||
+					len(submissions) != 1 {
+					t.Fatalf("default service failure: job=%+v submissions=%+v", clientJob, submissions)
+				}
+			}
+			f.advance(t, f.getExec(t, e.ID))
+			clientTask = f.taskByName(t, e.ID, "client")
+			if !onFailure.run && (clientTask.State != executions.TaskCanceled ||
+				clientTask.StateReason != "DEPENDENCY_FAILED") {
+				t.Fatalf("default failure task = %+v", clientTask)
+			}
+			if !onFailure.run {
+				if got := f.getExec(t, e.ID); got.State != executions.ExecFailed {
+					t.Fatalf("default service dependency failure execution = %+v", got)
+				}
+			}
+			if onFailure.run {
+				if clientTask.State != executions.TaskQueued || clientTask.JobID == nil {
+					t.Fatalf("run-on-failure task was not submitted: %+v", clientTask)
+				}
+				job, err := f.jobs.Get(context.Background(), tenants.PlatformScope(), *clientTask.JobID)
+				if err != nil || job.SlurmJobID == nil {
+					t.Fatalf("run-on-failure Slurm job = %+v err=%v", job, err)
+				}
+				f.fakeSlurm.Advance(uint32(*job.SlurmJobID), slurm.JobCompleted)
+				f.reconcileJob(t, job.ID)
+				f.advance(t, f.getExec(t, e.ID))
+				if got := f.getExec(t, e.ID); got.State != executions.ExecPartialFailure {
+					t.Fatalf("run-on-failure execution = %+v, want PARTIAL_FAILURE", got)
+				}
+			}
+		})
+	}
+}
+
+func TestServiceTimeoutCompletesTaskAndSettlesExecution(t *testing.T) {
+	f := setup(t)
+	service := cmd("db")
+	autoStop := false
+	service.Service = &workflowspec.ServiceTask{AutoStop: &autoStop}
+	service.Resources.Walltime = "2h"
+	client := cmd("client", "db")
+	w, v := f.seedVersion(t, "service-timeout", f.cmdSpec(service, client))
+	e := f.seedExec(t, w, v, nil)
+	f.advance(t, e)
+	serviceTask := f.taskByName(t, e.ID, "db")
+	f.admit(t, serviceTask.ID)
+	serviceTask = f.taskByName(t, e.ID, "db")
+	f.submitJob(t, *serviceTask.JobID)
+	f.advance(t, f.getExec(t, e.ID))
+	clientTask := f.taskByName(t, e.ID, "client")
+	if clientTask.State != executions.TaskReady {
+		t.Fatalf("client after service submit = %s", clientTask.State)
+	}
+	f.admit(t, clientTask.ID)
+	clientTask = f.taskByName(t, e.ID, "client")
+	f.submitJob(t, *clientTask.JobID)
+	clientJob, err := f.jobs.Get(context.Background(), tenants.PlatformScope(), *clientTask.JobID)
+	if err != nil || clientJob.SlurmJobID == nil {
+		t.Fatalf("client Slurm job = %+v err=%v", clientJob, err)
+	}
+	f.fakeSlurm.Advance(uint32(*clientJob.SlurmJobID), slurm.JobCompleted)
+	f.reconcileJob(t, clientJob.ID)
+	f.advance(t, f.getExec(t, e.ID))
+	if got := f.getExec(t, e.ID); got.State != executions.ExecRunning {
+		t.Fatalf("execution settled before autoStop=false service ended: %+v", got)
+	}
+	serviceJob, err := f.jobs.Get(context.Background(), tenants.PlatformScope(), *serviceTask.JobID)
+	if err != nil || serviceJob.SlurmJobID == nil {
+		t.Fatalf("service Slurm job = %+v err=%v", serviceJob, err)
+	}
+	f.fakeSlurm.Advance(uint32(*serviceJob.SlurmJobID), slurm.JobTimeout)
+	f.reconcileJob(t, serviceJob.ID)
+	f.advance(t, f.getExec(t, e.ID))
+	serviceTask = f.taskByName(t, e.ID, "db")
+	got := f.getExec(t, e.ID)
+	if serviceTask.State != executions.TaskCompleted ||
+		serviceTask.StateReason != "SERVICE_WALLTIME" ||
+		got.State != executions.ExecSucceeded {
+		t.Fatalf("service timeout settlement: task=%+v execution=%+v", serviceTask, got)
+	}
+}
+
+func TestServiceFailureAfterDependentSubmitLeavesDependentRunning(t *testing.T) {
+	f := setup(t)
+	service := cmd("db")
+	service.Service = &workflowspec.ServiceTask{}
+	service.Resources.Walltime = "2h"
+	client := cmd("client", "db")
+	spec := f.cmdSpec(service, client)
+	spec.Spec.Execution = &workflowspec.Execution{FailurePolicy: "continue"}
+	w, v := f.seedVersion(t, "service-fails-after-submit", spec)
+	e := f.seedExec(t, w, v, nil)
+	f.advance(t, e)
+	serviceTask := f.taskByName(t, e.ID, "db")
+	f.admit(t, serviceTask.ID)
+	serviceTask = f.taskByName(t, e.ID, "db")
+	f.submitJob(t, *serviceTask.JobID)
+	serviceJob, err := f.jobs.Get(context.Background(), tenants.PlatformScope(), *serviceTask.JobID)
+	if err != nil || serviceJob.SlurmJobID == nil {
+		t.Fatalf("service job = %+v err=%v", serviceJob, err)
+	}
+	f.advance(t, f.getExec(t, e.ID))
+	clientTask := f.taskByName(t, e.ID, "client")
+	f.admit(t, clientTask.ID)
+	clientTask = f.taskByName(t, e.ID, "client")
+	f.submitJob(t, *clientTask.JobID)
+	clientJob, err := f.jobs.Get(context.Background(), tenants.PlatformScope(), *clientTask.JobID)
+	if err != nil || clientJob.SlurmJobID == nil {
+		t.Fatalf("client job = %+v err=%v", clientJob, err)
+	}
+
+	f.fakeSlurm.Advance(uint32(*serviceJob.SlurmJobID), slurm.JobFailed)
+	f.reconcileJob(t, serviceJob.ID)
+	f.advance(t, f.getExec(t, e.ID))
+	clientTask = f.taskByName(t, e.ID, "client")
+	if clientTask.State != executions.TaskQueued {
+		t.Fatalf("dependent changed after service failed post-submit: %+v", clientTask)
+	}
+	f.fakeSlurm.Advance(uint32(*clientJob.SlurmJobID), slurm.JobCompleted)
+	f.reconcileJob(t, clientJob.ID)
+	f.advance(t, f.getExec(t, e.ID))
+	if got := f.getExec(t, e.ID); got.State != executions.ExecPartialFailure {
+		t.Fatalf("execution after post-submit service failure = %+v", got)
+	}
+}
+
+func TestAutoStopServiceWaitsForNonServiceTasks(t *testing.T) {
+	f := setup(t)
+	service := cmd("db")
+	service.Service = &workflowspec.ServiceTask{}
+	service.Resources.Walltime = "2h"
+	prepare := cmd("prepare")
+	w, v := f.seedVersion(t, "service-independent",
+		f.cmdSpec(service, prepare))
+	e := f.seedExec(t, w, v, nil)
+	f.advance(t, e)
+
+	serviceTask := f.taskByName(t, e.ID, "db")
+	prepareTask := f.taskByName(t, e.ID, "prepare")
+	f.admit(t, serviceTask.ID)
+	f.admit(t, prepareTask.ID)
+	serviceTask = f.taskByName(t, e.ID, "db")
+	prepareTask = f.taskByName(t, e.ID, "prepare")
+	f.submitJob(t, *serviceTask.JobID)
+	f.submitJob(t, *prepareTask.JobID)
+	f.advance(t, f.getExec(t, e.ID))
+	serviceTask = f.taskByName(t, e.ID, "db")
+	if serviceTask.StateReason == "SERVICE_STOP_REQUESTED" {
+		t.Fatal("service stopped before non-service task completed")
+	}
+	prepareJob, err := f.jobs.Get(context.Background(), tenants.PlatformScope(), *prepareTask.JobID)
+	if err != nil || prepareJob.SlurmJobID == nil {
+		t.Fatalf("prepare Slurm job = %+v err=%v", prepareJob, err)
+	}
+	f.fakeSlurm.Advance(uint32(*prepareJob.SlurmJobID), slurm.JobCompleted)
+	f.reconcileJob(t, prepareJob.ID)
+	f.advance(t, f.getExec(t, e.ID))
+	serviceTask = f.taskByName(t, e.ID, "db")
+	if serviceTask.StateReason != "SERVICE_STOP_REQUESTED" {
+		t.Fatalf("service did not stop after non-service tasks: %+v", serviceTask)
+	}
+	f.cancelJob(t, *serviceTask.JobID)
+	f.reconcileJob(t, *serviceTask.JobID)
+	f.advance(t, f.getExec(t, e.ID))
+	if got := f.getExec(t, e.ID); got.State != executions.ExecSucceeded {
+		t.Fatalf("execution after autoStop = %+v", got)
+	}
+}
+
+func TestAutoStopBeforeServiceSubmissionWhenNonServiceTasksFinish(t *testing.T) {
+	f := setup(t)
+	service := cmd("db")
+	service.Service = &workflowspec.ServiceTask{}
+	service.Resources.Walltime = "2h"
+	quick := cmd("quick")
+	w, v := f.seedVersion(t, "service-stop-before-submit",
+		f.cmdSpec(service, quick))
+	e := f.seedExec(t, w, v, nil)
+	f.advance(t, e)
+	quickTask := f.taskByName(t, e.ID, "quick")
+	f.admit(t, quickTask.ID)
+	quickTask = f.taskByName(t, e.ID, "quick")
+	f.submitJob(t, *quickTask.JobID)
+	quickJob, err := f.jobs.Get(context.Background(), tenants.PlatformScope(), *quickTask.JobID)
+	if err != nil || quickJob.SlurmJobID == nil {
+		t.Fatalf("quick task job = %+v err=%v", quickJob, err)
+	}
+	f.fakeSlurm.Advance(uint32(*quickJob.SlurmJobID), slurm.JobCompleted)
+	f.reconcileJob(t, quickJob.ID)
+	f.advance(t, f.getExec(t, e.ID))
+
+	serviceTask := f.taskByName(t, e.ID, "db")
+	got := f.getExec(t, e.ID)
+	if serviceTask.State != executions.TaskCompleted ||
+		serviceTask.StateReason != "SERVICE_STOPPED" ||
+		serviceTask.JobID != nil || got.State != executions.ExecSucceeded {
+		t.Fatalf("unsubmitted autoStop service = %+v execution=%+v", serviceTask, got)
+	}
+}
+
+func TestAutoStopServiceWithoutNonServiceTasksRunsToCompletion(t *testing.T) {
+	f := setup(t)
+	service := cmd("db")
+	service.Service = &workflowspec.ServiceTask{}
+	service.Resources.Walltime = "2h"
+	w, v := f.seedVersion(t, "service-only", f.cmdSpec(service))
+	e := f.seedExec(t, w, v, nil)
+	f.advance(t, e)
+	task := f.taskByName(t, e.ID, "db")
+	f.admit(t, task.ID)
+	task = f.taskByName(t, e.ID, "db")
+	f.submitJob(t, *task.JobID)
+	f.advance(t, f.getExec(t, e.ID))
+	task = f.taskByName(t, e.ID, "db")
+	if task.State != executions.TaskQueued ||
+		task.StateReason == "SERVICE_STOP_REQUESTED" {
+		t.Fatalf("service-only autoStop task = %+v", task)
+	}
+	if got := f.getExec(t, e.ID); got.State != executions.ExecRunning {
+		t.Fatalf("service-only execution settled early: %+v", got)
 	}
 }
 

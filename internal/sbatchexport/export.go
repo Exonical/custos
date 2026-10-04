@@ -112,6 +112,10 @@ func RenderWithOptions(w workflowspec.Workflow, task workflowspec.Task, script [
 		"# Exported from workflow: "+w.Metadata.Name,
 		"# Task: "+task.Name,
 		"# Account is site-managed; configure it at the destination Slurm site.")
+	if task.Service != nil {
+		lines = append(lines,
+			"# Custos service lifecycle and autoStop behavior are not represented by this standalone export.")
+	}
 	if len(task.DependsOn) > 0 {
 		lines = append(lines, "# Custos dependencies are not represented: "+strings.Join(task.DependsOn, ", "))
 	}

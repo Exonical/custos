@@ -140,7 +140,7 @@ func cmdWorker(parent context.Context, configPath string, lookupEnv config.Looku
 		return 1
 	}
 
-	// Job handlers (docs/workers.md): submit, reconcile, cancel, sweep.
+	// Job handlers (docs/workers.md): submit, reconcile, cancel, and sweeps.
 	jdeps := jobsworker.Deps{
 		Jobs:     jobpg.New(pool),
 		Scripts:  scriptpg.New(pool),
@@ -156,6 +156,7 @@ func cmdWorker(parent context.Context, configPath string, lookupEnv config.Looku
 	q.Register(jobsworker.KindReconcile, jobsworker.Reconcile(jdeps))
 	q.Register(jobssvc.KindCancel, jobsworker.Cancel(jdeps))
 	q.Register(jobsworker.KindSweep, jobsworker.Sweep(jdeps))
+	q.Register(jobsworker.KindSweepCanceled, jobsworker.SweepCanceled(jdeps))
 	q.Register(jobsworker.KindIdemExpire, jobsworker.IdempotencyExpire(jdeps))
 
 	// Workflow execution engine (docs/workflows.md §Engine strategy).

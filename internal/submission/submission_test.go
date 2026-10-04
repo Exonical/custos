@@ -19,6 +19,7 @@ import (
 
 	"github.com/Exonical/custos/internal/admission"
 	"github.com/Exonical/custos/internal/platform/apperr"
+	"github.com/Exonical/custos/internal/slurm"
 	"github.com/Exonical/custos/internal/submission"
 	"github.com/Exonical/custos/internal/validation"
 	"github.com/Exonical/custos/internal/validation/shsyntax"
@@ -551,4 +552,61 @@ func TestContainerMultinodeWrapperComposition(t *testing.T) {
 		}
 		validate(t, wrapper)
 	})
+}
+
+func TestServiceDependencyEnvironmentAndSlurmAfterDependency(t *testing.T) {
+	validate := func(t *testing.T, wrapper string) {
+		t.Helper()
+		res, err := shsyntax.Validator{}.Validate(context.Background(), validation.Input{
+			Language: workflowspec.LanguageBash, Script: []byte(wrapper),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, diagnostic := range res.Diagnostics {
+			if diagnostic.Severity.AtLeast(validation.SeverityError) {
+				t.Fatalf("wrapper has %s: %s\n%s", diagnostic.Code, diagnostic.Message, wrapper)
+			}
+		}
+	}
+	payload := []byte("#!/bin/bash\necho client\n")
+	spec := mkSpec(payload)
+	spec.ServiceDependencies = []admission.ServiceDependency{{
+		TaskExecutionID: uuid.New(), TaskName: "db-api", EnvName: "DB_API",
+		SlurmJobID: 42, After: true, OnFailureRun: true,
+	}}
+	spec.Environment.Controlled["CUSTOS_SERVICE_DB_API_JOBID"] = "42"
+	wrapper, err := submission.Wrapper(spec, payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	validate(t, wrapper)
+	for _, want := range []string{
+		`export CUSTOS_SERVICE_DB_API_JOBID='42'`,
+		`export CUSTOS_SERVICE_DB_API_HOST=`,
+		`if [ -n "$CUSTOS_SERVICE_DB_API_JOBID" ]; then`,
+		`  CUSTOS_SERVICE_DB_API_HOST=$( { scontrol show hostnames "$(squeue -h -j "$CUSTOS_SERVICE_DB_API_JOBID" -o %N || true)" || true; } | head -n1)`,
+	} {
+		if !strings.Contains(wrapper, want) {
+			t.Errorf("service environment setup missing %q:\n%s", want, wrapper)
+		}
+	}
+	sub := submission.JobSubmission(spec, wrapper)
+	if sub.Environment["CUSTOS_SERVICE_DB_API_JOBID"] != "42" ||
+		len(sub.Dependencies) != 1 || sub.Dependencies[0].Kind != slurm.DepAfter ||
+		len(sub.Dependencies[0].JobIDs) != 1 ||
+		sub.Dependencies[0].JobIDs[0].ID != 42 {
+		t.Fatalf("service Slurm submission = %+v", sub)
+	}
+
+	spec.Container = &admission.ContainerSpec{Runtime: "pyxis", Image: "docker://image"}
+	spec.ContainerEnv = map[string]string{"PATH": "/usr/bin"}
+	wrapper, err = submission.Wrapper(spec, payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(wrapper, "--container-env='CUSTOS_SERVICE_DB_API_HOST,CUSTOS_SERVICE_DB_API_JOBID'") {
+		t.Fatalf("service runtime variables were not passed to Pyxis:\n%s", wrapper)
+	}
+	validate(t, wrapper)
 }

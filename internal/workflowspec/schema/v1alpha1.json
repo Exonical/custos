@@ -228,6 +228,13 @@
         "version": {"type": "string"}
       }
     },
+    "serviceTask": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "autoStop": {"type": "boolean", "default": true}
+      }
+    },
     "task": {
       "type": "object",
       "required": ["name"],
@@ -248,6 +255,7 @@
         "placement": {"$ref": "#/$defs/placement"},
         "image": {"$ref": "#/$defs/image"},
         "multinode": {"$ref": "#/$defs/multinode"},
+        "service": {"$ref": "#/$defs/serviceTask"},
         "command": {"type": "array", "items": {"type": "string"}},
         "script": {"$ref": "#/$defs/scriptRef"},
         "args": {"type": "array", "items": {"type": "string"}},

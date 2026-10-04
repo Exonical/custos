@@ -122,6 +122,7 @@ export interface Task {
   placement?: Placement;
   image?: Image;
   multinode?: Multinode;
+  service?: ServiceTask;
   command?: string[];
   script?: ScriptRef;
   args?: string[];
@@ -203,6 +204,13 @@ export interface Multinode {
   nodes: number;
   implementation: "openmpi" | "mpich" | "generic";
   procsPerNode?: number;
+}
+/**
+ * This interface was referenced by `CustosWorkflow`'s JSON-Schema
+ * via the `definition` "serviceTask".
+ */
+export interface ServiceTask {
+  autoStop?: boolean;
 }
 /**
  * This interface was referenced by `CustosWorkflow`'s JSON-Schema

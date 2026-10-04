@@ -323,11 +323,12 @@ func TestAPIExecutions(t *testing.T) {
 		Factory: fakeFactory{fc}, Exec: pool, Execs: execRepo, Audit: rec,
 	}
 	handlers := map[string]workqueue.Handler{
-		engine.KindAdvance:       engine.Advance(execDeps),
-		engine.KindAdmit:         engine.Admit(execDeps),
-		jobssvc.KindSubmit:       jobsworker.Submit(wdeps),
-		jobsworker.KindReconcile: jobsworker.Reconcile(wdeps),
-		jobssvc.KindCancel:       jobsworker.Cancel(wdeps),
+		engine.KindAdvance:           engine.Advance(execDeps),
+		engine.KindAdmit:             engine.Admit(execDeps),
+		jobssvc.KindSubmit:           jobsworker.Submit(wdeps),
+		jobsworker.KindReconcile:     jobsworker.Reconcile(wdeps),
+		jobssvc.KindCancel:           jobsworker.Cancel(wdeps),
+		jobsworker.KindSweepCanceled: jobsworker.SweepCanceled(wdeps),
 	}
 	pump := func(limit int) {
 		for i := 0; i < limit; i++ {

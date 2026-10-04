@@ -143,6 +143,67 @@ differs from `batch`+`script` only in that its payload may be any shell
 text including constructs the advisory scanners flag; it is the escape
 hatch, gated accordingly.
 
+### Service tasks
+
+Setting `service` makes a Slurm-backed task a long-running service. Services
+require `resources.walltime`; `array`, `fanOut`, `retry`, `when`, and `outputs`
+are unsupported, as are `condition` and approval task kinds. Images and
+multinode configurations remain available. `autoStop` defaults to `true`.
+
+```yaml
+tasks:
+  - name: db
+    service: { autoStop: true }
+    launch: sbatch
+    resources: { walltime: 2h, cpu: 2 }
+    script: |
+      #!/bin/bash
+      exec postgres -D "$CUSTOS_JOB_DIR/pg"
+  - name: client
+    dependsOn: [db]
+    script: |
+      #!/bin/bash
+      psql "host=$CUSTOS_SERVICE_DB_HOST" -f query.sql
+```
+
+A service may depend on ordinary tasks (which must finish first) or other
+services. A service dependency is satisfied when its Slurm job has started;
+the dependent's submission carries `after:<service-job-id>`. No readiness
+probe is performed. Before dependent submission, a failed service cancels the
+dependent with `DEPENDENCY_FAILED` by default; `onDependencyFailure: run`
+submits it without that `after` dependency. A service failure after a
+dependent is submitted does not cancel that dependent; the execution's normal
+failure policy still applies.
+Service dependencies must resolve to the same cluster: conflicting explicit
+placements fail static validation with `SERVICE_CLUSTER_MISMATCH`, and
+admission compares the actual cluster IDs again before freezing the dependent.
+
+For each service dependency, Custos exports
+`CUSTOS_SERVICE_<NAME>_JOBID` and best-effort
+`CUSTOS_SERVICE_<NAME>_HOST`. `<NAME>` is the uppercased task name with every
+non-`[A-Z0-9]` character replaced by `_`; normalized service-name collisions
+are rejected. The job ID is numeric. At job start, the wrapper expands the
+service node list with `squeue` and `scontrol`; HOST may be empty if the
+service is no longer visible. Both variables are controlled runtime values,
+reserved from task/default environment overrides, and passed into containers.
+
+With `autoStop: true`, Custos cancels a service after every direct dependent
+is terminal, and also cancels remaining auto-stop services when all
+non-service tasks are terminal. The resulting Slurm cancellation is recorded
+as task `COMPLETED` with `SERVICE_STOPPED`; an unsubmitted service that is no
+longer needed is completed with the same reason without creating a job. A
+service with no dependents and no non-service tasks runs to its natural exit
+or walltime. With
+`autoStop: false`, it runs until exit or walltime; a Slurm `TIMEOUT` becomes
+task `COMPLETED` with `SERVICE_WALLTIME`. An independent nonzero service exit
+is a normal task failure. Execution cancellation cancels services through the
+ordinary job-cancel path.
+
+Task-level sbatch export renders a service task as its ordinary script and
+adds a comment that Custos service lifecycle/`autoStop` behavior is not
+represented. As for other tasks, dependency scheduling is not exported;
+the dependent export carries only the existing dependency comment.
+
 ### Images, inline scripts, and multinode
 
 `image` is optional per task; tasks without it keep the ordinary host
@@ -337,17 +398,26 @@ stateDiagram-v2
     [*] --> PENDING
     PENDING --> BLOCKED: has unresolved deps
     PENDING --> READY: no deps
-    BLOCKED --> READY: deps terminal-ok (or afterany)
+    BLOCKED --> READY: deps terminal-ok (or service job started)
+    BLOCKED --> COMPLETED: autoStop service no longer needed before submit
     BLOCKED --> SKIPPED: dep failed / when=false
+    BLOCKED --> CANCELED: service dep failed (default)
     READY --> ADMITTING: worker leases
+    READY --> COMPLETED: autoStop service no longer needed before submit
+    READY --> CANCELED: service dep failed before submit
     ADMITTING --> SUBMITTING: validation current + ExecutionSpec frozen
     ADMITTING --> READY: transient (validator/cluster unavailable), backoff
+    ADMITTING --> COMPLETED: autoStop service no longer needed before submit
+    ADMITTING --> CANCELED: service dep failed before submit
     ADMITTING --> FAILED: VALIDATION_FAILED / ADMISSION_DENIED
     SUBMITTING --> QUEUED: Slurm accepted (job id persisted)
     SUBMITTING --> READY: transient error, retry with backoff
+    SUBMITTING --> COMPLETED: service canceled before job start
+    SUBMITTING --> CANCELED: service dep failed before submit
     SUBMITTING --> FAILED: permanent submit error
     QUEUED --> RUNNING: reconciler sees RUNNING
     RUNNING --> COMPLETED: exit 0
+    QUEUED --> COMPLETED: autoStop service / service walltime
     RUNNING --> FAILED: nonzero / NODE_FAIL / TIMEOUT
     FAILED --> READY: retry policy allows (new attempt, new Job)
     QUEUED --> CANCELED
@@ -369,26 +439,17 @@ diagram above and the table agree.
 
 ## Engine strategy: Slurm dependencies + Custos reconciliation
 
-Two modes, selected per execution by the engine based on placement:
+General task dependencies are engine-driven for every value of
+`spec.execution.strategy` (`auto`|`engine`|`native`, stored on the
+execution): a task is submitted only when it becomes `READY`. Dynamic
+fan-out, `when`, retries, cross-cluster placement, and service failure policy
+continue to be reconciled by Custos.
 
-1. **Native dependencies (same cluster)** — all tasks submitted up front in
-   topological order with `--dependency=afterok:<ids>` (fan-in →
-   `afterok:a:b:c`; `afterany` when the downstream declares
-   `onDependencyFailure: run`). Slurm enforces ordering; Custos only
-   reconciles state. Benefits: no submission latency between tasks,
-   backfill can plan the chain. Limitations: dynamic fan-out and `when`
-   expressions can't be pre-submitted, and cancellations must propagate
-   (Slurm's `kill_invalid_depend` behavior varies by site).
-2. **Engine-driven** — a task is submitted only when it becomes `READY`.
-   Required for cross-cluster placement, dynamic fan-out, `when`, retries
-   with new attempts.
-
-The engine picks native dependencies for every maximal same-cluster
-sub-DAG with only static tasks, and engine-driven edges elsewhere. The
-current release runs **engine-driven for every value of
-`spec.execution.strategy`** (`auto`|`engine`|`native`, stored on the
-execution) — `native` dependency batching is a later optimization, not
-yet implemented.
+The exception is an edge to a service task after its Slurm job has started.
+The dependent is still admitted and submitted by the engine, but its Slurm
+`JobSubmission` carries `--dependency=after:<service-job-id>`. Slurm gates the
+dependent's start; Custos does not perform a readiness probe. General
+same-cluster `afterok` dependency batching remains a future optimization.
 
 `spec.execution.failurePolicy: fail|continue` (default `fail`) controls
 terminal accounting: with `fail` the first task failure cancels/skips
