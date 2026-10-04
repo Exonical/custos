@@ -21,6 +21,7 @@ CREATE TABLE work_items (
     tenant_id     UUID,                      -- nullable for platform work
     payload       JSONB NOT NULL,
     run_at        TIMESTAMPTZ NOT NULL,
+    rerun_at      TIMESTAMPTZ,               -- earliest same-key enqueue while leased
     priority      SMALLINT NOT NULL DEFAULT 0,
     attempt       INT NOT NULL DEFAULT 0,
     max_attempts  INT NOT NULL,
@@ -36,18 +37,21 @@ CREATE INDEX work_items_ready ON work_items (run_at, priority DESC) WHERE state 
 ```
 
 The partial unique index gives **enqueue-time deduplication**: enqueueing
-`job.reconcile` for a job that already has a pending reconcile is a no-op
-(`ON CONFLICT DO NOTHING`, optionally pulling `run_at` earlier).
+`job.reconcile` for a job that already has a pending reconcile coalesces into
+that row, pulling `run_at` earlier. An enqueue that arrives while the active
+row is leased records its earliest `run_at` in `rerun_at`; the worker requeues
+the same row after the handler finishes so an in-flight periodic reconcile
+cannot swallow a concurrent domain change.
 
 **Self-rescheduling handlers** (`cluster.sync`, `job.reconcile`,
 `jobs.sweep`, `idempotency.expire`) must return
 `workqueue.RescheduleAt(t)` to schedule their next run. A handler's own
-item is still `leased` while it runs, so an `Enqueue` with the same
-`(kind, key)` dedupes to nothing and silently ends the periodic chain.
-`RescheduleAt` instead moves the same row back to `pending` in place
-(`run_at=t`, lease cleared, `attempt=0`, `last_error=NULL`), which never
-touches the dedupe index; it is counted as `rescheduled`, not
-`done`/`failed`. Cross-kind enqueue (`job.submit` → `job.reconcile`,
+item is still `leased` while it runs. `RescheduleAt` moves the same row
+back to `pending` in place (`run_at=t`, lease cleared, `attempt=0`,
+`last_error=NULL`), which never touches the dedupe index; it is counted as
+`rescheduled`, not `done`/`failed`. If a same-key enqueue arrives while the
+handler is leased, its earlier `rerun_at` is coalesced with the handler's
+next interval. Cross-kind enqueue (`job.submit` → `job.reconcile`,
 `task.admit` → `job.submit`, job transition → `execution.advance`) still
 uses `Enqueue` — the target row is different, so dedupe is correct.
 

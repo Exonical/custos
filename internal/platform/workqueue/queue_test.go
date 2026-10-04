@@ -230,6 +230,123 @@ func TestRescheduleRerunsSameRow(t *testing.T) {
 	})
 }
 
+func TestEnqueueWhileLeasedRerunsBeforeHandlerSchedule(t *testing.T) {
+	pool := dbtest.Pool(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	started := make(chan struct{})
+	release := make(chan struct{})
+	reran := make(chan struct{}, 1)
+	var releaseOnce sync.Once
+	releaseHandler := func() { releaseOnce.Do(func() { close(release) }) }
+	defer releaseHandler()
+
+	var calls int32
+	q := workqueue.New(pool, testCfg(), logger())
+	q.Register("leased-rerun", func(_ context.Context, _ workqueue.Item) error {
+		if atomic.AddInt32(&calls, 1) == 1 {
+			close(started)
+			<-release
+			return workqueue.RescheduleAt(time.Now().Add(time.Hour))
+		}
+		reran <- struct{}{}
+		return nil
+	})
+	runQueue(ctx, q)
+	if _, err := workqueue.Enqueue(ctx, pool, workqueue.EnqueueRequest{
+		Kind: "leased-rerun", Key: "k1"}); err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("first handler did not start")
+	}
+	waitFor(t, "item leased", func() bool {
+		state, _, _ := itemState(t, pool, "k1")
+		return state == "leased"
+	})
+	if inserted, err := workqueue.Enqueue(ctx, pool, workqueue.EnqueueRequest{
+		Kind: "leased-rerun", Key: "k1"}); err != nil || inserted {
+		t.Fatalf("enqueue during lease: inserted=%v err=%v", inserted, err)
+	}
+	releaseHandler()
+
+	select {
+	case <-reran:
+	case <-time.After(5 * time.Second):
+		t.Fatal("leased enqueue did not trigger a rerun")
+	}
+	waitFor(t, "rerun complete", func() bool {
+		state, _, _ := itemState(t, pool, "k1")
+		return state == "done"
+	})
+	if got := atomic.LoadInt32(&calls); got != 2 {
+		t.Fatalf("handler calls=%d, want 2", got)
+	}
+}
+
+func TestLeasedEnqueueRerunAtOutcomes(t *testing.T) {
+	cases := []struct {
+		name    string
+		result  error
+		wantMin time.Duration
+	}{
+		{"success", nil, 50 * time.Minute},
+		{"permanent failure", workqueue.Perm(errors.New("boom")), 50 * time.Minute},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			pool := dbtest.Pool(t)
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+
+			started := make(chan struct{})
+			release := make(chan struct{})
+			q := workqueue.New(pool, testCfg(), logger())
+			q.Register("rerun-outcome", func(_ context.Context, _ workqueue.Item) error {
+				close(started)
+				<-release
+				return tc.result
+			})
+			runQueue(ctx, q)
+			if _, err := workqueue.Enqueue(ctx, pool, workqueue.EnqueueRequest{
+				Kind: "rerun-outcome", Key: "k"}); err != nil {
+				t.Fatal(err)
+			}
+			<-started
+			rerun := time.Now().Add(time.Hour)
+			if _, err := workqueue.Enqueue(ctx, pool, workqueue.EnqueueRequest{
+				Kind: "rerun-outcome", Key: "k", RunAt: rerun}); err != nil {
+				t.Fatal(err)
+			}
+			close(release)
+
+			waitFor(t, "pending at rerun_at", func() bool {
+				s, _, _ := itemState(t, pool, "k")
+				return s == "pending"
+			})
+			state, attempt, runAt := itemState(t, pool, "k")
+			if state != "pending" || attempt != 0 {
+				t.Fatalf("state=%s attempt=%d, want pending/0", state, attempt)
+			}
+			if d := time.Until(runAt); d < tc.wantMin {
+				t.Fatalf("run_at in %v, want about an hour", d)
+			}
+			var rerunAt *time.Time
+			if err := pool.QueryRow(ctx,
+				"SELECT rerun_at FROM work_items WHERE key='k'").Scan(&rerunAt); err != nil {
+				t.Fatal(err)
+			}
+			if rerunAt != nil {
+				t.Fatalf("rerun_at not cleared: %v", rerunAt)
+			}
+		})
+	}
+}
+
 func TestPermanentGoesDead(t *testing.T) {
 	pool := dbtest.Pool(t)
 	ctx, cancel := context.WithCancel(context.Background())

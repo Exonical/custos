@@ -65,8 +65,8 @@ type Execer interface {
 }
 
 // Enqueue inserts a work item, deduplicated on (kind, key) while an
-// active item exists. On conflict the existing item's run_at is pulled
-// earlier if the new request is sooner; inserted=false in that case.
+// active item exists. On conflict a pending item's run_at is pulled
+// earlier, while a leased item records the earliest requested rerun time.
 func Enqueue(ctx context.Context, ex Execer, req EnqueueRequest) (bool, error) {
 	if req.Kind == "" || req.Key == "" {
 		return false, apperr.New(apperr.Invalid, "workqueue.enqueue",
@@ -107,8 +107,11 @@ func Enqueue(ctx context.Context, ex Execer, req EnqueueRequest) (bool, error) {
 	}
 	if _, err := ex.Exec(ctx, `
 		UPDATE work_items
-		SET run_at = LEAST(run_at, $3), updated_at = now()
-		WHERE kind = $1 AND key = $2 AND state = 'pending'`,
+		SET run_at = CASE WHEN state = 'pending' THEN LEAST(run_at, $3) ELSE run_at END,
+		    rerun_at = CASE WHEN state = 'leased'
+		      THEN LEAST(COALESCE(rerun_at, $3), $3) ELSE rerun_at END,
+		    updated_at = now()
+		WHERE kind = $1 AND key = $2 AND state IN ('pending','leased')`,
 		req.Kind, req.Key, runAt); err != nil {
 		return false, mapErr(err)
 	}
@@ -430,7 +433,7 @@ func (q *Queue) lease(ctx context.Context, kind string, n int) ([]Item, error) {
 		)
 		UPDATE work_items w
 		SET state = 'leased', leased_by = $3, leased_until = now() + $4 * interval '1 second',
-		    attempt = attempt + 1, updated_at = now()
+		    attempt = attempt + 1, rerun_at = NULL, updated_at = now()
 		FROM picked
 		WHERE w.id = picked.id
 		RETURNING w.id, w.kind, w.key, w.tenant_id, w.payload, w.attempt,
@@ -507,19 +510,32 @@ func (q *Queue) execute(kind string, kc *kindCfg, it Item) {
 		q.fail(out, kc, it, err)
 		return
 	}
-	tag, err := q.pool.Exec(out, `
-		UPDATE work_items SET state='done', finished_at=now(), updated_at=now()
-		WHERE id=$1 AND leased_by=$2 AND state='leased'`, it.ID, q.instance)
+	var state string
+	err = q.pool.QueryRow(out, `
+		UPDATE work_items
+		SET state = CASE WHEN rerun_at IS NULL THEN 'done' ELSE 'pending' END,
+		    run_at = CASE WHEN rerun_at IS NULL THEN run_at ELSE rerun_at END,
+		    rerun_at = NULL, leased_by = NULL, leased_until = NULL,
+		    attempt = CASE WHEN rerun_at IS NULL THEN attempt ELSE 0 END,
+		    last_error = CASE WHEN rerun_at IS NULL THEN last_error ELSE NULL END,
+		    finished_at = CASE WHEN rerun_at IS NULL THEN now() ELSE NULL END,
+		    updated_at = now()
+		WHERE id=$1 AND leased_by=$2 AND state='leased'
+		RETURNING state`, it.ID, q.instance).Scan(&state)
+	if errors.Is(err, pgx.ErrNoRows) {
+		q.logger.Warn("lease lost on completion", "id", it.ID, "kind", it.Kind)
+		return
+	}
 	if err != nil {
 		q.logger.Error("mark done failed", "id", it.ID, "error", err)
 		return
 	}
-	if tag.RowsAffected() == 0 {
-		q.logger.Warn("lease lost on completion", "id", it.ID, "kind", it.Kind)
-		return
+	result := "done"
+	if state == "pending" {
+		result = "rescheduled"
 	}
 	q.itemsTotal.Add(out, 1, metric.WithAttributes(
-		attribute.String("kind", kind), attribute.String("result", "done")))
+		attribute.String("kind", kind), attribute.String("result", result)))
 }
 
 // reschedule returns a leased item to pending at a new run_at: the same
@@ -527,7 +543,9 @@ func (q *Queue) execute(kind string, kc *kindCfg, it Item) {
 func (q *Queue) reschedule(ctx context.Context, it Item, at time.Time) {
 	tag, err := q.pool.Exec(ctx, `
 		UPDATE work_items
-		SET state='pending', run_at=$3, leased_by=NULL, leased_until=NULL,
+		SET state='pending',
+		    run_at=CASE WHEN rerun_at IS NULL THEN $3 ELSE LEAST(rerun_at, $3) END,
+		    rerun_at=NULL, leased_by=NULL, leased_until=NULL,
 		    attempt=0, last_error=NULL, updated_at=now()
 		WHERE id=$1 AND leased_by=$2 AND state='leased'`,
 		it.ID, q.instance, at)
@@ -565,35 +583,50 @@ func (q *Queue) fail(ctx context.Context, kc *kindCfg, it Item, err error) {
 	// ceiling.
 	dead := errors.As(err, &perm) ||
 		it.Attempt >= it.MaxAttempts || it.Attempt >= kc.maxAttempts
-	var tag pgconn.CommandTag
 	var uerr error
+	var state string
 	if dead {
-		tag, uerr = q.pool.Exec(ctx, `
-			UPDATE work_items SET state='dead', last_error=$3, finished_at=now(), updated_at=now()
-			WHERE id=$1 AND leased_by=$2 AND state='leased'`, it.ID, q.instance, lastErr)
+		uerr = q.pool.QueryRow(ctx, `
+			UPDATE work_items
+			SET state=CASE WHEN rerun_at IS NULL THEN 'dead' ELSE 'pending' END,
+			    run_at=CASE WHEN rerun_at IS NULL THEN run_at ELSE rerun_at END,
+			    rerun_at=NULL,
+			    attempt=CASE WHEN rerun_at IS NULL THEN attempt ELSE 0 END,
+			    last_error=CASE WHEN rerun_at IS NULL THEN $3 ELSE NULL END,
+			    finished_at=CASE WHEN rerun_at IS NULL THEN now() ELSE NULL END,
+			    leased_by=NULL, leased_until=NULL, updated_at=now()
+			WHERE id=$1 AND leased_by=$2 AND state='leased'
+			RETURNING state`, it.ID, q.instance, lastErr).Scan(&state)
 	} else {
 		next := Backoff(kc.baseBackoff, kc.maxBackoff, it.Attempt, rand.Float64)
-		tag, uerr = q.pool.Exec(ctx, `
-			UPDATE work_items SET state='pending', run_at=now() + $3 * interval '1 second',
-			       last_error=$4, updated_at=now()
-			WHERE id=$1 AND leased_by=$2 AND state='leased'`,
-			it.ID, q.instance, next.Seconds(), lastErr)
+		uerr = q.pool.QueryRow(ctx, `
+			UPDATE work_items
+			SET state='pending',
+			    run_at=LEAST(now() + $3 * interval '1 second',
+			                 COALESCE(rerun_at, now() + $3 * interval '1 second')),
+			    attempt=CASE WHEN rerun_at IS NULL THEN attempt ELSE 0 END,
+			    rerun_at=NULL,
+			    last_error=CASE WHEN rerun_at IS NULL THEN $4 ELSE NULL END,
+			    leased_by=NULL, leased_until=NULL, updated_at=now()
+			WHERE id=$1 AND leased_by=$2 AND state='leased'
+			RETURNING state`,
+			it.ID, q.instance, next.Seconds(), lastErr).Scan(&state)
+	}
+	if errors.Is(uerr, pgx.ErrNoRows) {
+		q.logger.Warn("lease lost on failure", "id", it.ID, "kind", it.Kind)
+		return
 	}
 	if uerr != nil {
 		q.logger.Error("mark failed outcome error", "id", it.ID, "error", uerr)
 		return
 	}
-	if tag.RowsAffected() == 0 {
-		q.logger.Warn("lease lost on failure", "id", it.ID, "kind", it.Kind)
-		return
-	}
 	result := "retry"
-	if dead {
+	if state == "dead" {
 		result = "dead"
 	}
 	q.itemsTotal.Add(ctx, 1, metric.WithAttributes(
 		attribute.String("kind", it.Kind), attribute.String("result", result)))
-	if dead && q.auditor != nil {
+	if state == "dead" && q.auditor != nil {
 		class := "max_attempts"
 		if errors.As(err, &perm) {
 			class = "permanent"
