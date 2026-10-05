@@ -131,6 +131,10 @@ A reconciliation failure is logged and counted
 the user proceeds with whatever memberships exist (availability over
 freshness).
 
+A membership change the reconcile applied but could not audit is logged and
+counted (`custos_claims_sync_total{result="audit_error"}`, once per failed
+event) and the reconcile continues with the remaining events.
+
 ## Machine clients
 
 Automation uses client-credentials tokens from the same IdP. They are
