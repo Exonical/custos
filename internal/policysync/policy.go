@@ -70,7 +70,7 @@ func (d Deps) Reconcile(ctx context.Context, id uuid.UUID) error {
 	mode := effectiveMode(s.cluster, d.ConfigMode)
 	if mode == "report" {
 		ops := Plan(s.desired, s.observed())
-		return d.storeOutcome(ctx, s, mergeDrifts(s.baseDrift, DriftForOps(ops)), d.now(), "", nil, 0, 0)
+		return d.storeOutcome(ctx, s, mergeDrifts(s.baseDrift, DriftForOps(ops)), d.now(), "", nil, runStats{})
 	}
 	s, _, err = d.loadOrMark(ctx, id, markUnknown)
 	if err != nil || s == nil {
@@ -79,22 +79,22 @@ func (d Deps) Reconcile(ctx context.Context, id uuid.UUID) error {
 	mode = effectiveMode(s.cluster, d.ConfigMode)
 	ops := Plan(s.desired, s.observed())
 	if mode == "report" || len(ops) == 0 {
-		return d.storeOutcome(ctx, s, mergeDrifts(s.baseDrift, DriftForOps(ops)), d.now(), "", nil, 0, 0)
+		return d.storeOutcome(ctx, s, mergeDrifts(s.baseDrift, DriftForOps(ops)), d.now(), "", nil, runStats{})
 	}
 	admin, ok := s.accounting.(slurm.AccountingAdmin)
 	if !ok {
-		return d.markForbidden(ctx, s, errors.New("slurmdbd policy write interface unavailable"), nil, 0, 1)
+		return d.markForbidden(ctx, s, errors.New("slurmdbd policy write interface unavailable"), nil, runStats{Failed: 1})
 	}
-	applied, failed := 0, 0
+	var stats runStats
 	lastApplied := (*time.Time)(nil)
 	rejected := map[string]uuid.UUID{}
 	for _, op := range boundedOps(ops, maxOpsPerRun) {
 		if err := d.applyOp(ctx, admin, s.cluster.ID, s.managed, op); err != nil {
-			failed++
+			stats.Failed++
 			d.Metrics.recordOp(ctx, s.cluster.Name, string(op.Kind), "error")
 			d.auditOp(ctx, s, op, auditResultError, policyErrorCode(err))
 			if errors.Is(err, slurm.ErrForbidden) {
-				return d.markForbidden(ctx, s, err, lastApplied, applied, failed)
+				return d.markForbidden(ctx, s, err, lastApplied, stats)
 			}
 			if errors.Is(err, slurm.ErrRejected) {
 				if op.BindingID != nil {
@@ -102,16 +102,16 @@ func (d Deps) Reconcile(ctx context.Context, id uuid.UUID) error {
 				}
 				continue
 			}
-			return d.markUnknownRun(ctx, id, s.bindings, err, lastApplied, applied, failed)
+			return d.markUnknownRun(ctx, id, s.bindings, err, lastApplied, stats)
 		}
-		applied++
+		stats.Applied++
 		d.Metrics.recordOp(ctx, s.cluster.Name, string(op.Kind), "success")
 		d.auditOp(ctx, s, op, auditResultAllow, "")
 		t := d.now()
 		lastApplied = &t
 	}
 	fresh, freshBindings, err := d.loadOrMark(ctx, id, func(_ []projects.ClusterBinding, err error) error {
-		return d.markUnknownRun(ctx, id, s.bindings, err, lastApplied, applied, failed)
+		return d.markUnknownRun(ctx, id, s.bindings, err, lastApplied, stats)
 	})
 	if err != nil || fresh == nil {
 		return err
@@ -127,10 +127,10 @@ func (d Deps) Reconcile(ctx context.Context, id uuid.UUID) error {
 		fresh.bindings = freshBindings
 	}
 	lastError := ""
-	if failed > 0 {
+	if stats.Failed > 0 {
 		lastError = "one or more slurmdbd policy operations were rejected"
 	}
-	return d.storeOutcome(ctx, fresh, drift, d.now(), lastError, lastApplied, applied, failed)
+	return d.storeOutcome(ctx, fresh, drift, d.now(), lastError, lastApplied, stats)
 }
 
 const (
@@ -417,7 +417,13 @@ func policyErrorCode(err error) string {
 	return "POLICY_APPLY_FAILED"
 }
 
-func (d Deps) storeOutcome(ctx context.Context, s *snapshot, drifts map[uuid.UUID][]projects.DriftItem, checked time.Time, lastError string, lastApplied *time.Time, applied, failed int) error {
+// runStats counts the policy operations applied and failed during one reconcile run.
+type runStats struct {
+	Applied int
+	Failed  int
+}
+
+func (d Deps) storeOutcome(ctx context.Context, s *snapshot, drifts map[uuid.UUID][]projects.DriftItem, checked time.Time, lastError string, lastApplied *time.Time, stats runStats) error {
 	var drifted int64
 	for _, b := range s.bindings {
 		items := drifts[b.ID]
@@ -431,10 +437,10 @@ func (d Deps) storeOutcome(ctx context.Context, s *snapshot, drifts map[uuid.UUI
 		}
 	}
 	d.Metrics.set(s.cluster.Name, drifted)
-	return d.statusRun(ctx, s.cluster.ID, checked, lastError, lastApplied, applied, failed)
+	return d.statusRun(ctx, s.cluster.ID, checked, lastError, lastApplied, stats)
 }
 
-func (d Deps) markForbidden(ctx context.Context, s *snapshot, upstream error, lastApplied *time.Time, applied, failed int) error {
+func (d Deps) markForbidden(ctx context.Context, s *snapshot, upstream error, lastApplied *time.Time, stats runStats) error {
 	now := d.now()
 	var failedBindings int64
 	for _, b := range s.bindings {
@@ -448,22 +454,22 @@ func (d Deps) markForbidden(ctx context.Context, s *snapshot, upstream error, la
 		failedBindings++
 	}
 	d.Metrics.set(s.cluster.Name, failedBindings)
-	return d.statusRun(ctx, s.cluster.ID, now, upstream.Error(), lastApplied, applied, failed)
+	return d.statusRun(ctx, s.cluster.ID, now, upstream.Error(), lastApplied, stats)
 }
 
-func (d Deps) markUnknownRun(ctx context.Context, id uuid.UUID, bindings []projects.ClusterBinding, upstream error, lastApplied *time.Time, applied, failed int) error {
+func (d Deps) markUnknownRun(ctx context.Context, id uuid.UUID, bindings []projects.ClusterBinding, upstream error, lastApplied *time.Time, stats runStats) error {
 	if err := d.markUnknown(ctx, id, bindings, upstream); err != nil {
 		return err
 	}
-	return d.statusRun(ctx, id, d.now(), upstream.Error(), lastApplied, applied, failed)
+	return d.statusRun(ctx, id, d.now(), upstream.Error(), lastApplied, stats)
 }
 
-func (d Deps) statusRun(ctx context.Context, id uuid.UUID, checked time.Time, lastError string, lastApplied *time.Time, applied, failed int) error {
+func (d Deps) statusRun(ctx context.Context, id uuid.UUID, checked time.Time, lastError string, lastApplied *time.Time, stats runStats) error {
 	return db.WithTx(ctx, d.Pool, func(tx pgx.Tx) error {
 		if err := db.SetPlatformScope(ctx, tx); err != nil {
 			return err
 		}
-		_, err := tx.Exec(ctx, `INSERT INTO policy_sync_status(cluster_id,checked_at,last_error,last_applied_at,ops_applied,ops_failed) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(cluster_id) DO UPDATE SET checked_at=excluded.checked_at,last_error=excluded.last_error,last_applied_at=COALESCE(excluded.last_applied_at,policy_sync_status.last_applied_at),ops_applied=excluded.ops_applied,ops_failed=excluded.ops_failed`, id, checked, nilError(lastError), lastApplied, applied, failed)
+		_, err := tx.Exec(ctx, `INSERT INTO policy_sync_status(cluster_id,checked_at,last_error,last_applied_at,ops_applied,ops_failed) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(cluster_id) DO UPDATE SET checked_at=excluded.checked_at,last_error=excluded.last_error,last_applied_at=COALESCE(excluded.last_applied_at,policy_sync_status.last_applied_at),ops_applied=excluded.ops_applied,ops_failed=excluded.ops_failed`, id, checked, nilError(lastError), lastApplied, stats.Applied, stats.Failed)
 		return db.MapError(err)
 	})
 }
