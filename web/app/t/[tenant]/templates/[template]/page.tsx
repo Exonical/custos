@@ -1,12 +1,11 @@
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
-import { ApiErrorNotice } from "@/components/api-error-notice";
 import { BreadcrumbEntity } from "@/components/tenant-shell";
 import { TemplateTags } from "@/components/workflows/template-tags";
 import { UseTemplateDialog } from "@/components/workflows/use-template-dialog";
 import { WorkflowVersionTabs, type WorkflowVersionTab } from "@/components/workflows/workflow-version-tabs";
-import { createApiClient, toApiError } from "@/lib/api/client";
+import { createApiClient } from "@/lib/api/client";
+import { resolveApiError } from "@/lib/api/resolve-api-error";
 import { normalizeWorkflowSpec } from "@/lib/workflow/normalize";
 import { requireServerSession } from "@/lib/session/server";
 import { first } from "@/lib/search-params";
@@ -28,16 +27,8 @@ export default async function TemplatePage({
     api.GET("/workflow-templates/{template}", { params: { path: { template: templateId } } }),
     api.GET("/tenants/{tenant}/projects", { params: { path: { tenant }, query: { limit: 100 } } }),
   ]);
-  if (templateResponse.error) {
-    if (templateResponse.response.status === 401) redirect(`/auth/login?returnTo=${encodeURIComponent(returnTo)}`);
-    if (templateResponse.response.status === 404) notFound();
-    return <ApiErrorNotice error={toApiError(templateResponse.error, templateResponse.response.status)} />;
-  }
-  if (projectsResponse.error) {
-    if (projectsResponse.response.status === 401) redirect(`/auth/login?returnTo=${encodeURIComponent(returnTo)}`);
-    if (projectsResponse.response.status === 404) notFound();
-    return <ApiErrorNotice error={toApiError(projectsResponse.error, projectsResponse.response.status)} />;
-  }
+  if (templateResponse.error) return resolveApiError(templateResponse, { returnTo, view: "Workflow template" });
+  if (projectsResponse.error) return resolveApiError(projectsResponse, { returnTo, view: "Projects" });
   const template = templateResponse.data;
   const spec = normalizeWorkflowSpec(template.spec);
   const projects = projectsResponse.data.items.filter((project) => project.state === "active");

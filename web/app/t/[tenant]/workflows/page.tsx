@@ -1,13 +1,11 @@
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
-import { ApiAccessDenied } from "@/components/api-access-denied";
-import { ApiErrorNotice } from "@/components/api-error-notice";
 import { NewWorkflowDialog } from "@/components/workflows/new-workflow-dialog";
 import { WorkflowListFilters } from "@/components/workflows/workflow-list-filters";
 import { buttonVariants } from "@/components/ui/button";
 import { StateBadge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { createApiClient, toApiError } from "@/lib/api/client";
+import { createApiClient } from "@/lib/api/client";
+import { resolveApiError } from "@/lib/api/resolve-api-error";
 import { formatUtcDateTime } from "@/lib/format";
 import { requireServerSession } from "@/lib/session/server";
 import { first } from "@/lib/search-params";
@@ -30,18 +28,8 @@ export default async function WorkflowsPage({
     api.GET("/tenants/{tenant}/workflows", { params: { path: { tenant }, query: { project: project || undefined } } }),
     api.GET("/tenants/{tenant}/projects", { params: { path: { tenant }, query: { limit: 100 } } }),
   ]);
-  if (workflowsResponse.error) {
-    if (workflowsResponse.response.status === 401) redirect(`/auth/login?returnTo=${encodeURIComponent(returnTo)}`);
-    if (workflowsResponse.response.status === 404) notFound();
-    if (workflowsResponse.response.status === 403) return <ApiAccessDenied view="Workflows" />;
-    return <ApiErrorNotice error={toApiError(workflowsResponse.error, workflowsResponse.response.status)} />;
-  }
-  if (projectsResponse.error) {
-    if (projectsResponse.response.status === 401) redirect(`/auth/login?returnTo=${encodeURIComponent(returnTo)}`);
-    if (projectsResponse.response.status === 404) notFound();
-    if (projectsResponse.response.status === 403) return <ApiAccessDenied view="Projects" />;
-    return <ApiErrorNotice error={toApiError(projectsResponse.error, projectsResponse.response.status)} />;
-  }
+  if (workflowsResponse.error) return resolveApiError(workflowsResponse, { returnTo, view: "Workflows" });
+  if (projectsResponse.error) return resolveApiError(projectsResponse, { returnTo, view: "Projects" });
 
   const workflows = workflowsResponse.data.workflows ?? [];
   const projects = projectsResponse.data.items;
@@ -53,10 +41,9 @@ export default async function WorkflowsPage({
   const latestVersionNumbers = new Map<string, number>();
   for (const { workflow, response } of versionResults) {
     if (response.response.status !== 200) {
-      if (response.response.status === 401) redirect(`/auth/login?returnTo=${encodeURIComponent(returnTo)}`);
-      if (response.response.status === 404) continue;
-      if (response.response.status === 403) return <ApiAccessDenied view="Workflow versions" />;
-      return <ApiErrorNotice error={toApiError(undefined, response.response.status)} />;
+      const failure = resolveApiError({ response: response.response }, { returnTo, view: "Workflow versions", notFound: "skip" });
+      if (failure) return failure;
+      continue;
     }
     const published = response.data?.versions?.find((version) => version.id === workflow.latestPublishedVersionId);
     if (published) latestVersionNumbers.set(workflow.id, published.number);

@@ -1,10 +1,8 @@
-import { notFound, redirect } from "next/navigation";
-import { ApiAccessDenied } from "@/components/api-access-denied";
-import { ApiErrorNotice } from "@/components/api-error-notice";
 import { CursorPagination } from "@/components/cursor-pagination";
 import { ExecutionListFilters } from "@/components/workflows/execution-list-filters";
 import { WorkflowExecutionsTable } from "@/components/workflows/workflow-executions-table";
-import { createApiClient, toApiError, type WorkflowExecution, type WorkflowVersion } from "@/lib/api/client";
+import { createApiClient, type WorkflowExecution, type WorkflowVersion } from "@/lib/api/client";
+import { resolveApiError } from "@/lib/api/resolve-api-error";
 import { requireServerSession } from "@/lib/session/server";
 import { first } from "@/lib/search-params";
 
@@ -35,18 +33,8 @@ export default async function ExecutionsPage({
     }),
     api.GET("/tenants/{tenant}/workflows", { params: { path: { tenant } } }),
   ]);
-  if (executionResponse.error) {
-    if (executionResponse.response.status === 401) redirect(`/auth/login?returnTo=${encodeURIComponent(returnTo)}`);
-    if (executionResponse.response.status === 404) notFound();
-    if (executionResponse.response.status === 403) return <ApiAccessDenied view="Executions" />;
-    return <ApiErrorNotice error={toApiError(executionResponse.error, executionResponse.response.status)} />;
-  }
-  if (workflowResponse.error) {
-    if (workflowResponse.response.status === 401) redirect(`/auth/login?returnTo=${encodeURIComponent(returnTo)}`);
-    if (workflowResponse.response.status === 404) notFound();
-    if (workflowResponse.response.status === 403) return <ApiAccessDenied view="Workflows" />;
-    return <ApiErrorNotice error={toApiError(workflowResponse.error, workflowResponse.response.status)} />;
-  }
+  if (executionResponse.error) return resolveApiError(executionResponse, { returnTo, view: "Executions" });
+  if (workflowResponse.error) return resolveApiError(workflowResponse, { returnTo, view: "Workflows" });
 
   const workflows = workflowResponse.data.workflows ?? [];
   const versionResponses = await Promise.all(workflows.map(async (workflow) => ({
@@ -56,10 +44,9 @@ export default async function ExecutionsPage({
   const versions: WorkflowVersion[] = [];
   for (const { response } of versionResponses) {
     if (response.response.status !== 200) {
-      if (response.response.status === 401) redirect(`/auth/login?returnTo=${encodeURIComponent(returnTo)}`);
-      if (response.response.status === 404) continue;
-      if (response.response.status === 403) return <ApiAccessDenied view="Workflow versions" />;
-      return <ApiErrorNotice error={toApiError(undefined, response.response.status)} />;
+      const failure = resolveApiError({ response: response.response }, { returnTo, view: "Workflow versions", notFound: "skip" });
+      if (failure) return failure;
+      continue;
     }
     versions.push(...(response.data?.versions ?? []));
   }

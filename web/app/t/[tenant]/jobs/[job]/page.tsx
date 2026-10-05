@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { ApiErrorNotice } from "@/components/api-error-notice";
 import { BreadcrumbEntity } from "@/components/tenant-shell";
@@ -9,6 +9,7 @@ import { StateBadge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { createApiClient, toApiError, type Job } from "@/lib/api/client";
+import { loginRedirectIfUnauthorized, resolveApiError } from "@/lib/api/resolve-api-error";
 import { formatDurationBetween, formatUtcDateTime } from "@/lib/format";
 import { requireServerSession } from "@/lib/session/server";
 
@@ -40,14 +41,10 @@ export default async function JobDetailPage({
     api.GET("/tenants/{tenant}/clusters", { params: { path: { tenant } } }),
     api.GET("/tenants/{tenant}/projects", { params: { path: { tenant }, query: { limit: 100 } } }),
   ]);
-  if (jobResponse.error) {
-    if (jobResponse.response.status === 401) redirect(`/auth/login?returnTo=${encodeURIComponent(returnTo)}`);
-    if (jobResponse.response.status === 404) notFound();
-    return <ApiErrorNotice error={toApiError(jobResponse.error, jobResponse.response.status)} />;
-  }
-  if (specResponse.error && specResponse.response.status === 401) redirect(`/auth/login?returnTo=${encodeURIComponent(returnTo)}`);
-  if (clusterResponse.error && clusterResponse.response.status === 401) redirect(`/auth/login?returnTo=${encodeURIComponent(returnTo)}`);
-  if (projectResponse.error && projectResponse.response.status === 401) redirect(`/auth/login?returnTo=${encodeURIComponent(returnTo)}`);
+  if (jobResponse.error) return resolveApiError(jobResponse, { returnTo });
+  loginRedirectIfUnauthorized(specResponse.response.status, returnTo);
+  loginRedirectIfUnauthorized(clusterResponse.response.status, returnTo);
+  loginRedirectIfUnauthorized(projectResponse.response.status, returnTo);
 
   const current: Job = jobResponse.data;
   const cluster = clusterResponse.data?.items.find((item) => item.id === current.cluster_id);

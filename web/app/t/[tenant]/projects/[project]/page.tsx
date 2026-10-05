@@ -1,13 +1,11 @@
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
-import { ApiAccessDenied } from "@/components/api-access-denied";
-import { ApiErrorNotice } from "@/components/api-error-notice";
 import { BreadcrumbEntity } from "@/components/tenant-shell";
 import { ProjectDetailTabs } from "@/components/project-detail-tabs";
 import { RefreshJobButton } from "@/components/jobs/refresh-job-button";
 import { Button } from "@/components/ui/button";
-import { createApiClient, toApiError } from "@/lib/api/client";
+import { createApiClient } from "@/lib/api/client";
+import { resolveApiError } from "@/lib/api/resolve-api-error";
 import { formatUtcDateTime } from "@/lib/format";
 import { requireServerSession } from "@/lib/session/server";
 import { first } from "@/lib/search-params";
@@ -33,36 +31,11 @@ export default async function ProjectDetailPage({
     api.GET("/tenants/{tenant}/projects/{project}/allocations", { params: { path: { tenant, project } } }),
   ]);
 
-  if (projectResponse.error) {
-    if (projectResponse.response.status === 401) redirect(`/auth/login?returnTo=${encodeURIComponent(returnTo)}`);
-    if (projectResponse.response.status === 404) notFound();
-    if (projectResponse.response.status === 403) return <ApiAccessDenied view="Project details" />;
-    return <ApiErrorNotice error={toApiError(projectResponse.error, projectResponse.response.status)} />;
-  }
-  if (membersResponse.error) {
-    if (membersResponse.response.status === 401) redirect(`/auth/login?returnTo=${encodeURIComponent(returnTo)}`);
-    if (membersResponse.response.status === 404) notFound();
-    if (membersResponse.response.status === 403) return <ApiAccessDenied view="Project members" />;
-    return <ApiErrorNotice error={toApiError(membersResponse.error, membersResponse.response.status)} />;
-  }
-  if (bindingsResponse.error) {
-    if (bindingsResponse.response.status === 401) redirect(`/auth/login?returnTo=${encodeURIComponent(returnTo)}`);
-    if (bindingsResponse.response.status === 404) notFound();
-    if (bindingsResponse.response.status === 403) return <ApiAccessDenied view="Project cluster bindings" />;
-    return <ApiErrorNotice error={toApiError(bindingsResponse.error, bindingsResponse.response.status)} />;
-  }
-  if (clustersResponse.error) {
-    if (clustersResponse.response.status === 401) redirect(`/auth/login?returnTo=${encodeURIComponent(returnTo)}`);
-    if (clustersResponse.response.status === 404) notFound();
-    if (clustersResponse.response.status === 403) return <ApiAccessDenied view="Tenant clusters" />;
-    return <ApiErrorNotice error={toApiError(clustersResponse.error, clustersResponse.response.status)} />;
-  }
-  if (allocationsResponse.error) {
-    if (allocationsResponse.response.status === 401) redirect(`/auth/login?returnTo=${encodeURIComponent(returnTo)}`);
-    if (allocationsResponse.response.status === 404) notFound();
-    if (allocationsResponse.response.status === 403) return <ApiAccessDenied view="Project allocations" />;
-    return <ApiErrorNotice error={toApiError(allocationsResponse.error, allocationsResponse.response.status)} />;
-  }
+  if (projectResponse.error) return resolveApiError(projectResponse, { returnTo, view: "Project details" });
+  if (membersResponse.error) return resolveApiError(membersResponse, { returnTo, view: "Project members" });
+  if (bindingsResponse.error) return resolveApiError(bindingsResponse, { returnTo, view: "Project cluster bindings" });
+  if (clustersResponse.error) return resolveApiError(clustersResponse, { returnTo, view: "Tenant clusters" });
+  if (allocationsResponse.error) return resolveApiError(allocationsResponse, { returnTo, view: "Project allocations" });
 
   const currentProject = projectResponse.data;
   return (

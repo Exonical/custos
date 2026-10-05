@@ -1,10 +1,9 @@
-import { notFound, redirect } from "next/navigation";
 import { ApiAccessDenied } from "@/components/api-access-denied";
-import { ApiErrorNotice } from "@/components/api-error-notice";
 import { SecretsConnectorsTable } from "@/components/secrets-connectors-table";
 import { SecretsReferencesTable } from "@/components/secrets-references-table";
 import { SecretsTabs, type SecretTab } from "@/components/secrets-tabs";
-import { ApiError, createApiClient } from "@/lib/api/client";
+import { createApiClient } from "@/lib/api/client";
+import { resolveApiError } from "@/lib/api/resolve-api-error";
 import { requireServerSession } from "@/lib/session/server";
 import { first } from "@/lib/search-params";
 
@@ -27,10 +26,8 @@ export default async function SecretsPage({
   ]);
   const connectorsStatus = connectorsResponse.response.status;
   const referencesStatus = referencesResponse.response.status;
-  for (const status of [connectorsStatus, referencesStatus]) {
-    if (status === 401) redirect(`/auth/login?returnTo=${encodeURIComponent(returnTo)}`);
-    if (status === 404) notFound();
-    if (status !== 200 && status !== 403) return <ApiErrorNotice error={new ApiError(status, "UPSTREAM_ERROR", null)} />;
+  for (const { response } of [connectorsResponse, referencesResponse]) {
+    if (response.status !== 200 && response.status !== 403) return resolveApiError({ response }, { returnTo });
   }
 
   const connectors = connectorsResponse.data?.items ?? [];

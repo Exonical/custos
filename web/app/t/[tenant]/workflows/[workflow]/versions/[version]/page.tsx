@@ -1,7 +1,5 @@
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
-import { ApiAccessDenied } from "@/components/api-access-denied";
 import { ApiErrorNotice } from "@/components/api-error-notice";
 import { BreadcrumbEntity } from "@/components/tenant-shell";
 import { DownloadWorkflowYamlButton } from "@/components/workflows/download-buttons";
@@ -9,6 +7,7 @@ import { WorkflowVersionLifecycleActions } from "@/components/workflows/workflow
 import { WorkflowVersionTabs, type WorkflowVersionTab } from "@/components/workflows/workflow-version-tabs";
 import { StateBadge } from "@/components/ui/badge";
 import { createApiClient, parseWorkflowVersion, toApiError } from "@/lib/api/client";
+import { resolveApiError } from "@/lib/api/resolve-api-error";
 import { formatUtcDateTime } from "@/lib/format";
 import { normalizeWorkflowSpec } from "@/lib/workflow/normalize";
 import { requireServerSession } from "@/lib/session/server";
@@ -31,18 +30,8 @@ export default async function WorkflowVersionPage({
     api.GET("/tenants/{tenant}/workflows/{workflow}", { params: { path: { tenant, workflow: workflowId } } }),
     api.GET("/tenants/{tenant}/workflows/{workflow}/versions/{version}", { params: { path: { tenant, workflow: workflowId, version: versionId } } }),
   ]);
-  if (workflowResponse.error) {
-    if (workflowResponse.response.status === 401) redirect(`/auth/login?returnTo=${encodeURIComponent(returnTo)}`);
-    if (workflowResponse.response.status === 404) notFound();
-    if (workflowResponse.response.status === 403) return <ApiAccessDenied view="Workflow" />;
-    return <ApiErrorNotice error={toApiError(workflowResponse.error, workflowResponse.response.status)} />;
-  }
-  if (versionResponse.response.status !== 200) {
-    if (versionResponse.response.status === 401) redirect(`/auth/login?returnTo=${encodeURIComponent(returnTo)}`);
-    if (versionResponse.response.status === 404) notFound();
-    if (versionResponse.response.status === 403) return <ApiAccessDenied view="Workflow version" />;
-    return <ApiErrorNotice error={toApiError(undefined, versionResponse.response.status)} />;
-  }
+  if (workflowResponse.error) return resolveApiError(workflowResponse, { returnTo, view: "Workflow" });
+  if (versionResponse.response.status !== 200) return resolveApiError({ response: versionResponse.response }, { returnTo, view: "Workflow version" });
 
   const workflow = workflowResponse.data;
   const version = parseWorkflowVersion(versionResponse.data);
