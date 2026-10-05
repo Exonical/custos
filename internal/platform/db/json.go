@@ -3,11 +3,11 @@ package db
 import "encoding/json"
 
 // JSONOrNil JSON-encodes v for a nullable jsonb column: a nil v stores
-// NULL. Marshal errors are discarded (callers pass plain maps/structs).
-func JSONOrNil(v any) []byte {
+// NULL. Marshal errors are returned so a bad value fails the write rather
+// than silently storing NULL.
+func JSONOrNil(v any) ([]byte, error) {
 	if v == nil {
-		return nil
+		return nil, nil
 	}
-	b, _ := json.Marshal(v)
-	return b
+	return json.Marshal(v)
 }

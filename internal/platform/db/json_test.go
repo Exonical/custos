@@ -1,20 +1,34 @@
 package db_test
 
 import (
+	"math"
 	"testing"
 
 	"github.com/Exonical/custos/internal/platform/db"
 )
 
 func TestJSONOrNil(t *testing.T) {
-	if got := db.JSONOrNil(nil); got != nil {
-		t.Fatalf("nil: got %q, want nil", got)
+	got, err := db.JSONOrNil(nil)
+	if err != nil || got != nil {
+		t.Fatalf("nil: got %q, %v; want nil, nil", got, err)
 	}
-	if got := string(db.JSONOrNil(map[string]float64{"cpu": 1.5})); got != `{"cpu":1.5}` {
-		t.Fatalf("map: got %s", got)
+	got, err = db.JSONOrNil(map[string]float64{"cpu": 1.5})
+	if err != nil || string(got) != `{"cpu":1.5}` {
+		t.Fatalf("map: got %s, %v", got, err)
 	}
 	var m map[string]float64
-	if got := string(db.JSONOrNil(m)); got != "null" {
-		t.Fatalf("typed nil map: got %s, want null", got)
+	got, err = db.JSONOrNil(m)
+	if err != nil || string(got) != "null" {
+		t.Fatalf("typed nil map: got %s, %v; want null", got, err)
+	}
+}
+
+func TestJSONOrNilMarshalError(t *testing.T) {
+	got, err := db.JSONOrNil(map[string]float64{"cpu": math.NaN()})
+	if err == nil {
+		t.Fatalf("NaN: got %q, want marshal error", got)
+	}
+	if got != nil {
+		t.Fatalf("NaN: got %q, want nil bytes", got)
 	}
 }

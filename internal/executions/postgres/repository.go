@@ -612,6 +612,10 @@ func (r *Repository) AdmitTaskChecked(ctx context.Context,
 	if err != nil {
 		return t, fmt.Errorf("jobs: marshal resource_request: %w", err)
 	}
+	costJSON, err := db.JSONOrNil(j.EstimatedCost)
+	if err != nil {
+		return t, fmt.Errorf("jobs: marshal estimated_cost: %w", err)
+	}
 	err = db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
 		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
@@ -647,7 +651,7 @@ func (r *Repository) AdmitTaskChecked(ctx context.Context,
 			string(j.ScriptLanguage), j.ScriptValidationID,
 			j.TaskExecutionID, j.SubmittedAt, j.StartedAt, j.EndedAt,
 			j.LastReconciledAt, j.Version, j.CreatedAt, j.UpdatedAt,
-			nil, j.BindingID, db.JSONOrNil(j.EstimatedCost)); err != nil {
+			nil, j.BindingID, costJSON); err != nil {
 			return db.MapError(err)
 		}
 		set := []string{"version = version + 1", "updated_at = now()"}

@@ -114,6 +114,14 @@ func (r *Repository) Create(ctx context.Context, scope tenants.Scope,
 	if err != nil {
 		return fmt.Errorf("jobs: marshal resource_request: %w", err)
 	}
+	usageJSON, err := db.JSONOrNil(j.ResourceUsage)
+	if err != nil {
+		return fmt.Errorf("jobs: marshal resource_usage: %w", err)
+	}
+	costJSON, err := db.JSONOrNil(j.EstimatedCost)
+	if err != nil {
+		return fmt.Errorf("jobs: marshal estimated_cost: %w", err)
+	}
 	return db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
 		if err := db.ApplyScope(ctx, tx, scope); err != nil {
 			return err
@@ -126,7 +134,7 @@ func (r *Repository) Create(ctx context.Context, scope tenants.Scope,
 			nilDigest(j.ScriptDigest), string(j.ScriptLanguage),
 			j.ScriptValidationID, j.TaskExecutionID, j.SubmittedAt,
 			j.StartedAt, j.EndedAt, j.LastReconciledAt, j.Version,
-			j.CreatedAt, j.UpdatedAt, db.JSONOrNil(j.ResourceUsage), nullableUUID(j.BindingID), db.JSONOrNil(j.EstimatedCost)); err != nil {
+			j.CreatedAt, j.UpdatedAt, usageJSON, nullableUUID(j.BindingID), costJSON); err != nil {
 			return db.MapError(err)
 		}
 		if enqueue != nil {
@@ -156,6 +164,14 @@ func (r *Repository) CreateWithIdempotencyChecked(ctx context.Context,
 	reqJSON, err := json.Marshal(j.ResourceRequest)
 	if err != nil {
 		return res, fmt.Errorf("jobs: marshal resource_request: %w", err)
+	}
+	usageJSON, err := db.JSONOrNil(j.ResourceUsage)
+	if err != nil {
+		return res, fmt.Errorf("jobs: marshal resource_usage: %w", err)
+	}
+	costJSON, err := db.JSONOrNil(j.EstimatedCost)
+	if err != nil {
+		return res, fmt.Errorf("jobs: marshal estimated_cost: %w", err)
 	}
 	err = db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
 		if err := db.ApplyScope(ctx, tx, scope); err != nil {
@@ -216,7 +232,7 @@ func (r *Repository) CreateWithIdempotencyChecked(ctx context.Context,
 			string(j.ScriptLanguage), j.ScriptValidationID,
 			j.TaskExecutionID, j.SubmittedAt,
 			j.StartedAt, j.EndedAt, j.LastReconciledAt, j.Version,
-			j.CreatedAt, j.UpdatedAt, db.JSONOrNil(j.ResourceUsage), nullableUUID(j.BindingID), db.JSONOrNil(j.EstimatedCost)); err != nil {
+			j.CreatedAt, j.UpdatedAt, usageJSON, nullableUUID(j.BindingID), costJSON); err != nil {
 			return db.MapError(err)
 		}
 		if enqueue != nil {
