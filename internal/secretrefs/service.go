@@ -162,7 +162,7 @@ func (s *Service) record(ctx context.Context, p authn.Principal, tid uuid.UUID, 
 	if s.audit == nil {
 		return
 	}
-	_ = s.audit.Record(ctx, audit.Event{Actor: audit.Actor{Type: audit.ActorUser, ID: p.UserID.String()}, TenantID: &tid, Action: action, Target: audit.Target{Type: typ, ID: id}, Result: audit.ResultAllow, Details: details})
+	audit.RecordBestEffort(ctx, s.logger, s.audit, audit.Event{Actor: audit.Actor{Type: audit.ActorUser, ID: p.UserID.String()}, TenantID: &tid, Action: action, Target: audit.Target{Type: typ, ID: id}, Result: audit.ResultAllow, Details: details})
 }
 
 // EnsureTenant creates the default connector for tenant creation hooks.
@@ -674,7 +674,7 @@ func (s *Service) deliveryResult(ctx context.Context, req DeliveryRequest,
 	if req.TaskID != nil {
 		details["task_id"] = req.TaskID.String()
 	}
-	_ = s.audit.Record(ctx, audit.Event{Actor: audit.Actor{Type: audit.ActorSystem, ID: "custos"},
+	audit.RecordBestEffort(ctx, s.logger, s.audit, audit.Event{Actor: audit.Actor{Type: audit.ActorSystem, ID: "custos"},
 		TenantID: &req.TenantID, Action: "secret.accessed",
 		Target: audit.Target{Type: "secret-reference", ID: x.ID.String()},
 		Result: result, Details: details})

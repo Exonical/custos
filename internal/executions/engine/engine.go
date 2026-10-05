@@ -106,10 +106,7 @@ func (d Deps) record(ctx context.Context, ev audit.Event) {
 	if d.Audit == nil {
 		return
 	}
-	if err := d.Audit.Record(ctx, ev); err != nil {
-		d.logger().WarnContext(ctx, "audit record failed",
-			"action", ev.Action, "error", err)
-	}
+	audit.RecordBestEffort(ctx, d.logger(), d.Audit, ev)
 }
 
 // Advance returns the execution.advance handler. Item key:

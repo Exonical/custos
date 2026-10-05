@@ -865,7 +865,7 @@ func cancelOrphanSlurmJob(ctx context.Context, d Deps, j jobs.Job,
 		details["array_task_id"] = *id.ArrayTaskID
 	}
 	if d.Audit != nil {
-		_ = d.Audit.Record(ctx, audit.Event{
+		audit.RecordBestEffort(ctx, nil, d.Audit, audit.Event{
 			Actor:    audit.Actor{Type: audit.ActorSystem, ID: "custos"},
 			Action:   "job.orphan_canceled",
 			Target:   audit.Target{Type: "job", ID: j.ID.String()},
@@ -1066,7 +1066,7 @@ func auditJob(ctx context.Context, d Deps, j jobs.Job, action, result,
 	if d.Audit == nil {
 		return
 	}
-	_ = d.Audit.Record(ctx, audit.Event{
+	audit.RecordBestEffort(ctx, nil, d.Audit, audit.Event{
 		Actor:    audit.Actor{Type: audit.ActorSystem, ID: "custos"},
 		Action:   action,
 		Target:   audit.Target{Type: "job", ID: j.ID.String()},

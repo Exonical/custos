@@ -69,7 +69,7 @@ func (s *Service) auditUpdate(ctx context.Context, p authn.Principal,
 	}
 	b, _ := json.Marshal(s2.Body)
 	sum := sha256.Sum256(b)
-	_ = s.d.Audit.Record(ctx, audit.Event{
+	audit.RecordBestEffort(ctx, nil, s.d.Audit, audit.Event{
 		Actor:    actorOf(p),
 		Action:   "validation.policy.updated",
 		Target:   audit.Target{Type: "validation_policy", ID: s2.ScopeKind + "/" + s2.ScopeID.String()},

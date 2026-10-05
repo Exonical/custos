@@ -68,7 +68,7 @@ func (s *Service) auditEvent(ctx context.Context, p authn.Principal,
 	if p.Kind == authn.KindService {
 		actor = audit.ActorService
 	}
-	if err := s.d.Audit.Record(ctx, audit.Event{
+	audit.RecordBestEffort(ctx, s.d.Logger, s.d.Audit, audit.Event{
 		Actor:    audit.Actor{Type: actor, ID: p.UserID.String()},
 		Action:   action,
 		Target:   audit.Target{Type: "workflow_execution", ID: targetID},
@@ -76,10 +76,7 @@ func (s *Service) auditEvent(ctx context.Context, p authn.Principal,
 		Reason:   reason,
 		TenantID: &tenantID,
 		Details:  details,
-	}); err != nil {
-		s.d.Logger.WarnContext(ctx, "audit record failed",
-			"action", action, "error", err)
-	}
+	})
 }
 
 func execResource(e executions.Execution) authz.Resource {

@@ -399,7 +399,7 @@ func (d Deps) auditOp(ctx context.Context, s *snapshot, op Op, result, detail st
 	if op.After != nil {
 		after = op.After
 	}
-	_ = d.Audit.Record(ctx, audit.Event{Actor: audit.Actor{Type: audit.ActorSystem, ID: "custos"}, TenantID: tid, Action: "slurm.policy_applied", Target: audit.Target{Type: string(op.Kind), ID: op.Key}, Result: result, Details: map[string]any{"cluster_id": s.cluster.ID, "op": op.Kind, "before": before, "after": after, "error_code": detail}})
+	audit.RecordBestEffort(ctx, nil, d.Audit, audit.Event{Actor: audit.Actor{Type: audit.ActorSystem, ID: "custos"}, TenantID: tid, Action: "slurm.policy_applied", Target: audit.Target{Type: string(op.Kind), ID: op.Key}, Result: result, Details: map[string]any{"cluster_id": s.cluster.ID, "op": op.Kind, "before": before, "after": after, "error_code": detail}})
 }
 
 func policyOpKey(op Op) string { return string(op.Kind) + "\x00" + op.Key }

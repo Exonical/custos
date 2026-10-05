@@ -44,7 +44,7 @@ func (s *Service) audit(ctx context.Context, p authn.Principal, tenantID uuid.UU
 	if s.rec == nil {
 		return
 	}
-	_ = s.rec.Record(ctx, audit.Event{
+	audit.RecordBestEffort(ctx, nil, s.rec, audit.Event{
 		Actor:    actorOf(p),
 		Action:   action,
 		Target:   audit.Target{Type: "resource_policy", ID: targetID},

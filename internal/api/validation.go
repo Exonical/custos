@@ -242,7 +242,7 @@ func auditScript(ctx context.Context, rec audit.Recorder, p authn.Principal,
 	if p.Kind == authn.KindService {
 		actor = audit.ActorService
 	}
-	_ = rec.Record(ctx, audit.Event{
+	audit.RecordBestEffort(ctx, nil, rec, audit.Event{
 		Actor:    audit.Actor{Type: actor, ID: p.UserID.String()},
 		Action:   action,
 		Target:   audit.Target{Type: "script", ID: ""},

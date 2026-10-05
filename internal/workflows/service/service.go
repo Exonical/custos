@@ -91,7 +91,7 @@ func (s *Service) audit(ctx context.Context, p authn.Principal,
 	if p.Kind == authn.KindService {
 		actor = audit.ActorService
 	}
-	_ = s.d.Audit.Record(ctx, audit.Event{
+	audit.RecordBestEffort(ctx, nil, s.d.Audit, audit.Event{
 		Actor:    audit.Actor{Type: actor, ID: p.UserID.String()},
 		Action:   action,
 		Target:   audit.Target{Type: "workflow", ID: targetID},

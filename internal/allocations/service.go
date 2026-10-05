@@ -82,7 +82,7 @@ func (s *Service) record(ctx context.Context, p authn.Principal, a Allocation, e
 	if s.audit == nil {
 		return
 	}
-	_ = s.audit.Record(ctx, audit.Event{Actor: audit.Actor{Type: audit.ActorUser, ID: p.UserID.String()}, TenantID: &a.TenantID, Action: event, Target: audit.Target{Type: "allocation", ID: a.ID.String()}, Result: audit.ResultAllow, Details: map[string]any{"project_id": a.ProjectID.String(), "binding_id": a.BindingID.String(), "unit": a.Unit}})
+	audit.RecordBestEffort(ctx, nil, s.audit, audit.Event{Actor: audit.Actor{Type: audit.ActorUser, ID: p.UserID.String()}, TenantID: &a.TenantID, Action: event, Target: audit.Target{Type: "allocation", ID: a.ID.String()}, Result: audit.ResultAllow, Details: map[string]any{"project_id": a.ProjectID.String(), "binding_id": a.BindingID.String(), "unit": a.Unit}})
 }
 
 // CreateInput contains client-supplied allocation fields.
@@ -226,7 +226,7 @@ func (s *Service) Delete(ctx context.Context, p authn.Principal, tc tenants.Tena
 func (s *Service) AuditSoft(ctx context.Context, p authn.Principal, tid uuid.UUID, result CheckResult) {
 	for _, a := range result.Soft {
 		if s.audit != nil {
-			_ = s.audit.Record(ctx, audit.Event{Actor: audit.Actor{Type: audit.ActorUser, ID: p.UserID.String()}, TenantID: &tid, Action: "allocation.soft_exceeded", Target: audit.Target{Type: "allocation", ID: a.ID.String()}, Result: audit.ResultAllow, Details: map[string]any{"allocation": a.Name, "unit": a.Unit}})
+			audit.RecordBestEffort(ctx, nil, s.audit, audit.Event{Actor: audit.Actor{Type: audit.ActorUser, ID: p.UserID.String()}, TenantID: &tid, Action: "allocation.soft_exceeded", Target: audit.Target{Type: "allocation", ID: a.ID.String()}, Result: audit.ResultAllow, Details: map[string]any{"allocation": a.Name, "unit": a.Unit}})
 		}
 	}
 }

@@ -111,17 +111,14 @@ func (s *Service) audit(ctx context.Context, p authn.Principal, tenantID uuid.UU
 	if s.rec == nil {
 		return
 	}
-	if err := s.rec.Record(ctx, audit.Event{
+	audit.RecordBestEffort(ctx, s.logger, s.rec, audit.Event{
 		Actor:    actorOf(p),
 		Action:   action,
 		Target:   audit.Target{Type: targetType, ID: targetID},
 		Result:   audit.ResultAllow,
 		TenantID: &tenantID,
 		Details:  details,
-	}); err != nil {
-		s.logger.WarnContext(ctx, "audit record failed",
-			"action", action, "error", err)
-	}
+	})
 }
 
 func res(tc tenants.TenantContext, pc projects.ProjectContext) authz.Resource {

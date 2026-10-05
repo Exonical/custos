@@ -89,16 +89,13 @@ func (s *Service) audit(ctx context.Context, p authn.Principal, action,
 	if s.rec == nil {
 		return
 	}
-	if err := s.rec.Record(ctx, audit.Event{
+	audit.RecordBestEffort(ctx, s.logger, s.rec, audit.Event{
 		Actor:   actorOf(p),
 		Action:  action,
 		Target:  audit.Target{Type: "cluster", ID: targetID},
 		Result:  result,
 		Details: details,
-	}); err != nil {
-		s.logger.WarnContext(ctx, "audit record failed",
-			"action", action, "error", err)
-	}
+	})
 }
 
 func (s *Service) check(ctx context.Context, p authn.Principal,
