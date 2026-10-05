@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { WorkflowGraph } from "@/components/workflows/workflow-graph";
 import type { Project } from "@/lib/api/client";
-import { detailText } from "@/lib/api/error-details";
+import { detailText, extractErrorEnvelope } from "@/lib/api/error-details";
 import { errorText, postJson } from "@/lib/api/bff-fetch";
 import { sanitizeDownloadFilename } from "@/lib/download";
 import { normalizeWorkflowSpec } from "@/lib/workflow/normalize";
@@ -27,7 +27,6 @@ type ImportResponse = components["schemas"]["WorkflowSbatchImportResponse"];
 type ImportedTask = components["schemas"]["WorkflowSbatchImportedTask"];
 type Diagnostic = components["schemas"]["Diagnostic"];
 type SelectedScript = SbatchImportScript & { id: string; byteLength: number };
-type ServerError = { error?: { code?: unknown; details?: unknown } };
 
 const WorkflowYamlEditor = dynamic(() => import("@/components/workflows/yaml-editor").then((module) => module.WorkflowYamlEditor), {
   ssr: false,
@@ -38,9 +37,9 @@ function importErrorText(value: unknown, status: number): string {
   if (status === 403) return "You do not have permission to import sbatch scripts, or sbatch import is disabled by policy.";
   if (status === 413) return "The import request is too large. Import fewer files at once.";
   if (status === 429) return "Import is rate limited. Try again later.";
-  const error = value && typeof value === "object" ? (value as ServerError).error : undefined;
-  const code = typeof error?.code === "string" ? error.code : `HTTP_${String(status)}`;
-  const details = Array.isArray(error?.details) ? detailText(error.details) : "";
+  const error = extractErrorEnvelope(value);
+  const code = error.code ?? `HTTP_${String(status)}`;
+  const details = error.details ? detailText(error.details) : "";
   if ((status === 400 || status === 422) && details) return details;
   if (status === 400 || status === 422) return code;
   return errorText(value, status, "import sbatch scripts");

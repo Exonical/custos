@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { PublishVersionDialogButton } from "@/components/workflows/workflow-version-actions";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { sendJson, sendText } from "@/lib/api/bff-fetch";
+import { extractErrorEnvelope } from "@/lib/api/error-details";
 import type { components } from "@/lib/api/schema";
 import { addWorkflowDependency, addWorkflowTask, deleteWorkflowTask, layoutPositionsFromValue, parseWorkflowYaml, removeWorkflowDependency, removeWorkflowTaskLayout, renameWorkflowTaskLayout, setTaskService, setWorkflowTaskField, validationPathToLocation, type WorkflowPositionMap } from "@/lib/workflow/editor";
 import { buildWorkflowGraph } from "@/lib/workflow/graph";
@@ -31,7 +32,6 @@ const EditorCanvas = dynamic(() => import("./editor-canvas").then((module) => mo
 
 type ValidationStatus = "idle" | "validating" | "valid" | "errors" | "rate-limited" | "failed";
 type SaveConflict = "stale" | "immutable" | "draft-locked" | null;
-type ErrorEnvelope = { error?: { code?: unknown; message?: unknown; details?: unknown } };
 type WorkflowVersion = components["schemas"]["WorkflowVersion"];
 
 function issuesFrom(value: unknown): WorkflowEditorIssue[] {
@@ -48,11 +48,11 @@ function issuesFrom(value: unknown): WorkflowEditorIssue[] {
 }
 
 function responseError(payload: unknown): { code: string; message: string; details: WorkflowEditorIssue[] } {
-  const error = payload && typeof payload === "object" ? (payload as ErrorEnvelope).error : undefined;
+  const error = extractErrorEnvelope(payload);
   return {
-    code: typeof error?.code === "string" ? error.code : "REQUEST_REJECTED",
-    message: typeof error?.message === "string" ? error.message : "Request rejected",
-    details: issuesFrom(error?.details),
+    code: error.code ?? "REQUEST_REJECTED",
+    message: error.message ?? "Request rejected",
+    details: issuesFrom(error.details),
   };
 }
 

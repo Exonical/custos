@@ -1,14 +1,13 @@
-import { detailText } from "@/lib/api/error-details";
-
-type ServerError = { error?: { code?: unknown; details?: unknown } };
+import { detailText, extractErrorEnvelope } from "@/lib/api/error-details";
 
 export function errorText(value: unknown, status: number, action: string): string {
-  const error = value && typeof value === "object" ? (value as ServerError).error : undefined;
-  const code = typeof error?.code === "string" ? error.code : `HTTP_${String(status)}`;
+  const error = extractErrorEnvelope(value);
+  const code = error.code ?? `HTTP_${String(status)}`;
   if (status === 403) return `You do not have permission to ${action} in this project.`;
   if (status === 409 && code === "WORKFLOW_NAME_TAKEN") return "A workflow with this name already exists in the project.";
-  const details = Array.isArray(error?.details) ? detailText(error.details) : "";
+  const details = error.details ? detailText(error.details) : "";
   if (details) return details;
+  if (error.message) return error.message;
   return `Request rejected: ${code}`;
 }
 

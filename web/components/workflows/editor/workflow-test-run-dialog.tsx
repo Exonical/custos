@@ -4,19 +4,16 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { detailText } from "@/lib/api/error-details";
+import { detailText, extractErrorEnvelope } from "@/lib/api/error-details";
 import type { WorkflowParameter } from "@/lib/workflow/normalize";
 import { WorkflowParameterFields, useWorkflowParameterForm, workflowParameterValues } from "@/components/workflows/workflow-parameter-form";
 
-type ErrorEnvelope = { error?: { code?: unknown; message?: unknown; details?: unknown } };
-
 function testRunError(value: unknown, status: number): string {
-  const error = value && typeof value === "object" ? (value as ErrorEnvelope).error : undefined;
+  const error = extractErrorEnvelope(value);
   if (status === 403) return "Test runs need workflow.create and workflow.execute on this project";
-  const details = status === 422 && Array.isArray(error?.details) ? detailText(error.details) : "";
+  const details = status === 422 && error.details ? detailText(error.details) : "";
   if (details) return details;
-  const code = typeof error?.code === "string" ? error.code : `HTTP_${String(status)}`;
-  return typeof error?.message === "string" ? error.message : `Test run rejected: ${code}`;
+  return error.message ?? `Test run rejected: ${error.code ?? `HTTP_${String(status)}`}`;
 }
 
 export function WorkflowTestRunDialog({

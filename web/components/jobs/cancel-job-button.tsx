@@ -14,6 +14,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { extractErrorEnvelope } from "@/lib/api/error-details";
 
 export function CancelJobButton({
   tenant,
@@ -43,8 +44,7 @@ export function CancelJobButton({
       });
       if (!response.ok) {
         const body: unknown = await response.json().catch(() => null);
-        const error = body && typeof body === "object" ? (body as { error?: { code?: unknown } }).error : undefined;
-        setMessage(typeof error?.code === "string" ? error.code : "CANCEL_REJECTED");
+        setMessage(extractErrorEnvelope(body).code ?? "CANCEL_REJECTED");
         return;
       }
       router.refresh();
