@@ -10,10 +10,7 @@ import { Button } from "@/components/ui/button";
 import { createApiClient, toApiError } from "@/lib/api/client";
 import { formatUtcDateTime } from "@/lib/format";
 import { requireServerSession } from "@/lib/session/server";
-
-function first(value: string | string[] | undefined): string {
-  return Array.isArray(value) ? value[0] ?? "" : value ?? "";
-}
+import { first } from "@/lib/search-params";
 
 export default async function ProjectDetailPage({
   params,

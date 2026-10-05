@@ -6,12 +6,9 @@ import { ExecutionListFilters } from "@/components/workflows/execution-list-filt
 import { WorkflowExecutionsTable } from "@/components/workflows/workflow-executions-table";
 import { createApiClient, toApiError, type WorkflowExecution, type WorkflowVersion } from "@/lib/api/client";
 import { requireServerSession } from "@/lib/session/server";
+import { first } from "@/lib/search-params";
 
 const states: readonly WorkflowExecution["state"][] = ["PENDING", "VALIDATING", "QUEUED", "RUNNING", "SUCCEEDED", "FAILED", "PARTIAL_FAILURE", "CANCELING", "CANCELED"];
-
-function first(value: string | string[] | undefined): string {
-  return Array.isArray(value) ? value[0] ?? "" : value ?? "";
-}
 
 export default async function ExecutionsPage({
   params,

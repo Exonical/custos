@@ -16,12 +16,9 @@ import { createApiClient, parseWorkflowVersion, toApiError, type WorkflowExecuti
 import { formatUtcDateTime } from "@/lib/format";
 import { normalizeWorkflowSpec } from "@/lib/workflow/normalize";
 import { requireServerSession } from "@/lib/session/server";
+import { first } from "@/lib/search-params";
 
 const states: readonly WorkflowExecution["state"][] = ["PENDING", "VALIDATING", "QUEUED", "RUNNING", "SUCCEEDED", "FAILED", "PARTIAL_FAILURE", "CANCELING", "CANCELED"];
-
-function first(value: string | string[] | undefined): string {
-  return Array.isArray(value) ? value[0] ?? "" : value ?? "";
-}
 
 export default async function WorkflowDetailPage({
   params,

@@ -9,15 +9,12 @@ import { createApiClient, toApiError } from "@/lib/api/client";
 import { formatDurationSeconds, formatHours, formatSecondsAsHours, formatUtcDateTime } from "@/lib/format";
 import { normalizeBarPercent, summarizeUsageRows } from "@/lib/usage";
 import { requireServerSession } from "@/lib/session/server";
+import { first } from "@/lib/search-params";
 
 const rangeDays: Record<UsageRangePreset, number> = { "7d": 7, "30d": 30, "90d": 90 };
 const groups: readonly UsageGroupBy[] = ["day", "user", "project", "cluster", "account", "partition"];
 const metrics: readonly UsageMetric[] = ["cpu_seconds", "gpu_seconds", "jobs"];
 const topByValues: readonly UsageTopBy[] = ["user", "project"];
-
-function first(value: string | string[] | undefined): string {
-  return Array.isArray(value) ? value[0] ?? "" : value ?? "";
-}
 
 function getRange(rangeValue: string, fromValue: string, toValue: string): { range: UsageRangePreset; from: string; to: string } {
   const range: UsageRangePreset = rangeValue === "30d" || rangeValue === "90d" ? rangeValue : "7d";

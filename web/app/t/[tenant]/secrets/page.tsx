@@ -6,10 +6,7 @@ import { SecretsReferencesTable } from "@/components/secrets-references-table";
 import { SecretsTabs, type SecretTab } from "@/components/secrets-tabs";
 import { ApiError, createApiClient } from "@/lib/api/client";
 import { requireServerSession } from "@/lib/session/server";
-
-function first(value: string | string[] | undefined): string {
-  return Array.isArray(value) ? value[0] ?? "" : value ?? "";
-}
+import { first } from "@/lib/search-params";
 
 export default async function SecretsPage({
   params,
