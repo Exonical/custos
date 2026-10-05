@@ -243,7 +243,7 @@ func CheckArgv(spec ExecutionSpec) *Denial {
 		return deny("ARGV_PROGRAM", "argv",
 			"argv[0] must be a literal program name")
 	}
-	genericMultinode := spec.Multinode != nil && spec.Multinode.Implementation == "generic"
+	genericMultinode := spec.Multinode != nil && spec.Multinode.Implementation == workflowspec.MultinodeGeneric
 	for i, e := range spec.Argv {
 		switch {
 		case e.Literal != "" && e.Runtime != "":
@@ -269,7 +269,7 @@ func CheckArgv(spec ExecutionSpec) *Denial {
 var containerDigestRe = regexp.MustCompile(`@sha256:[0-9a-f]{64}$`)
 
 func pyxisImageURI(uri string) string {
-	rest := strings.TrimPrefix(uri, "docker://")
+	rest := strings.TrimPrefix(uri, workflowspec.ImageSchemeDocker)
 	registry, imagePath, hasPath := strings.Cut(rest, "/")
 	if !hasPath {
 		return rest
@@ -281,7 +281,7 @@ func pyxisImageURI(uri string) string {
 }
 
 func dockerRegistryHost(uri string) string {
-	rest := strings.TrimPrefix(uri, "docker://")
+	rest := strings.TrimPrefix(uri, workflowspec.ImageSchemeDocker)
 	registry, _, hasPath := strings.Cut(rest, "/")
 	if registry == "" {
 		return "docker.io"
@@ -304,8 +304,8 @@ func resolveContainer(image *workflowspec.Image, runtime *validation.ContainerRu
 	}
 	uri := image.URI
 	if image.PullSecret != nil &&
-		!strings.HasPrefix(uri, "docker://") &&
-		(runtime.Type != "apptainer" || !strings.HasPrefix(uri, "oras://")) {
+		!strings.HasPrefix(uri, workflowspec.ImageSchemeDocker) &&
+		(runtime.Type != validation.ContainerRuntimeApptainer || !strings.HasPrefix(uri, workflowspec.ImageSchemeORAS)) {
 		return nil, deny("PULL_SECRET_INVALID", "image.pullSecret",
 			"pullSecret requires docker://, or oras:// with Apptainer")
 	}
@@ -328,13 +328,13 @@ func resolveContainer(image *workflowspec.Image, runtime *validation.ContainerRu
 	}
 	container := &ContainerSpec{Runtime: runtime.Type, Image: uri}
 	switch runtime.Type {
-	case "apptainer":
+	case validation.ContainerRuntimeApptainer:
 		container.Binary = runtime.Binary
 		if container.Binary == "" {
 			container.Binary = "apptainer"
 		}
-	case "pyxis":
-		if strings.HasPrefix(uri, "oras://") {
+	case validation.ContainerRuntimePyxis:
+		if strings.HasPrefix(uri, workflowspec.ImageSchemeORAS) {
 			if image.PullSecret != nil {
 				return nil, deny("PULL_SECRET_INVALID", "image.pullSecret",
 					"Pyxis pull secrets require a docker:// image URI")
@@ -343,7 +343,7 @@ func resolveContainer(image *workflowspec.Image, runtime *validation.ContainerRu
 				"pyxis accepts docker image references or absolute paths")
 		}
 		if !strings.HasPrefix(uri, "/") {
-			if !strings.HasPrefix(uri, "docker://") {
+			if !strings.HasPrefix(uri, workflowspec.ImageSchemeDocker) {
 				return nil, deny("IMAGE_RUNTIME_UNSUPPORTED", "image.uri",
 					"pyxis accepts docker image references or absolute paths")
 			}
@@ -360,12 +360,12 @@ func resolveContainer(image *workflowspec.Image, runtime *validation.ContainerRu
 		} else {
 			container.PullUsername = pull.Username
 		}
-		if runtime.Type == "pyxis" {
+		if runtime.Type == validation.ContainerRuntimePyxis {
 			container.RegistryHost = dockerRegistryHost(uri)
-			container.EnrootImage = "docker://" + container.Image
+			container.EnrootImage = workflowspec.ImageSchemeDocker + container.Image
 		}
 	}
-	if multinode != nil && multinode.EffectiveImplementation() == "generic" &&
+	if multinode != nil && multinode.EffectiveImplementation() == workflowspec.MultinodeGeneric &&
 		!runtime.SlurmInContainer {
 		return nil, deny("MULTINODE_CONTAINER_UNSUPPORTED", "image",
 			"generic multinode container execution requires slurm_in_container")
@@ -382,7 +382,7 @@ func resolvedMultinode(m *workflowspec.Multinode,
 	out := &MultinodeSpec{Implementation: implementation, Nodes: m.Nodes,
 		SlotsPerNode: m.ProcsPerNode}
 	if out.SlotsPerNode < 1 {
-		if implementation == "generic" {
+		if implementation == workflowspec.MultinodeGeneric {
 			out.SlotsPerNode = request.CPUsPerTask
 		} else {
 			out.SlotsPerNode = request.TasksPerNode
@@ -391,7 +391,7 @@ func resolvedMultinode(m *workflowspec.Multinode,
 	if out.SlotsPerNode < 1 {
 		out.SlotsPerNode = 1
 	}
-	if implementation == "openmpi" || implementation == "mpich" {
+	if implementation == workflowspec.MultinodeOpenMPI || implementation == workflowspec.MultinodeMPICH {
 		out.MPIPlugin = "pmix"
 		if runtime != nil && runtime.MPIPlugin != "" {
 			out.MPIPlugin = runtime.MPIPlugin

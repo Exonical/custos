@@ -88,6 +88,12 @@ type ClusterSnapshot struct {
 	ContainerRuntime *ContainerRuntime `json:"container_runtime,omitempty"`
 }
 
+// ContainerRuntime.Type values.
+const (
+	ContainerRuntimeApptainer = "apptainer"
+	ContainerRuntimePyxis     = "pyxis"
+)
+
 // ContainerRuntime describes the site's container and MPI launch support.
 type ContainerRuntime struct {
 	Type                 string   `json:"type"`

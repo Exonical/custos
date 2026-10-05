@@ -331,3 +331,18 @@ func TestResolveMemoryPerCPUResources(t *testing.T) {
 		t.Fatalf("invalid memoryPerCpu errors = %+v", errs)
 	}
 }
+
+func TestHasRegistryScheme(t *testing.T) {
+	for uri, want := range map[string]bool{
+		"docker://ghcr.io/acme/app:1": true,
+		"oras://ghcr.io/acme/app:1":   true,
+		"/shared/images/app.sif":      false,
+		"https://ghcr.io/acme/app":    false,
+		"docker:/ghcr.io/acme/app":    false,
+		"":                            false,
+	} {
+		if got := workflowspec.HasRegistryScheme(uri); got != want {
+			t.Errorf("HasRegistryScheme(%q) = %v, want %v", uri, got, want)
+		}
+	}
+}

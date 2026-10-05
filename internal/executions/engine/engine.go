@@ -1173,7 +1173,7 @@ func (s admitScope) Lookup(path []string) (expr.Value, bool) {
 		}
 	case "multinode":
 		if len(path) != 2 || s.task.Multinode == nil ||
-			s.task.Multinode.EffectiveImplementation() != "generic" {
+			s.task.Multinode.EffectiveImplementation() != workflowspec.MultinodeGeneric {
 			return expr.Value{}, false
 		}
 		runtimeVars := map[string]string{

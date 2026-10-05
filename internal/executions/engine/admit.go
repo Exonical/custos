@@ -764,7 +764,7 @@ func renderArgv(elems []string, sc admitScope) (
 	out := make([]admission.ArgvElement, 0, len(elems))
 	for i, s := range elems {
 		if runtime, ok := multinodeRuntimeLiteral(s); ok {
-			if sc.task.Multinode == nil || sc.task.Multinode.EffectiveImplementation() != "generic" {
+			if sc.task.Multinode == nil || sc.task.Multinode.EffectiveImplementation() != workflowspec.MultinodeGeneric {
 				return nil, fmt.Errorf("argv[%d]: multinode runtime references require a generic multinode task", i)
 			}
 			out = append(out, admission.ArgvElement{Runtime: runtime})

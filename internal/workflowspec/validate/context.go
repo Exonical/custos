@@ -122,8 +122,8 @@ func Contextual(w workflowspec.Workflow, ctx Context) []FieldError {
 			}
 		}
 		if t.Image != nil && t.Image.PullSecret != nil &&
-			strings.HasPrefix(t.Image.URI, "oras://") && ok &&
-			caps.ContainerRuntime != nil && caps.ContainerRuntime.Type == "pyxis" {
+			strings.HasPrefix(t.Image.URI, workflowspec.ImageSchemeORAS) && ok &&
+			caps.ContainerRuntime != nil && caps.ContainerRuntime.Type == validation.ContainerRuntimePyxis {
 			errs = append(errs, FieldError{Path: base + ".image.pullSecret",
 				Code: "PULL_SECRET_INVALID", Message: "pyxis pull secrets require a docker:// image URI"})
 		}
