@@ -207,7 +207,7 @@ func (d Deps) markUnknown(ctx context.Context, id uuid.UUID, bindings []projects
 	if c, e := d.Clusters.GetByNameOrID(ctx, id.String()); e == nil {
 		d.Metrics.set(c.Name, drifted)
 	}
-	return d.statusRun(ctx, id, now, upstream.Error(), nil, 0, 0)
+	return d.statusRun(ctx, id, now, upstream.Error(), nil, runStats{})
 }
 
 // PreserveDrift carries a previous finding across an unavailable check.
