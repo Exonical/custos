@@ -12,10 +12,7 @@ import { createApiClient, parseWorkflowVersion, toApiError } from "@/lib/api/cli
 import { formatUtcDateTime } from "@/lib/format";
 import { normalizeWorkflowSpec } from "@/lib/workflow/normalize";
 import { requireServerSession } from "@/lib/session/server";
-
-function first(value: string | string[] | undefined): string {
-  return Array.isArray(value) ? value[0] ?? "" : value ?? "";
-}
+import { first } from "@/lib/search-params";
 
 export default async function WorkflowVersionPage({
   params,

@@ -4,10 +4,7 @@ import { ApiErrorNotice } from "@/components/api-error-notice";
 import { ClustersTable } from "@/components/clusters-table";
 import { createApiClient, toApiError } from "@/lib/api/client";
 import { requireServerSession } from "@/lib/session/server";
-
-function first(value: string | string[] | undefined): string {
-  return Array.isArray(value) ? value[0] ?? "" : value ?? "";
-}
+import { first } from "@/lib/search-params";
 
 export default async function ClustersPage({ params, searchParams }: {
   params: Promise<{ tenant: string }>;
