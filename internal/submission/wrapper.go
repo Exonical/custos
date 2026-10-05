@@ -153,7 +153,7 @@ func renderArgv(spec admission.ExecutionSpec) ([]string, error) {
 	for _, e := range spec.Argv {
 		switch {
 		case e.Runtime != "" && e.Literal == "":
-			if !admission.ValidRuntimeFor(e.Runtime, spec.Multinode != nil && spec.Multinode.Implementation == "generic") {
+			if !admission.ValidRuntimeFor(e.Runtime, spec.Multinode != nil && spec.Multinode.Implementation == workflowspec.MultinodeGeneric) {
 				return nil, apperr.New(apperr.Internal, "INTERNAL",
 					"submission: unlisted runtime "+e.Runtime)
 			}
@@ -181,7 +181,7 @@ func launchWords(spec admission.ExecutionSpec) ([]SafeToken, bool, error) {
 	default:
 		return nil, false, apperr.New(apperr.Internal, "INTERNAL", "submission: invalid frozen launch mode")
 	}
-	pyxisSingle := spec.Container != nil && spec.Container.Runtime == "pyxis" && !useSrun
+	pyxisSingle := spec.Container != nil && spec.Container.Runtime == validation.ContainerRuntimePyxis && !useSrun
 	if pyxisSingle {
 		useSrun = true
 	}
@@ -193,7 +193,7 @@ func launchWords(spec admission.ExecutionSpec) ([]SafeToken, bool, error) {
 		words = append(words, "--nodes=1", "--ntasks=1")
 	}
 	if spec.Multinode != nil &&
-		(spec.Multinode.Implementation == "openmpi" || spec.Multinode.Implementation == "mpich") &&
+		(spec.Multinode.Implementation == workflowspec.MultinodeOpenMPI || spec.Multinode.Implementation == workflowspec.MultinodeMPICH) &&
 		spec.Multinode.MPIPlugin != "" {
 		words = append(words, "--mpi="+spec.Multinode.MPIPlugin)
 	}
@@ -249,7 +249,7 @@ func containerEnvNames(spec admission.ExecutionSpec) ([]string, error) {
 			set[name] = true
 		}
 	}
-	if spec.Multinode != nil && spec.Multinode.Implementation == "generic" {
+	if spec.Multinode != nil && spec.Multinode.Implementation == workflowspec.MultinodeGeneric {
 		for _, name := range []string{
 			admission.RuntimeMultinodeHostlist,
 			admission.RuntimeMultinodeHostlistNoSlots,
@@ -334,7 +334,7 @@ func imagePullSetup(spec admission.ExecutionSpec) ([]string, error) {
 	}
 	lines := make([]string, 0, 20)
 	switch container.Runtime {
-	case "apptainer":
+	case validation.ContainerRuntimeApptainer:
 		binary := container.Binary
 		if binary == "" {
 			binary = "apptainer"
@@ -344,7 +344,7 @@ func imagePullSetup(spec admission.ExecutionSpec) ([]string, error) {
 			username, admission.ImagePullPasswordEnvName, q(binary), q(container.Image)))
 		lines = append(lines, fmt.Sprintf("unset %s %s",
 			admission.ImagePullUsernameEnvName, admission.ImagePullPasswordEnvName))
-	case "pyxis":
+	case validation.ContainerRuntimePyxis:
 		if container.RegistryHost == "" || container.EnrootImage == "" {
 			return nil, apperr.New(apperr.Internal, "INTERNAL",
 				"submission: Pyxis pull configuration is incomplete")
@@ -432,14 +432,14 @@ func containerWords(spec admission.ExecutionSpec) (words, envPrefix, rshWords, r
 		return nil, nil, nil, nil, nil
 	}
 	switch spec.Container.Runtime {
-	case "apptainer":
+	case validation.ContainerRuntimeApptainer:
 		words = apptainerWords(spec.Container)
 		rshWords = append([]string(nil), words...)
 		envPrefix, err = containerEnvPrefix(spec)
 		if err == nil {
 			rshEnvPrefix = append([]string(nil), envPrefix...)
 		}
-	case "pyxis":
+	case validation.ContainerRuntimePyxis:
 		words, err = pyxisWords(spec)
 		if err == nil {
 			rshWords = append([]string(nil), words...)
@@ -509,7 +509,7 @@ func Wrapper(spec admission.ExecutionSpec, payload []byte) (string, error) {
 		}
 	}
 	for n, rt := range spec.Environment.Runtime {
-		if !admission.ValidRuntimeFor(rt, spec.Multinode != nil && spec.Multinode.Implementation == "generic") {
+		if !admission.ValidRuntimeFor(rt, spec.Multinode != nil && spec.Multinode.Implementation == workflowspec.MultinodeGeneric) {
 			return "", apperr.New(apperr.Internal, "INTERNAL",
 				"submission: unlisted runtime env "+n)
 		}
@@ -524,7 +524,7 @@ func Wrapper(spec admission.ExecutionSpec, payload []byte) (string, error) {
 	for _, s := range spec.Software {
 		modules = append(modules, s.ModuleSpec...)
 	}
-	genericMultinode := spec.Multinode != nil && spec.Multinode.Implementation == "generic"
+	genericMultinode := spec.Multinode != nil && spec.Multinode.Implementation == workflowspec.MultinodeGeneric
 	var slotsPerNode, totalSlots SafeToken
 	if genericMultinode {
 		if spec.Multinode.Nodes < 1 || spec.Multinode.SlotsPerNode < 1 {

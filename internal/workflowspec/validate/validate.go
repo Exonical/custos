@@ -30,7 +30,9 @@ func fe(path, code, msg string) FieldError {
 
 var nameRe = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`)
 var envNameRe = regexp.MustCompile(`^[A-Z_][A-Z0-9_]*$`)
-var imageURIRe = regexp.MustCompile(`^(?:(?:docker|oras)://[A-Za-z0-9._/:@+-]+|/[A-Za-z0-9._/+-]+)$`)
+var imageURIRe = regexp.MustCompile(`^(?:(?:` +
+	regexp.QuoteMeta(workflowspec.ImageSchemeDocker) + `|` + regexp.QuoteMeta(workflowspec.ImageSchemeORAS) +
+	`)[A-Za-z0-9._/:@+-]+|/[A-Za-z0-9._/+-]+)$`)
 var imageDigestRe = regexp.MustCompile(`@sha256:[0-9a-f]{64}$`)
 var multinodeDollarRefRe = regexp.MustCompile(`\$\{?(MULTINODE_HOSTLIST|MULTINODE_HOSTLIST_NOSLOTS|MULTINODE_TOTAL_SLOTS|MULTINODE_NODE_IP|MULTINODE_SSH_WRAPPER|MULTINODE_RSH_WRAPPER)\}?`)
 
@@ -75,8 +77,7 @@ func checkImagePullSecret(task workflowspec.Task, base string,
 	if task.Image.URI == "" {
 		errs = append(errs, fe(path, "PULL_SECRET_REQUIRES_IMAGE",
 			"pullSecret requires an image URI"))
-	} else if !strings.HasPrefix(task.Image.URI, "docker://") &&
-		!strings.HasPrefix(task.Image.URI, "oras://") {
+	} else if !workflowspec.HasRegistryScheme(task.Image.URI) {
 		errs = append(errs, fe(path, "PULL_SECRET_INVALID",
 			"pullSecret requires a docker:// or oras:// image URI"))
 	}
@@ -128,7 +129,7 @@ func multinodeImplementation(task workflowspec.Task) string {
 }
 
 func genericMultinode(task workflowspec.Task) bool {
-	return task.Multinode != nil && multinodeImplementation(task) == "generic"
+	return task.Multinode != nil && multinodeImplementation(task) == workflowspec.MultinodeGeneric
 }
 
 // Task types of docs/workflows.md §Task types.
@@ -516,7 +517,8 @@ func checkTaskFeatures(t workflowspec.Task, base string, ty string) []FieldError
 			errs = append(errs, fe(base+".multinode.nodes", "MULTINODE_INVALID", "nodes must be between 1 and 10000"))
 		}
 		implementation := m.EffectiveImplementation()
-		if m.Implementation != "openmpi" && m.Implementation != "mpich" && m.Implementation != "generic" {
+		if m.Implementation != workflowspec.MultinodeOpenMPI && m.Implementation != workflowspec.MultinodeMPICH &&
+			m.Implementation != workflowspec.MultinodeGeneric {
 			errs = append(errs, fe(base+".multinode.implementation", "MULTINODE_INVALID", "implementation must be openmpi, mpich, or generic"))
 		}
 		if m.ProcsPerNode < 0 || (m.HasProcsPerNode() && m.ProcsPerNode < 1) {
@@ -528,7 +530,7 @@ func checkTaskFeatures(t workflowspec.Task, base string, ty string) []FieldError
 			errs = append(errs, fe(base+".multinode", "MULTINODE_CONFLICT", "multinode conflicts with array or explicit nodes/tasks/tasksPerNode/cpusPerTask resources"))
 		}
 		wantLaunch := workflowspec.LaunchSbatch
-		if implementation == "openmpi" || implementation == "mpich" {
+		if implementation == workflowspec.MultinodeOpenMPI || implementation == workflowspec.MultinodeMPICH {
 			wantLaunch = workflowspec.LaunchSrun
 		}
 		if t.Launch != "" && (t.Launch == workflowspec.LaunchSbatch || t.Launch == workflowspec.LaunchSrun) && t.Launch != wantLaunch {
@@ -542,7 +544,7 @@ func checkTaskFeatures(t workflowspec.Task, base string, ty string) []FieldError
 		if procs <= 0 {
 			procs = cores
 		}
-		if (implementation == "openmpi" || implementation == "mpich") &&
+		if (implementation == workflowspec.MultinodeOpenMPI || implementation == workflowspec.MultinodeMPICH) &&
 			(procs > cores || cores%procs != 0) {
 			errs = append(errs, fe(base+".multinode.procsPerNode", "MULTINODE_CPU_DIVISIBLE", "CPU cores per node must divide evenly by procsPerNode"))
 		}

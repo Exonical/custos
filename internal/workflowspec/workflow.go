@@ -219,6 +219,18 @@ type Output struct {
 	Path string `json:"path"`
 }
 
+// Image URI schemes. An Image.URI is either a registry reference
+// carrying one of these schemes or an absolute filesystem path.
+const (
+	ImageSchemeDocker = "docker://"
+	ImageSchemeORAS   = "oras://"
+)
+
+// HasRegistryScheme reports whether uri is a docker:// or oras:// reference.
+func HasRegistryScheme(uri string) bool {
+	return strings.HasPrefix(uri, ImageSchemeDocker) || strings.HasPrefix(uri, ImageSchemeORAS)
+}
+
 // Image identifies an optional task container image.
 type Image struct {
 	URI        string           `json:"uri"`
@@ -271,6 +283,13 @@ func (m *Multinode) UnmarshalJSON(data []byte) error {
 
 // HasProcsPerNode reports whether the optional field was present in input.
 func (m Multinode) HasProcsPerNode() bool { return m.procsPerNodeSet }
+
+// Multinode implementations accepted by Multinode.Implementation.
+const (
+	MultinodeOpenMPI = "openmpi"
+	MultinodeMPICH   = "mpich"
+	MultinodeGeneric = "generic"
+)
 
 // EffectiveImplementation returns the native multinode implementation.
 func (m Multinode) EffectiveImplementation() string { return m.Implementation }
@@ -354,9 +373,9 @@ func (t Task) EffectiveLaunch() string {
 	}
 	if t.Multinode != nil {
 		switch t.Multinode.EffectiveImplementation() {
-		case "openmpi", "mpich":
+		case MultinodeOpenMPI, MultinodeMPICH:
 			return LaunchSrun
-		case "generic":
+		case MultinodeGeneric:
 			return LaunchSbatch
 		}
 	}
@@ -494,7 +513,7 @@ func (t Task) ResolveResources(path string) (Resources, []FieldError) {
 			Code: "MULTINODE_CONFLICT", Message: "multinode conflicts with array or explicit nodes/tasks/tasksPerNode/cpusPerTask resources"}}
 	}
 	implementation := m.EffectiveImplementation()
-	if implementation != "openmpi" && implementation != "mpich" && implementation != "generic" {
+	if implementation != MultinodeOpenMPI && implementation != MultinodeMPICH && implementation != MultinodeGeneric {
 		return Resources{}, []FieldError{{Path: path + ".multinode.implementation",
 			Code: "MULTINODE_INVALID", Message: "implementation must be openmpi, mpich, or generic"}}
 	}
@@ -524,7 +543,7 @@ func (t Task) ResolveResources(path string) (Resources, []FieldError) {
 		return Resources{}, []FieldError{{Path: path + ".multinode",
 			Code: "MULTINODE_INVALID", Message: "multinode total slot count overflows"}}
 	}
-	if implementation == "generic" {
+	if implementation == MultinodeGeneric {
 		r.Nodes, r.Tasks, r.TasksPerNode, r.CPUsPerTask = m.Nodes, m.Nodes, 1, cores
 	} else {
 		if procs > cores || cores%procs != 0 {

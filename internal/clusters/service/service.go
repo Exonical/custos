@@ -178,14 +178,14 @@ func normalizeContainerRuntime(in *validation.ContainerRuntime) (*validation.Con
 	}
 	out := *in
 	switch out.Type {
-	case "apptainer":
+	case validation.ContainerRuntimeApptainer:
 		if out.Binary == "" {
 			out.Binary = "apptainer"
 		}
 		if len(out.Binary) > 128 || !runtimeBinaryRe.MatchString(out.Binary) {
 			return invalid("binary must match the wrapper safe-token charset")
 		}
-	case "pyxis":
+	case validation.ContainerRuntimePyxis:
 		if out.Binary != "" {
 			return invalid("binary is only valid for the apptainer runtime")
 		}
