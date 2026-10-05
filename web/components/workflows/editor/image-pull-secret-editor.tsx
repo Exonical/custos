@@ -4,12 +4,10 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import type { components } from "@/lib/api/schema";
 import type { Task } from "@/lib/workflow/spec";
 import { clearPullSecret, setPullSecret, setSecretHandle, validationPathToLocation } from "@/lib/workflow/editor";
 import type { WorkflowEditorIssue } from "./editor-types";
 
-type SecretReferenceList = components["schemas"]["SecretReferenceList"];
 type SecretHandle = { ref: string; use: "env" | "wrapped_token" | "image_pull"; envName?: string };
 type PullUsernameMode = "literal" | "secret";
 
@@ -21,6 +19,19 @@ function errorsFor(yaml: string, issues: WorkflowEditorIssue[], taskName: string
   return issues.filter((issue) => {
     return validationPathToLocation(yaml, issue.path)?.taskName === taskName
       && suffix.some((item) => issue.path.endsWith(item) || issue.path.includes(`${item}.`));
+  });
+}
+
+export function imagePullReferenceNames(payload: unknown): string[] | undefined {
+  if (!payload || typeof payload !== "object") return undefined;
+  const items = (payload as Record<string, unknown>).items;
+  if (!Array.isArray(items)) return undefined;
+  return items.flatMap((entry) => {
+    if (!entry || typeof entry !== "object") return [];
+    const item = entry as Record<string, unknown>;
+    return typeof item.name === "string" && Array.isArray(item.allowed_uses) && item.allowed_uses.includes("image_pull")
+      ? [item.name]
+      : [];
   });
 }
 
@@ -76,13 +87,9 @@ export function ImagePullSecretEditor({
         return;
       }
       const payload: unknown = await response.json().catch(() => null);
-      const items = payload && typeof payload === "object"
-        ? (payload as SecretReferenceList).items
-        : undefined;
-      if (!active || !Array.isArray(items)) return;
-      setReferenceSuggestions(items
-        .filter((item) => Array.isArray(item.allowed_uses) && item.allowed_uses.includes("image_pull"))
-        .map((item) => item.name));
+      const names = imagePullReferenceNames(payload);
+      if (!active || !names) return;
+      setReferenceSuggestions(names);
     }).catch(() => {
       if (active) setSuggestionsUnavailable(true);
     });
