@@ -5,22 +5,18 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { detailText } from "@/lib/api/error-details";
+import { detailText, extractErrorEnvelope } from "@/lib/api/error-details";
 import { postJson, sendText } from "@/lib/api/bff-fetch";
 
-type ApiErrorBody = { error?: { code?: unknown; message?: unknown; details?: unknown } };
-
 function errorParts(value: unknown, status: number, action: string): { message: string; details: string[] } {
-  const error = value && typeof value === "object" ? (value as ApiErrorBody).error : undefined;
-  const code = typeof error?.code === "string" ? error.code : `HTTP_${String(status)}`;
-  const details = Array.isArray(error?.details)
-    ? error.details.flatMap((detail) => {
-      const text = detailText([detail]);
-      return text ? [text] : [];
-    })
-    : [];
+  const error = extractErrorEnvelope(value);
+  const code = error.code ?? `HTTP_${String(status)}`;
+  const details = (error.details ?? []).flatMap((detail) => {
+    const text = detailText([detail]);
+    return text ? [text] : [];
+  });
   if (status === 403) return { message: `You do not have permission to ${action}.`, details };
-  return { message: typeof error?.message === "string" ? error.message : code, details };
+  return { message: error.message ?? code, details };
 }
 
 export function PublishVersionDialogButton({

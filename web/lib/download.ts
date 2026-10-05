@@ -1,3 +1,5 @@
+import { extractErrorEnvelope } from "@/lib/api/error-details";
+
 export class BffDownloadError extends Error {
   constructor(
     readonly status: number,
@@ -46,15 +48,12 @@ export async function downloadFromBff(path: string, options: {
   });
   if (!response.ok) {
     const payload: unknown = await response.json().catch(() => null);
-    const error = payload && typeof payload === "object"
-      ? (payload as { error?: { code?: unknown; details?: unknown; message?: unknown } }).error
-      : undefined;
-    const code = typeof error?.code === "string" ? error.code : `HTTP_${String(response.status)}`;
+    const error = extractErrorEnvelope(payload);
     throw new BffDownloadError(
       response.status,
-      code,
-      error?.details,
-      typeof error?.message === "string" ? error.message : "",
+      error.code ?? `HTTP_${String(response.status)}`,
+      error.details,
+      error.message ?? "",
     );
   }
   const filename = filenameFromContentDisposition(response.headers.get("content-disposition"), options.fallbackFilename);

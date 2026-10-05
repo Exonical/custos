@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { detailText } from "@/lib/api/error-details";
+import { detailText, extractErrorEnvelope } from "@/lib/api/error-details";
 import { sendJson } from "@/lib/api/bff-fetch";
 import {
   clusterSettingsDraft,
@@ -16,12 +16,10 @@ import {
   type SoftwareModule,
 } from "@/lib/clusters/settings";
 
-type ApiErrorBody = { error?: { code?: unknown; details?: unknown; message?: unknown } };
-
 function errorDetails(payload: unknown): string {
-  const error = payload && typeof payload === "object" ? (payload as ApiErrorBody).error : undefined;
-  const details = Array.isArray(error?.details) ? detailText(error.details) : "";
-  return details || (typeof error?.code === "string" ? error.code : "Request rejected");
+  const error = extractErrorEnvelope(payload);
+  const details = error.details ? detailText(error.details) : "";
+  return details || (error.code ?? "Request rejected");
 }
 
 function fieldError(errors: Record<string, string>, path: string) {

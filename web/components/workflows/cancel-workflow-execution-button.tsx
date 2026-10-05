@@ -15,6 +15,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { extractErrorEnvelope } from "@/lib/api/error-details";
 
 export function CancelWorkflowExecutionButton({ tenant, execution, csrfToken }: {
   tenant: string;
@@ -38,8 +39,7 @@ export function CancelWorkflowExecutionButton({ tenant, execution, csrfToken }: 
         return;
       }
       const body: unknown = await response.json().catch(() => null);
-      const error = body && typeof body === "object" ? (body as { error?: { code?: unknown } }).error : undefined;
-      const code = typeof error?.code === "string" ? error.code : `HTTP_${String(response.status)}`;
+      const code = extractErrorEnvelope(body).code ?? `HTTP_${String(response.status)}`;
       if (response.status === 403) toast.error("You do not have permission to cancel this execution.");
       else if (response.status === 409) {
         toast.message("This execution is already terminal.");
