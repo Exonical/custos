@@ -268,13 +268,21 @@ func CheckArgv(spec ExecutionSpec) *Denial {
 
 var containerDigestRe = regexp.MustCompile(`@sha256:[0-9a-f]{64}$`)
 
+// registryIsHost reports whether the first segment of a docker:// reference
+// names a registry host rather than a Docker Hub namespace. A colon only
+// indicates a host:port when more path follows; otherwise it is a tag.
+func registryIsHost(registry string, hasPath bool) bool {
+	return registry == "localhost" || strings.Contains(registry, ".") ||
+		(hasPath && strings.Contains(registry, ":"))
+}
+
 func pyxisImageURI(uri string) string {
 	rest := strings.TrimPrefix(uri, workflowspec.ImageSchemeDocker)
 	registry, imagePath, hasPath := strings.Cut(rest, "/")
 	if !hasPath {
 		return rest
 	}
-	if registry == "localhost" || strings.Contains(registry, ".") || strings.Contains(registry, ":") {
+	if registryIsHost(registry, hasPath) {
 		return registry + "#" + imagePath
 	}
 	return rest
@@ -286,8 +294,7 @@ func dockerRegistryHost(uri string) string {
 	if registry == "" {
 		return "docker.io"
 	}
-	if registry == "localhost" || strings.Contains(registry, ".") ||
-		(hasPath && strings.Contains(registry, ":")) {
+	if registryIsHost(registry, hasPath) {
 		return registry
 	}
 	return "docker.io"
