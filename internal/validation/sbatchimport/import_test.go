@@ -151,6 +151,26 @@ func TestArrayAndOutputPatterns(t *testing.T) {
 	}
 }
 
+func TestArrayOverflowIsUnmappable(t *testing.T) {
+	for _, v := range []string{
+		"99999999999999999999-1",
+		"0-99999999999999999999",
+		"0-9:99999999999999999999",
+		"0-9%99999999999999999999",
+	} {
+		p, err := Import([]byte("#SBATCH --array="+v+"\n"), workflowspec.LanguageBash)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if p.Resources.Array != nil {
+			t.Errorf("%s: array must not be proposed: %+v", v, p.Resources.Array)
+		}
+		if len(p.Diagnostics) != 1 || p.Diagnostics[0].Code != "CUSTOS201" {
+			t.Errorf("%s: want one CUSTOS201, got %v", v, p.Diagnostics)
+		}
+	}
+}
+
 func TestLineCountAndCRLFPreserved(t *testing.T) {
 	script := "#!/bin/bash\r\n#SBATCH --nodes=2\r\n\r\nsrun x\r\n"
 	p, err := Import([]byte(script), workflowspec.LanguageBash)
@@ -191,6 +211,8 @@ func TestGPUSForms(t *testing.T) {
 		{"#SBATCH --gpus-per-node=gpu:a100:2", "a100", 2, 0},
 		{"#SBATCH --gres=gpu:4", "", 4, 0},
 		{"#SBATCH --gres=license:foo:1", "", 0, 1},
+		{"#SBATCH --gres=gpu:99999999999999999999", "", 0, 1},
+		{"#SBATCH --gres=gpu:a100:99999999999999999999", "", 0, 1},
 	} {
 		p, err := Import([]byte(tc.line+"\necho x\n"), workflowspec.LanguageBash)
 		if err != nil {
