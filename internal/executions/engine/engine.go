@@ -15,6 +15,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"slices"
 	"time"
 
@@ -83,6 +84,7 @@ type Deps struct {
 	Jobs               JobStore
 	Audit              audit.Recorder // may be nil
 	Metrics            *pipeline.Metrics
+	Logger             *slog.Logger     // audit write failures; nil → slog.Default()
 	Now                func() time.Time // tests may override; nil → time.Now
 }
 
@@ -93,9 +95,20 @@ func (d Deps) now() time.Time {
 	return time.Now().UTC()
 }
 
+func (d Deps) logger() *slog.Logger {
+	if d.Logger != nil {
+		return d.Logger
+	}
+	return slog.Default()
+}
+
 func (d Deps) record(ctx context.Context, ev audit.Event) {
-	if d.Audit != nil {
-		_ = d.Audit.Record(ctx, ev)
+	if d.Audit == nil {
+		return
+	}
+	if err := d.Audit.Record(ctx, ev); err != nil {
+		d.logger().WarnContext(ctx, "audit record failed",
+			"action", ev.Action, "error", err)
 	}
 }
 

@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -38,6 +39,7 @@ type Deps struct {
 	Validations ValidationReader // may be nil → task validation 404s
 	AZ          authz.Authorizer
 	Audit       audit.Recorder
+	Logger      *slog.Logger // audit write failures; nil → slog.Default()
 }
 
 // Service is the executions application service.
@@ -49,6 +51,9 @@ type Service struct {
 func New(d Deps) *Service {
 	if d.Repo == nil || d.Workflows == nil {
 		panic("executions service: Repo and Workflows are required")
+	}
+	if d.Logger == nil {
+		d.Logger = slog.Default()
 	}
 	return &Service{d: d}
 }
@@ -63,7 +68,7 @@ func (s *Service) auditEvent(ctx context.Context, p authn.Principal,
 	if p.Kind == authn.KindService {
 		actor = audit.ActorService
 	}
-	_ = s.d.Audit.Record(ctx, audit.Event{
+	if err := s.d.Audit.Record(ctx, audit.Event{
 		Actor:    audit.Actor{Type: actor, ID: p.UserID.String()},
 		Action:   action,
 		Target:   audit.Target{Type: "workflow_execution", ID: targetID},
@@ -71,7 +76,10 @@ func (s *Service) auditEvent(ctx context.Context, p authn.Principal,
 		Reason:   reason,
 		TenantID: &tenantID,
 		Details:  details,
-	})
+	}); err != nil {
+		s.d.Logger.WarnContext(ctx, "audit record failed",
+			"action", action, "error", err)
+	}
 }
 
 func execResource(e executions.Execution) authz.Resource {

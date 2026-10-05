@@ -177,6 +177,7 @@ func cmdServe(parent context.Context, configPath string, lookupEnv config.Lookup
 		Factory: sdeps.Factory, Authorizer: authz.RBAC{},
 		Recorder: recorder, DialPolicy: sdeps.Policy,
 		Resolver: sdeps.Resolver, Enqueuer: pool,
+		Logger: logger,
 	})
 	reg.Register(clustersync.UnreachableChecker(clusterRepo), false)
 
@@ -184,6 +185,7 @@ func cmdServe(parent context.Context, configPath string, lookupEnv config.Lookup
 	projectSvc := projectsvc.NewService(projectRepo, projectRepo, projectRepo,
 		tenantRepo, clusterRepo, authz.RBAC{}, recorder)
 	projectSvc.SetEnqueuer(pool)
+	projectSvc.SetLogger(logger)
 	policySvc := policiesvc.NewService(policypg.New(pool), authz.RBAC{}, recorder)
 	accountingSvc := accountsvc.NewService(accountpg.New(pool), projectRepo, authz.RBAC{})
 	allocationRepo := allocationpg.New(pool)
@@ -242,6 +244,7 @@ func cmdServe(parent context.Context, configPath string, lookupEnv config.Lookup
 		Validations: vstore,
 		AZ:          authz.RBAC{},
 		Audit:       recorder,
+		Logger:      logger,
 	})
 
 	mux := http.NewServeMux()
