@@ -236,7 +236,7 @@ func (d Deps) setBinding(ctx context.Context, b projects.ClusterBinding, state s
 	}
 	action := TransitionAudit(old, state)
 	if action != "" && d.Audit != nil {
-		_ = d.Audit.Record(ctx, audit.Event{Actor: audit.Actor{Type: audit.ActorSystem, ID: "custos"}, TenantID: &updated.TenantID, Action: action, Target: audit.Target{Type: "project_cluster_binding", ID: b.ID.String()}, Result: audit.ResultAllow, Details: map[string]any{"codes": driftCodes(drift)}})
+		audit.RecordBestEffort(ctx, nil, d.Audit, audit.Event{Actor: audit.Actor{Type: audit.ActorSystem, ID: "custos"}, TenantID: &updated.TenantID, Action: action, Target: audit.Target{Type: "project_cluster_binding", ID: b.ID.String()}, Result: audit.ResultAllow, Details: map[string]any{"codes": driftCodes(drift)}})
 	}
 	return nil
 }

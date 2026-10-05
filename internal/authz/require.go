@@ -34,7 +34,9 @@ func Require(ctx context.Context, az Authorizer, p authn.Principal,
 		if id, perr := uuid.Parse(res.TenantID); perr == nil {
 			tenantID = &id
 		}
-		if rerr := rec.Record(ctx, audit.Event{
+		// An audit failure must not turn a deny into an allow; the
+		// deny stands either way.
+		audit.RecordBestEffort(ctx, nil, rec, audit.Event{
 			Actor:    audit.Actor{Type: actorType, ID: p.UserID.String()},
 			Action:   "authz.denied",
 			Target:   audit.Target{Type: res.Kind, ID: res.ID},
@@ -42,11 +44,7 @@ func Require(ctx context.Context, az Authorizer, p authn.Principal,
 			Reason:   reason,
 			TenantID: tenantID,
 			Details:  map[string]any{"action": string(action)},
-		}); rerr != nil {
-			// An audit failure must not turn a deny into an allow; the
-			// deny stands either way.
-			_ = rerr
-		}
+		})
 	}
 	return apperr.New(apperr.Forbidden, "FORBIDDEN", "forbidden")
 }
