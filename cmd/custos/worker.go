@@ -167,6 +167,7 @@ func cmdWorker(parent context.Context, configPath string, lookupEnv config.Looku
 	}
 	projectService := projectsvc.NewService(projectRepo, projectRepo, projectRepo, tenantRepo, clusterRepo, authz.RBAC{}, recorder)
 	projectService.SetEnqueuer(pool)
+	projectService.SetLogger(logger)
 	execDeps := engine.Deps{
 		Execs:           execpg.New(pool),
 		Workflows:       wfpg.New(pool),
@@ -187,6 +188,7 @@ func cmdWorker(parent context.Context, configPath string, lookupEnv config.Looku
 		Jobs:        jobpg.New(pool),
 		Audit:       recorder,
 		Metrics:     vdeps.Metrics,
+		Logger:      logger,
 	}
 	q.Register(engine.KindAdvance, engine.Advance(execDeps))
 	q.Register(engine.KindAdmit, engine.Admit(execDeps))

@@ -1,9 +1,12 @@
 package service_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -174,6 +177,54 @@ func TestNormalExecutionNeedsNoCreatePermission(t *testing.T) {
 	}
 	if len(authorizer.actions) != 1 || authorizer.actions[0] != authz.WorkflowExecute {
 		t.Fatalf("normal execution permissions = %v", authorizer.actions)
+	}
+}
+
+// failingAudit fails every Record call.
+type failingAudit struct{ calls int }
+
+func (a *failingAudit) Record(context.Context, audit.Event) error {
+	a.calls++
+	return errors.New("audit sink down")
+}
+
+func TestAuditWriteFailureLogsWarnAndContinues(t *testing.T) {
+	tenantID, projectID, workflowID, versionID, userID :=
+		uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	now := time.Now().UTC()
+	wfRepo := &testWorkflowRepository{
+		workflow: workflows.Workflow{
+			ID: workflowID, TenantID: tenantID, ProjectID: projectID,
+			Name: "test", CreatedBy: userID,
+		},
+		version: workflows.Version{
+			ID: versionID, WorkflowID: workflowID, TenantID: tenantID,
+			Number: 1, State: workflows.VersionPublished,
+			Spec:     []byte(`{"apiVersion":"custos.io/v1alpha1","kind":"Workflow","metadata":{"name":"test"},"spec":{"tasks":[]}}`),
+			SpecHash: [32]byte{1}, Version: 1, CreatedAt: now,
+		},
+	}
+	repo := &testExecutionRepository{}
+	rec := &failingAudit{}
+	var logs bytes.Buffer
+	service := execsvc.New(execsvc.Deps{
+		Repo: repo, Workflows: wfRepo, AZ: &testAuthorizer{},
+		Audit:  rec,
+		Logger: slog.New(slog.NewTextHandler(&logs, nil)),
+	})
+	principal := authn.Principal{UserID: userID, Kind: authn.KindUser}
+	tenant := tenants.TenantContext{Tenant: tenants.Tenant{ID: tenantID}}
+	if _, err := service.Execute(context.Background(), principal, tenant,
+		execsvc.ExecuteInput{WorkflowID: workflowID, VersionID: &versionID},
+		"audit-fail", [32]byte{1}); err != nil {
+		t.Fatalf("Execute must not fail on audit write errors: %v", err)
+	}
+	if repo.created == nil || rec.calls != 1 {
+		t.Fatalf("execution created=%v audit calls=%d", repo.created != nil, rec.calls)
+	}
+	if !strings.Contains(logs.String(), "audit record failed") ||
+		!strings.Contains(logs.String(), "workflow.execution.submitted") {
+		t.Fatalf("missing audit failure warning:\n%s", logs.String())
 	}
 }
 

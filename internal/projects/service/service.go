@@ -5,6 +5,7 @@ package service
 
 import (
 	"context"
+	"log/slog"
 	"slices"
 	"strings"
 
@@ -32,6 +33,7 @@ type Service struct {
 	az         authz.Authorizer
 	rec        audit.Recorder
 	enq        workqueue.Execer
+	logger     *slog.Logger
 }
 
 // NewService wires the project service.
@@ -40,11 +42,19 @@ func NewService(repo projects.Repository, members projects.MembershipRepository,
 	crepo clusters.Repository,
 	az authz.Authorizer, rec audit.Recorder) *Service {
 	return &Service{repo: repo, members: members, bindings: bindings,
-		tenantRepo: tenantRepo, clusters: crepo, az: az, rec: rec}
+		tenantRepo: tenantRepo, clusters: crepo, az: az, rec: rec,
+		logger: slog.Default()}
 }
 
 // SetEnqueuer installs the shared workqueue executor for policy rechecks.
 func (s *Service) SetEnqueuer(ex workqueue.Execer) { s.enq = ex }
+
+// SetLogger sets the logger for best-effort audit write failures.
+func (s *Service) SetLogger(l *slog.Logger) {
+	if l != nil {
+		s.logger = l
+	}
+}
 
 func (s *Service) enqueuePolicySync(ctx context.Context, clusterID uuid.UUID) error {
 	if s.enq == nil {
@@ -101,14 +111,17 @@ func (s *Service) audit(ctx context.Context, p authn.Principal, tenantID uuid.UU
 	if s.rec == nil {
 		return
 	}
-	_ = s.rec.Record(ctx, audit.Event{
+	if err := s.rec.Record(ctx, audit.Event{
 		Actor:    actorOf(p),
 		Action:   action,
 		Target:   audit.Target{Type: targetType, ID: targetID},
 		Result:   audit.ResultAllow,
 		TenantID: &tenantID,
 		Details:  details,
-	})
+	}); err != nil {
+		s.logger.WarnContext(ctx, "audit record failed",
+			"action", action, "error", err)
+	}
 }
 
 func res(tc tenants.TenantContext, pc projects.ProjectContext) authz.Resource {

@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/url"
 	"regexp"
 	"slices"
@@ -47,6 +48,7 @@ type Deps struct {
 	DialPolicy httpclient.DialPolicy
 	Resolver   secrets.Resolver
 	Enqueuer   workqueue.Execer // pool; used for sync enqueue outside txs
+	Logger     *slog.Logger     // audit write failures; nil → slog.Default()
 }
 
 // Service implements cluster use-cases.
@@ -59,13 +61,19 @@ type Service struct {
 	policy   httpclient.DialPolicy
 	resolver secrets.Resolver
 	enq      workqueue.Execer
+	logger   *slog.Logger
 }
 
 // New builds the service.
 func New(d Deps) *Service {
+	logger := d.Logger
+	if logger == nil {
+		logger = slog.Default()
+	}
 	return &Service{repo: d.Repository, tenants: d.Tenants,
 		factory: d.Factory, az: d.Authorizer, rec: d.Recorder,
-		policy: d.DialPolicy, resolver: d.Resolver, enq: d.Enqueuer}
+		policy: d.DialPolicy, resolver: d.Resolver, enq: d.Enqueuer,
+		logger: logger}
 }
 
 func actorOf(p authn.Principal) audit.Actor {
@@ -81,13 +89,16 @@ func (s *Service) audit(ctx context.Context, p authn.Principal, action,
 	if s.rec == nil {
 		return
 	}
-	_ = s.rec.Record(ctx, audit.Event{
+	if err := s.rec.Record(ctx, audit.Event{
 		Actor:   actorOf(p),
 		Action:  action,
 		Target:  audit.Target{Type: "cluster", ID: targetID},
 		Result:  result,
 		Details: details,
-	})
+	}); err != nil {
+		s.logger.WarnContext(ctx, "audit record failed",
+			"action", action, "error", err)
+	}
 }
 
 func (s *Service) check(ctx context.Context, p authn.Principal,
