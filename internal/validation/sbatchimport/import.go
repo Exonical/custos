@@ -8,6 +8,7 @@ package sbatchimport
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"regexp"
 	"sort"
@@ -99,13 +100,15 @@ func parseArray(v string) (*workflowspec.ArraySpec, bool) {
 		return nil, false
 	}
 	a := &workflowspec.ArraySpec{}
-	a.Start, _ = strconv.Atoi(m[1])
-	a.End, _ = strconv.Atoi(m[2])
-	if m[3] != "" {
-		a.Step, _ = strconv.Atoi(m[3])
-	}
-	if m[4] != "" {
-		a.MaxConcurrent, _ = strconv.Atoi(m[4])
+	for i, dst := range []*int{&a.Start, &a.End, &a.Step, &a.MaxConcurrent} {
+		if m[i+1] == "" {
+			continue
+		}
+		n, err := strconv.Atoi(m[i+1])
+		if err != nil {
+			return nil, false
+		}
+		*dst = n
 	}
 	return a, true
 }
@@ -127,9 +130,15 @@ func gpuOf(v string) (workflowspec.GPURequest, bool) {
 	if n, err := strconv.Atoi(m[1]); err == nil {
 		// gpu:N — a bare count carries no type.
 		g.Type, g.Count = "", n
+	} else if errors.Is(err, strconv.ErrRange) {
+		return workflowspec.GPURequest{}, false
 	}
 	if m[2] != "" {
-		g.Count, _ = strconv.Atoi(m[2])
+		n, err := strconv.Atoi(m[2])
+		if err != nil {
+			return workflowspec.GPURequest{}, false
+		}
+		g.Count = n
 	}
 	return g, true
 }
