@@ -76,7 +76,7 @@ func TestReconcileReschedulesObserved(t *testing.T) {
 
 	j := mkJob(t, tid, pid, cid, uid)
 	fc := fake.New()
-	ref, err := fc.SubmitJob(ctx, slurm.JobSubmission{Name: "custos-" + j.ID.String()})
+	ref, err := fc.SubmitJob(ctx, slurm.JobSubmission{Name: slurm.CustosJobName(j.ID)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -201,7 +201,7 @@ func TestSweepPersistsDiscoveredSlurmIDForCompletedJob(t *testing.T) {
 	}
 
 	fc := fake.New()
-	ref, err := fc.SubmitJob(ctx, slurm.JobSubmission{Name: "custos-" + j.ID.String()})
+	ref, err := fc.SubmitJob(ctx, slurm.JobSubmission{Name: slurm.CustosJobName(j.ID)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -238,7 +238,7 @@ func TestSubmitAdoptsCompletedAccountingRecord(t *testing.T) {
 	}
 	fc := fake.New()
 	sid := uint32(91)
-	fc.SetJobRecords([]slurm.JobRecord{{ID: slurm.JobID{ID: sid}, Name: "custos-" + j.ID.String(), State: slurm.JobCompleted, EndTime: time.Now().UTC()}})
+	fc.SetJobRecords([]slurm.JobRecord{{ID: slurm.JobID{ID: sid}, Name: slurm.CustosJobName(j.ID), State: slurm.JobCompleted, EndTime: time.Now().UTC()}})
 	d := worker.Deps{Jobs: repo, Clusters: clusterpg.New(pool), Factory: fakeFactory{fc}, Exec: pool, Metrics: worker.NewMetrics(nil, repo)}
 	payload := []byte(fmt.Sprintf(`{"job_id":%q}`, j.ID.String()))
 	if err := worker.Submit(d)(ctx, workqueue.Item{Kind: "job.submit", Key: "job:" + j.ID.String(), Payload: payload}); err != nil {
@@ -309,7 +309,7 @@ func TestSubmitUniqueSlurmIDConflictUsesNormalBackoff(t *testing.T) {
 		t.Fatal(err)
 	}
 	fc := fake.New()
-	fc.SetJobRecords([]slurm.JobRecord{{ID: slurm.JobID{ID: uint32(sid)}, Name: "custos-" + j.ID.String(), State: slurm.JobPending, EndTime: time.Now().UTC()}})
+	fc.SetJobRecords([]slurm.JobRecord{{ID: slurm.JobID{ID: uint32(sid)}, Name: slurm.CustosJobName(j.ID), State: slurm.JobPending, EndTime: time.Now().UTC()}})
 	d := worker.Deps{Jobs: repo, Clusters: clusterpg.New(pool), Factory: fakeFactory{fc}, Exec: pool}
 	payload := []byte(fmt.Sprintf(`{"job_id":%q}`, j.ID.String()))
 	err := worker.Submit(d)(ctx, workqueue.Item{Kind: "job.submit", Key: "job:" + j.ID.String(), Payload: payload})
@@ -338,7 +338,7 @@ func TestSubmitAdoptionVersionConflictCeiling(t *testing.T) {
 		t.Fatal(err)
 	}
 	fc := fake.New()
-	fc.SetJobRecords([]slurm.JobRecord{{ID: slurm.JobID{ID: 91}, Name: "custos-" + j.ID.String(), State: slurm.JobCompleted, EndTime: time.Now().UTC()}})
+	fc.SetJobRecords([]slurm.JobRecord{{ID: slurm.JobID{ID: 91}, Name: slurm.CustosJobName(j.ID), State: slurm.JobCompleted, EndTime: time.Now().UTC()}})
 	conflicts := &optimisticConflictRepo{Repository: base}
 	d := worker.Deps{Jobs: conflicts, Clusters: clusterpg.New(pool), Factory: fakeFactory{fc}, Exec: pool}
 	h := worker.Submit(d)

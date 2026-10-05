@@ -187,7 +187,7 @@ func TestJobSubmissionPure(t *testing.T) {
 			sub.Walltime == time.Duration(spec.Resources.WalltimeSeconds)*time.Second &&
 			sub.Account == spec.Account && sub.Partition == spec.Partition &&
 			sub.QoS == spec.QoS && sub.Script == w &&
-			sub.Name == "custos-"+spec.ID.String()
+			sub.Name == slurm.CustosJobName(spec.ID)
 	}
 	if err := quick.Check(f, &quick.Config{MaxCount: 200}); err != nil {
 		t.Fatal(err)
