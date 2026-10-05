@@ -613,8 +613,8 @@ func JobSubmission(spec admission.ExecutionSpec, wrapper string) slurm.JobSubmis
 		env[ref.Name] = "[SECRET]"
 	}
 	sub := slurm.JobSubmission{
-		Name:        "custos-" + spec.ID.String(),
-		Comment:     "custos:" + spec.ID.String() + "/" + spec.TaskName,
+		Name:        slurm.CustosJobName(spec.ID),
+		Comment:     slurm.CustosJobComment(spec.ID, spec.TaskName),
 		Account:     spec.Account,
 		Partition:   spec.Partition,
 		QoS:         spec.QoS,

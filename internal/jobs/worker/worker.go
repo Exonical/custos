@@ -110,8 +110,8 @@ func Submit(d Deps) workqueue.Handler {
 		if err != nil {
 			return err
 		}
-		wantName := "custos-" + j.ID.String()
-		wantComment := "custos:" + j.ID.String() + "/" + j.ExecutionSpec.TaskName
+		wantName := slurm.CustosJobName(j.ID)
+		wantComment := slurm.CustosJobComment(j.ID, j.ExecutionSpec.TaskName)
 
 		// Lost-submit safety: a prior attempt may have submitted but
 		// lost the response. Check the scheduler by name first; the
@@ -574,7 +574,7 @@ func Reconcile(d Deps) workqueue.Handler {
 		if err != nil {
 			return err
 		}
-		if sj.Name != "custos-"+j.ID.String() {
+		if sj.Name != slurm.CustosJobName(j.ID) {
 			return lostOrRetry(ctx, d, j, acct)
 		}
 		// Self-reschedule: the leased item itself becomes the next run.
@@ -657,7 +657,7 @@ func reconcileInterval(j jobs.Job) time.Duration {
 // still know the job; after 10 minutes unknown, the job is LOST.
 func lostOrRetry(ctx context.Context, d Deps, j jobs.Job,
 	acct slurm.Accounting) error {
-	name := "custos-" + j.ID.String()
+	name := slurm.CustosJobName(j.ID)
 	if acct != nil {
 		since := time.Now().Add(-24 * time.Hour)
 		if recs, err := acct.GetJobRecords(ctx, slurm.JobRecordFilter{
@@ -766,7 +766,7 @@ func Cancel(d Deps) workqueue.Handler {
 		if err != nil {
 			return err
 		}
-		if sj.Name != "custos-"+j.ID.String() {
+		if sj.Name != slurm.CustosJobName(j.ID) {
 			return enqueueReconcile(ctx, d, j.ID, time.Now(), 2*time.Second)
 		}
 		if err := cl.CancelJob(ctx, sid, slurm.CancelOptions{}); err != nil &&
@@ -837,8 +837,8 @@ func cancelOrphanByName(ctx context.Context, d Deps, j jobs.Job) error {
 	if err != nil {
 		return err
 	}
-	wantName := "custos-" + j.ID.String()
-	wantComment := "custos:" + j.ID.String() + "/" + j.ExecutionSpec.TaskName
+	wantName := slurm.CustosJobName(j.ID)
+	wantComment := slurm.CustosJobComment(j.ID, j.ExecutionSpec.TaskName)
 	found, err := findByName(ctx, cl, acct, wantName)
 	if err != nil {
 		return err
@@ -935,7 +935,7 @@ func Sweep(d Deps) workqueue.Handler {
 		}
 		byName := map[string]slurm.Job{}
 		for _, sj := range list {
-			if strings.HasPrefix(sj.Name, "custos-") {
+			if _, ok := slurm.ParseCustosJobName(sj.Name); ok {
 				byName[sj.Name] = sj
 			}
 		}
@@ -944,7 +944,7 @@ func Sweep(d Deps) workqueue.Handler {
 			return err
 		}
 		for _, j := range active {
-			expectedName := "custos-" + j.ID.String()
+			expectedName := slurm.CustosJobName(j.ID)
 			sj, ok := byName[expectedName]
 			if ok && sj.Name != expectedName {
 				ok = false

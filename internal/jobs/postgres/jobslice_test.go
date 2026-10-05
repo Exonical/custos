@@ -271,8 +271,8 @@ func TestSubmitInvariant(t *testing.T) {
 	if s.Walltime != 4*time.Hour || s.Nodes != 2 {
 		t.Fatalf("resources %+v", s)
 	}
-	if s.Name != "custos-"+j.ID.String() ||
-		s.Comment != "custos:"+j.ID.String()+"/adhoc" {
+	if s.Name != slurm.CustosJobName(j.ID) ||
+		s.Comment != slurm.CustosJobComment(j.ID, "adhoc") {
 		t.Fatalf("name/comment: %q %q", s.Name, s.Comment)
 	}
 	// The wrapper carries the payload but no directives.

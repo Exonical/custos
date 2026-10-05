@@ -140,8 +140,8 @@ func TestSweepCanceledFindsAndCancelsLiveOrphan(t *testing.T) {
 	}
 	fc := fake.New()
 	ref, err := fc.SubmitJob(ctx, slurm.JobSubmission{
-		Name:    "custos-" + j.ID.String(),
-		Comment: "custos:" + j.ID.String() + "/" + j.ExecutionSpec.TaskName,
+		Name:    slurm.CustosJobName(j.ID),
+		Comment: slurm.CustosJobComment(j.ID, j.ExecutionSpec.TaskName),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -191,8 +191,8 @@ func TestSweepCanceledIsNoopForMissingOrNonCanceledJobs(t *testing.T) {
 			if tc.seedSlurm {
 				fc = fake.New()
 				ref, err := fc.SubmitJob(ctx, slurm.JobSubmission{
-					Name:    "custos-" + j.ID.String(),
-					Comment: "custos:" + j.ID.String() + "/" + j.ExecutionSpec.TaskName,
+					Name:    slurm.CustosJobName(j.ID),
+					Comment: slurm.CustosJobComment(j.ID, j.ExecutionSpec.TaskName),
 				})
 				if err != nil {
 					t.Fatal(err)

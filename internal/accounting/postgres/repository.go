@@ -15,6 +15,7 @@ import (
 	"github.com/Exonical/custos/internal/accounting"
 	"github.com/Exonical/custos/internal/platform/apperr"
 	"github.com/Exonical/custos/internal/platform/db"
+	"github.com/Exonical/custos/internal/slurm"
 	"github.com/Exonical/custos/internal/tenants"
 )
 
@@ -54,7 +55,7 @@ func (r *Repository) Store(ctx context.Context, clusterID uuid.UUID, records []a
 			rec.ClusterID = clusterID
 			var jobID, tenantID, projectID, userID uuid.UUID
 			var err error
-			if namedID, ok := custosJobID(rec.SlurmJobName); ok {
+			if namedID, ok := slurm.ParseCustosJobName(rec.SlurmJobName); ok {
 				err = tx.QueryRow(ctx, `SELECT id,tenant_id,project_id,created_by FROM jobs WHERE cluster_id=$1 AND id=$2 AND name=$3`, clusterID, namedID, rec.SlurmJobName).Scan(&jobID, &tenantID, &projectID, &userID)
 			} else {
 				err = pgx.ErrNoRows
@@ -120,15 +121,6 @@ func (r *Repository) Store(ctx context.Context, clusterID uuid.UUID, records []a
 	})
 	return result, err
 }
-func custosJobID(name string) (uuid.UUID, bool) {
-	const prefix = "custos-"
-	if len(name) <= len(prefix) || name[:len(prefix)] != prefix {
-		return uuid.Nil, false
-	}
-	id, err := uuid.Parse(name[len(prefix):])
-	return id, err == nil
-}
-
 func nilTime(t time.Time) any {
 	if t.IsZero() {
 		return nil
