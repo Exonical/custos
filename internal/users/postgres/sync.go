@@ -287,11 +287,8 @@ func (r *Repository) SyncIDPClaims(ctx context.Context, userID uuid.UUID,
 			for gid := range d.groups {
 				desiredGroups[[2]uuid.UUID{tenantID, gid}] = true
 				key := [2]uuid.UUID{tenantID, gid}
-				if src, ok := curGroupSet[key]; ok {
-					if src == "manual" {
-						continue // manual wins
-					}
-					continue // already idp member
+				if _, ok := curGroupSet[key]; ok {
+					continue // existing manual or idp member: leave untouched
 				}
 				gtag, err := tx.Exec(ctx, upsertIDPGroupMembership,
 					tenantID, gid, userID)
