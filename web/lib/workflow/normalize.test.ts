@@ -50,6 +50,30 @@ describe("normalizeWorkflowSpec", () => {
     });
   });
 
+  it("resolves launch from explicit values before legacy mpi and multinode defaults", () => {
+    const tasks = [
+      { name: "explicit-sbatch", type: "mpi", launch: "sbatch", multinode: { nodes: 2, implementation: "mpich" } },
+      { name: "explicit-srun", launch: "srun" },
+      { name: "legacy-mpi", type: "mpi" },
+      { name: "mpich", multinode: { nodes: 2, implementation: "mpich" } },
+      { name: "invalid-launch", launch: "mpirun" },
+      { name: "invalid-launch-mpi", type: "mpi", launch: "mpirun" },
+      { name: "generic", multinode: { nodes: 2, implementation: "generic" } },
+      { name: "default" },
+    ];
+    const result = normalizeWorkflowSpec({ spec: { tasks } });
+    expect(result.spec.tasks.map((task) => [task.name, task.launch])).toEqual([
+      ["explicit-sbatch", "sbatch"],
+      ["explicit-srun", "srun"],
+      ["legacy-mpi", "srun"],
+      ["mpich", "srun"],
+      ["invalid-launch", "sbatch"],
+      ["invalid-launch-mpi", "srun"],
+      ["generic", "sbatch"],
+      ["default", "sbatch"],
+    ]);
+  });
+
   it("preserves supported spec values and accepts number parameters defensively", () => {
     const result = normalizeWorkflowSpec({
       apiVersion: "custos.io/v1alpha1",

@@ -146,6 +146,13 @@ export function taskKind(task: Task): TaskKind | undefined {
   return specialKinds.find((candidate) => candidate === value);
 }
 
+function resolveLaunch(source: Record<string, unknown>, rawType: string | undefined, multinodeSrun: boolean): "srun" | "sbatch" {
+  if (source.launch === "srun" || source.launch === "sbatch") return source.launch;
+  // Legacy mpi and MPI multinode implementations use srun by default.
+  if (rawType === "mpi" || multinodeSrun) return "srun";
+  return "sbatch";
+}
+
 function normalizeTask(value: unknown): Task | undefined {
   const source = record(value);
   const name = text(source?.name);
@@ -156,8 +163,7 @@ function normalizeTask(value: unknown): Task | undefined {
   const multinodeSrun = multinodeImplementation === "openmpi" || multinodeImplementation === "mpich";
   const task: Task = {
     name,
-    // Legacy mpi and MPI multinode implementations use srun by default.
-    launch: source.launch === "srun" || source.launch === "sbatch" ? source.launch : rawType === "mpi" || multinodeSrun ? "srun" : "sbatch",
+    launch: resolveLaunch(source, rawType, multinodeSrun),
     dependsOn: strings(source.dependsOn) ?? [],
   };
   const kind = specialKinds.find((candidate) => candidate === rawType);
