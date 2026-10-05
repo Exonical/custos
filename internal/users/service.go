@@ -151,8 +151,9 @@ func claimsHash(claims map[string][]string) []byte {
 	return sum[:]
 }
 
-// reconcile runs claim sync when due. Failures are logged and counted —
-// the request proceeds with whatever memberships exist.
+// reconcile runs claim sync when due. Sync and audit-write failures are
+// logged and counted — the request proceeds with whatever memberships
+// exist.
 func (s *Service) reconcile(ctx context.Context, u User, p authn.Principal) {
 	claims := s.claimsMap(p)
 	hash := claimsHash(claims)
@@ -196,14 +197,19 @@ func (s *Service) reconcile(ctx context.Context, u User, p authn.Principal) {
 			target.Type = "group"
 			target.ID = ev.GroupID.String()
 		}
-		_ = s.rec.Record(ctx, audit.Event{
+		if err := s.rec.Record(ctx, audit.Event{
 			Actor:    actorOf(p),
 			Action:   ev.Action,
 			Result:   audit.ResultAllow,
 			Target:   target,
 			TenantID: &ev.TenantID,
 			Details:  details,
-		})
+		}); err != nil {
+			s.countSync(ctx, "audit_error")
+			s.logger.WarnContext(ctx, "claim reconciliation audit failed",
+				"user_id", u.ID, "tenant_id", ev.TenantID, "action", ev.Action,
+				"error", err)
+		}
 	}
 }
 
