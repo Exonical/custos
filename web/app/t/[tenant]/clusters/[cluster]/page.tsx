@@ -1,7 +1,5 @@
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
-import { ApiAccessDenied } from "@/components/api-access-denied";
 import { ApiErrorNotice } from "@/components/api-error-notice";
 import { BreadcrumbEntity } from "@/components/tenant-shell";
 import { ClusterPartitionsTab } from "@/components/cluster-partitions-tab";
@@ -9,6 +7,7 @@ import { ClusterSettingsForm } from "@/components/clusters/cluster-settings-form
 import { RefreshJobButton } from "@/components/jobs/refresh-job-button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { createApiClient, toApiError } from "@/lib/api/client";
+import { loginRedirectIfUnauthorized, resolveApiError } from "@/lib/api/resolve-api-error";
 import { requireServerSession } from "@/lib/session/server";
 
 export default async function ClusterDetailPage({ params }: { params: Promise<{ tenant: string; cluster: string }> }) {
@@ -20,26 +19,16 @@ export default async function ClusterDetailPage({ params }: { params: Promise<{ 
     api.GET("/tenants/{tenant}/clusters/{cluster}", { params: { path: { tenant, cluster } } }),
     api.GET("/tenants/{tenant}/clusters/{cluster}/partitions", { params: { path: { tenant, cluster } } }),
   ]);
-  if (clusterResponse.error) {
-    if (clusterResponse.response.status === 401) redirect(`/auth/login?returnTo=${encodeURIComponent(returnTo)}`);
-    if (clusterResponse.response.status === 404) notFound();
-    if (clusterResponse.response.status === 403) return <ApiAccessDenied view="Cluster details" />;
-    return <ApiErrorNotice error={toApiError(clusterResponse.error, clusterResponse.response.status)} />;
-  }
-  if (partitionsResponse.error) {
-    if (partitionsResponse.response.status === 401) redirect(`/auth/login?returnTo=${encodeURIComponent(returnTo)}`);
-    if (partitionsResponse.response.status === 404) notFound();
-    if (partitionsResponse.response.status === 403) return <ApiAccessDenied view="Cluster partitions" />;
-    return <ApiErrorNotice error={toApiError(partitionsResponse.error, partitionsResponse.response.status)} />;
-  }
+  if (clusterResponse.error) return resolveApiError(clusterResponse, { returnTo, view: "Cluster details" });
+  if (partitionsResponse.error) return resolveApiError(partitionsResponse, { returnTo, view: "Cluster partitions" });
 
   const current = clusterResponse.data;
   const clusterSettingsResponse = await api.GET("/clusters/{cluster}", { params: { path: { cluster: current.id } } });
-  if (clusterSettingsResponse.response.status === 401) redirect(`/auth/login?returnTo=${encodeURIComponent(returnTo)}`);
+  loginRedirectIfUnauthorized(clusterSettingsResponse.response.status, returnTo);
   const meResponse = clusterSettingsResponse.response.status === 200
     ? await api.GET("/me", {})
     : undefined;
-  if (meResponse?.response.status === 401) redirect(`/auth/login?returnTo=${encodeURIComponent(returnTo)}`);
+  if (meResponse) loginRedirectIfUnauthorized(meResponse.response.status, returnTo);
   const showSettingsTab = clusterSettingsResponse.response.status !== 403;
   const settingsError = clusterSettingsResponse.error
     ? toApiError(clusterSettingsResponse.error, clusterSettingsResponse.response.status)

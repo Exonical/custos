@@ -1,11 +1,11 @@
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
+import { redirect } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
-import { ApiAccessDenied } from "@/components/api-access-denied";
 import { ApiErrorNotice } from "@/components/api-error-notice";
 import { BreadcrumbEntity } from "@/components/tenant-shell";
 import { WorkflowEditor } from "@/components/workflows/workflow-editor";
 import { createApiClient, parseWorkflowVersion, toApiError } from "@/lib/api/client";
+import { loginRedirectIfUnauthorized, resolveApiError } from "@/lib/api/resolve-api-error";
 import { requireServerSession } from "@/lib/session/server";
 import { stringify } from "yaml";
 
@@ -23,18 +23,8 @@ export default async function WorkflowVersionEditorPage({
     api.GET("/tenants/{tenant}/workflows/{workflow}", { params: { path: { tenant, workflow: workflowId } } }),
     api.GET("/tenants/{tenant}/workflows/{workflow}/versions/{version}", { params: { path } }),
   ]);
-  if (workflowResponse.error) {
-    if (workflowResponse.response.status === 401) redirect(`/auth/login?returnTo=${encodeURIComponent(returnTo)}`);
-    if (workflowResponse.response.status === 404) notFound();
-    if (workflowResponse.response.status === 403) return <ApiAccessDenied view="Workflow" />;
-    return <ApiErrorNotice error={toApiError(workflowResponse.error, workflowResponse.response.status)} />;
-  }
-  if (versionResponse.response.status !== 200 || !versionResponse.data) {
-    if (versionResponse.response.status === 401) redirect(`/auth/login?returnTo=${encodeURIComponent(returnTo)}`);
-    if (versionResponse.response.status === 404) notFound();
-    if (versionResponse.response.status === 403) return <ApiAccessDenied view="Workflow version" />;
-    return <ApiErrorNotice error={toApiError(undefined, versionResponse.response.status)} />;
-  }
+  if (workflowResponse.error) return resolveApiError(workflowResponse, { returnTo, view: "Workflow" });
+  if (versionResponse.response.status !== 200 || !versionResponse.data) return resolveApiError({ response: versionResponse.response }, { returnTo, view: "Workflow version" });
   const version = parseWorkflowVersion(versionResponse.data);
   if (!version) return <ApiErrorNotice error={toApiError(undefined, 502)} />;
   if (version.state !== "draft") {
@@ -46,7 +36,7 @@ export default async function WorkflowVersionEditorPage({
     headers: { Accept: "application/yaml" },
     parseAs: "text",
   });
-  if (yamlResponse.response.status === 401) redirect(`/auth/login?returnTo=${encodeURIComponent(returnTo)}`);
+  loginRedirectIfUnauthorized(yamlResponse.response.status, returnTo);
   const yaml = yamlResponse.response.status === 200 && typeof yamlResponse.data === "string"
     ? yamlResponse.data
     : stringify(version.spec, { lineWidth: 0 });

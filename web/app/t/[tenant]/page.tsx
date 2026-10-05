@@ -1,11 +1,10 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import { TenantDisplayName } from "@/components/tenant-shell";
-import { ApiErrorNotice } from "@/components/api-error-notice";
 import { Badge, StateBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { createApiClient, toApiError, type Job, type ProjectList, type TenantClusterList } from "@/lib/api/client";
+import { createApiClient, type Job, type ProjectList, type TenantClusterList } from "@/lib/api/client";
+import { resolveApiError } from "@/lib/api/resolve-api-error";
 import { requireServerSession } from "@/lib/session/server";
 
 const JOB_STATES = ["SUBMITTING", "QUEUED", "RUNNING", "COMPLETED", "FAILED", "CANCELED"] as const;
@@ -28,23 +27,16 @@ export default async function TenantDashboard({ params }: { params: Promise<{ te
     api.GET("/tenants/{tenant}/jobs", { params: { path: { tenant }, query: { limit: 100 } } }),
   ]);
 
-  if (projectResponse.error) {
-    if (projectResponse.response.status === 401) redirect(`/auth/login?returnTo=${encodeURIComponent(`/t/${tenant}`)}`);
-    return <ApiErrorNotice error={toApiError(projectResponse.error, projectResponse.response.status)} />;
-  }
-  if (clusterResponse.error) {
-    if (clusterResponse.response.status === 401) redirect(`/auth/login?returnTo=${encodeURIComponent(`/t/${tenant}`)}`);
-    return <ApiErrorNotice error={toApiError(clusterResponse.error, clusterResponse.response.status)} />;
-  }
+  if (projectResponse.error) return resolveApiError(projectResponse, { returnTo: `/t/${tenant}`, notFound: "notice" });
+  if (clusterResponse.error) return resolveApiError(clusterResponse, { returnTo: `/t/${tenant}`, notFound: "notice" });
 
   const projects: ProjectList["items"] = projectResponse.data.items;
   const clusters: TenantClusterList["items"] = clusterResponse.data.items;
   let jobs: Job[] = tenantJobResponse.error ? [] : tenantJobResponse.data.items;
 
   if (tenantJobResponse.error) {
-    if (tenantJobResponse.response.status === 401) redirect(`/auth/login?returnTo=${encodeURIComponent(`/t/${tenant}`)}`);
     if (tenantJobResponse.response.status !== 403) {
-      return <ApiErrorNotice error={toApiError(tenantJobResponse.error, tenantJobResponse.response.status)} />;
+      return resolveApiError(tenantJobResponse, { returnTo: `/t/${tenant}`, notFound: "notice" });
     }
     const responses = await Promise.all(projects.slice(0, 8).map((project) =>
       api.GET("/tenants/{tenant}/projects/{project}/jobs", {

@@ -1,5 +1,5 @@
-import { redirect } from "next/navigation";
 import { ApiError, createApiClient, toApiError, type ProjectList, type TenantClusterList } from "@/lib/api/client";
+import { loginRedirectIfUnauthorized, resolveApiError } from "@/lib/api/resolve-api-error";
 import { ApiErrorNotice } from "@/components/api-error-notice";
 import { JobsTable } from "@/components/jobs/jobs-table";
 import { requireServerSession } from "@/lib/session/server";
@@ -25,13 +25,8 @@ export default async function JobsPage({
     api.GET("/tenants/{tenant}/projects", { params: { path: { tenant }, query: { limit: 100 } } }),
     api.GET("/tenants/{tenant}/clusters", { params: { path: { tenant } } }),
   ]);
-  if (projectResponse.error) {
-    if (projectResponse.response.status === 401) redirect(`/auth/login?returnTo=${encodeURIComponent(`/t/${tenant}/jobs`)}`);
-    return <ApiErrorNotice error={toApiError(projectResponse.error, projectResponse.response.status)} />;
-  }
-  if (clusterResponse.error && clusterResponse.response.status === 401) {
-    redirect(`/auth/login?returnTo=${encodeURIComponent(`/t/${tenant}/jobs`)}`);
-  }
+  if (projectResponse.error) return resolveApiError(projectResponse, { returnTo: `/t/${tenant}/jobs`, notFound: "notice" });
+  loginRedirectIfUnauthorized(clusterResponse.response.status, `/t/${tenant}/jobs`);
   const projects: ProjectList["items"] = projectResponse.data.items;
   const clusters: TenantClusterList["items"] = clusterResponse.data?.items ?? [];
 
@@ -44,10 +39,7 @@ export default async function JobsPage({
         query: { cursor: cursor || undefined, limit: 50, state: state || undefined },
       },
     });
-    if (response.error) {
-      if (response.response.status === 401) redirect(`/auth/login?returnTo=${encodeURIComponent(`/t/${tenant}/jobs`)}`);
-      return <ApiErrorNotice error={toApiError(response.error, response.response.status)} />;
-    }
+    if (response.error) return resolveApiError(response, { returnTo: `/t/${tenant}/jobs`, notFound: "notice" });
     return <JobsTable tenant={tenant} jobs={response.data.items} projects={projects} clusters={clusters} selectedProject={selected.slug} selectedState={state} cursor={cursor} search={search} nextCursor={response.data.next_cursor ?? null} />;
   }
 
@@ -57,9 +49,8 @@ export default async function JobsPage({
   if (!tenantResponse.error) {
     return <JobsTable tenant={tenant} jobs={tenantResponse.data.items} projects={projects} clusters={clusters} selectedProject="" selectedState={state} cursor={cursor} search={search} nextCursor={tenantResponse.data.next_cursor ?? null} />;
   }
-  if (tenantResponse.response.status === 401) redirect(`/auth/login?returnTo=${encodeURIComponent(`/t/${tenant}/jobs`)}`);
   if (tenantResponse.response.status !== 403) {
-    return <ApiErrorNotice error={toApiError(tenantResponse.error, tenantResponse.response.status)} />;
+    return resolveApiError(tenantResponse, { returnTo: `/t/${tenant}/jobs`, notFound: "notice" });
   }
 
   if (projects.length === 0) return <ApiErrorNotice error={toApiError(tenantResponse.error, tenantResponse.response.status)} />;
@@ -67,9 +58,6 @@ export default async function JobsPage({
   const fallback = await api.GET("/tenants/{tenant}/projects/{project}/jobs", {
     params: { path: { tenant, project: firstProject.slug }, query: { cursor: cursor || undefined, limit: 50, state: state || undefined } },
   });
-  if (fallback.error) {
-    if (fallback.response.status === 401) redirect(`/auth/login?returnTo=${encodeURIComponent(`/t/${tenant}/jobs`)}`);
-    return <ApiErrorNotice error={toApiError(fallback.error, fallback.response.status)} />;
-  }
+  if (fallback.error) return resolveApiError(fallback, { returnTo: `/t/${tenant}/jobs`, notFound: "notice" });
   return <JobsTable tenant={tenant} jobs={fallback.data.items} projects={projects} clusters={clusters} selectedProject={firstProject.slug} selectedState={state} cursor={cursor} search={search} nextCursor={fallback.data.next_cursor ?? null} />;
 }

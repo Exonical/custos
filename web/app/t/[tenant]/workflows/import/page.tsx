@@ -1,10 +1,8 @@
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
-import { ApiAccessDenied } from "@/components/api-access-denied";
-import { ApiErrorNotice } from "@/components/api-error-notice";
 import { SbatchImport } from "@/components/workflows/sbatch-import";
 import { buttonVariants } from "@/components/ui/button";
-import { createApiClient, toApiError } from "@/lib/api/client";
+import { createApiClient } from "@/lib/api/client";
+import { resolveApiError } from "@/lib/api/resolve-api-error";
 import { requireServerSession } from "@/lib/session/server";
 
 export default async function WorkflowImportPage({ params }: {
@@ -17,12 +15,7 @@ export default async function WorkflowImportPage({ params }: {
   const response = await api.GET("/tenants/{tenant}/projects", {
     params: { path: { tenant }, query: { limit: 100 } },
   });
-  if (response.error) {
-    if (response.response.status === 401) redirect(`/auth/login?returnTo=${encodeURIComponent(returnTo)}`);
-    if (response.response.status === 404) notFound();
-    if (response.response.status === 403) return <ApiAccessDenied view="Projects" />;
-    return <ApiErrorNotice error={toApiError(response.error, response.response.status)} />;
-  }
+  if (response.error) return resolveApiError(response, { returnTo, view: "Projects" });
   const projects = response.data.items.filter((project) => project.state === "active");
   return (
     <div className="space-y-5">

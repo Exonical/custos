@@ -1,11 +1,9 @@
-import { notFound, redirect } from "next/navigation";
-import { ApiAccessDenied } from "@/components/api-access-denied";
-import { ApiErrorNotice } from "@/components/api-error-notice";
 import { AllocationBudgetBar } from "@/components/allocation-budget-bar";
 import { CursorPagination } from "@/components/cursor-pagination";
 import { UsageToolbar, type UsageGroupBy, type UsageMetric, type UsageRangePreset, type UsageTopBy } from "@/components/usage-toolbar";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { createApiClient, toApiError } from "@/lib/api/client";
+import { createApiClient } from "@/lib/api/client";
+import { resolveApiError } from "@/lib/api/resolve-api-error";
 import { formatDurationSeconds, formatHours, formatSecondsAsHours, formatUtcDateTime } from "@/lib/format";
 import { normalizeBarPercent, summarizeUsageRows } from "@/lib/usage";
 import { requireServerSession } from "@/lib/session/server";
@@ -61,30 +59,10 @@ export default async function UsagePage({
     api.GET("/tenants/{tenant}/accounting/allocations", { params: { path: { tenant } } }),
     api.GET("/tenants/{tenant}/projects", { params: { path: { tenant }, query: { limit: 100 } } }),
   ]);
-  if (response.error) {
-    if (response.response.status === 401) redirect(`/auth/login?returnTo=${encodeURIComponent(returnTo)}`);
-    if (response.response.status === 404) notFound();
-    if (response.response.status === 403) return <ApiAccessDenied view="Tenant usage" />;
-    return <ApiErrorNotice error={toApiError(response.error, response.response.status)} />;
-  }
-  if (topResponse.error) {
-    if (topResponse.response.status === 401) redirect(`/auth/login?returnTo=${encodeURIComponent(returnTo)}`);
-    if (topResponse.response.status === 404) notFound();
-    if (topResponse.response.status === 403) return <ApiAccessDenied view="Top accounting" />;
-    return <ApiErrorNotice error={toApiError(topResponse.error, topResponse.response.status)} />;
-  }
-  if (allocationResponse.error) {
-    if (allocationResponse.response.status === 401) redirect(`/auth/login?returnTo=${encodeURIComponent(returnTo)}`);
-    if (allocationResponse.response.status === 404) notFound();
-    if (allocationResponse.response.status === 403) return <ApiAccessDenied view="Tenant allocations" />;
-    return <ApiErrorNotice error={toApiError(allocationResponse.error, allocationResponse.response.status)} />;
-  }
-  if (projectsResponse.error) {
-    if (projectsResponse.response.status === 401) redirect(`/auth/login?returnTo=${encodeURIComponent(returnTo)}`);
-    if (projectsResponse.response.status === 404) notFound();
-    if (projectsResponse.response.status === 403) return <ApiAccessDenied view="Tenant projects" />;
-    return <ApiErrorNotice error={toApiError(projectsResponse.error, projectsResponse.response.status)} />;
-  }
+  if (response.error) return resolveApiError(response, { returnTo, view: "Tenant usage" });
+  if (topResponse.error) return resolveApiError(topResponse, { returnTo, view: "Top accounting" });
+  if (allocationResponse.error) return resolveApiError(allocationResponse, { returnTo, view: "Tenant allocations" });
+  if (projectsResponse.error) return resolveApiError(projectsResponse, { returnTo, view: "Tenant projects" });
 
   const rows = response.data.items;
   const topRows = topResponse.data.items;

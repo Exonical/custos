@@ -1,8 +1,7 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
-import { ApiErrorNotice } from "@/components/api-error-notice";
 import { TemplateTags } from "@/components/workflows/template-tags";
-import { createApiClient, toApiError } from "@/lib/api/client";
+import { createApiClient } from "@/lib/api/client";
+import { resolveApiError } from "@/lib/api/resolve-api-error";
 import { requireServerSession } from "@/lib/session/server";
 
 export default async function TemplatesPage({ params }: { params: Promise<{ tenant: string }> }) {
@@ -10,10 +9,7 @@ export default async function TemplatesPage({ params }: { params: Promise<{ tena
   const returnTo = `/t/${encodeURIComponent(tenant)}/templates`;
   const session = await requireServerSession(returnTo);
   const response = await createApiClient(session.accessToken).GET("/workflow-templates");
-  if (response.error) {
-    if (response.response.status === 401) redirect(`/auth/login?returnTo=${encodeURIComponent(returnTo)}`);
-    return <ApiErrorNotice error={toApiError(response.error, response.response.status)} />;
-  }
+  if (response.error) return resolveApiError(response, { returnTo, notFound: "notice" });
   const templates = response.data.items;
   return (
     <section className="space-y-6">
