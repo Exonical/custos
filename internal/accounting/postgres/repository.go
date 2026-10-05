@@ -24,7 +24,7 @@ type Repository struct{ pool *pgxpool.Pool }
 // New returns an accounting repository.
 func New(pool *pgxpool.Pool) *Repository { return &Repository{pool: pool} }
 
-//nolint:revive // Methods implement the accounting.Repository port.
+// Watermark implements accounting.Repository.
 func (r *Repository) Watermark(ctx context.Context, clusterID uuid.UUID) (accounting.Watermark, error) {
 	var w accounting.Watermark
 	w.ClusterID = clusterID
@@ -42,7 +42,7 @@ func (r *Repository) Watermark(ctx context.Context, clusterID uuid.UUID) (accoun
 	return w, err
 }
 
-//nolint:revive // Methods implement the accounting.Repository port.
+// Store implements accounting.Repository.
 func (r *Repository) Store(ctx context.Context, clusterID uuid.UUID, records []accounting.Record, watermark time.Time) (accounting.StoreResult, error) {
 	var result accounting.StoreResult
 	err := db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
@@ -143,7 +143,7 @@ func jsonBytes(v map[string]int64) []byte {
 	return b
 }
 
-//nolint:revive // Methods implement the accounting.Repository port.
+// RecordError implements accounting.Repository.
 func (r *Repository) RecordError(ctx context.Context, id uuid.UUID, cause error) error {
 	msg := cause.Error()
 	if len(msg) > 1024 {
@@ -158,7 +158,7 @@ func (r *Repository) RecordError(ctx context.Context, id uuid.UUID, cause error)
 	})
 }
 
-//nolint:revive // Methods implement the accounting.Repository port.
+// ListDirty implements accounting.Repository.
 func (r *Repository) ListDirty(ctx context.Context, limit int) ([]accounting.DirtyDay, error) {
 	var out []accounting.DirtyDay
 	err := db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
@@ -182,7 +182,7 @@ func (r *Repository) ListDirty(ctx context.Context, limit int) ([]accounting.Dir
 	return out, err
 }
 
-//nolint:revive // Methods implement the accounting.Repository port.
+// AggregateDirty implements accounting.Repository.
 func (r *Repository) AggregateDirty(ctx context.Context, limit int) (int, error) {
 	days, err := r.ListDirty(ctx, limit)
 	if err != nil {
@@ -215,7 +215,7 @@ SELECT gen_random_uuid(),tenant_id,project_id,user_id,cluster_id,account,partiti
 
 const dailyCols = `id,tenant_id,project_id,user_id,cluster_id,account,partition,day,jobs,failed,cpu_seconds,gpu_seconds,node_seconds,mem_gb_seconds,wait_seconds_sum,run_seconds_sum,energy_joules,wait_p50,wait_p90,wait_p99,run_p50,run_p90,run_p99`
 
-//nolint:revive // Methods implement the accounting.Repository port.
+// ListUsage implements accounting.Repository.
 func (r *Repository) ListUsage(ctx context.Context, scope tenants.Scope, q accounting.UsageQuery) ([]accounting.Daily, error) {
 	var out []accounting.Daily
 	err := db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
@@ -260,12 +260,12 @@ func (r *Repository) ListUsage(ctx context.Context, scope tenants.Scope, q accou
 	return out, err
 }
 
-//nolint:revive // Methods implement the accounting.Repository port.
+// Top implements accounting.Repository.
 func (r *Repository) Top(context.Context, tenants.Scope, accounting.TopQuery) ([]accounting.TopRow, error) {
 	return nil, apperr.New(apperr.Internal, "INTERNAL", "top is computed by service")
 }
 
-//nolint:revive // Methods implement the accounting.Repository port.
+// ClusterStatus implements accounting.Repository.
 func (r *Repository) ClusterStatus(ctx context.Context, id uuid.UUID) (accounting.Watermark, int64, error) {
 	w, err := r.Watermark(ctx, id)
 	if err != nil {

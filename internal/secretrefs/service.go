@@ -149,18 +149,15 @@ func resource(tid uuid.UUID, owner *uuid.UUID) authz.Resource {
 	return r
 }
 
-//nolint:revive // Public service methods mirror authorized API operations.
 func (s *Service) require(ctx context.Context, p authn.Principal, a authz.Action, tid uuid.UUID, owner *uuid.UUID) error {
 	return authz.Require(ctx, s.az, p, a, resource(tid, owner), s.audit)
 }
 
-//nolint:revive // Public service methods mirror authorized API operations.
 func (s *Service) isManager(ctx context.Context, p authn.Principal, tid uuid.UUID) bool {
 	d, e := s.az.Check(ctx, p, authz.SecretConnectorManage, resource(tid, nil))
 	return e == nil && d.Allow
 }
 
-//nolint:revive // Public service methods mirror authorized API operations.
 func (s *Service) record(ctx context.Context, p authn.Principal, tid uuid.UUID, action, typ, id string, details map[string]any) {
 	if s.audit == nil {
 		return
@@ -169,8 +166,6 @@ func (s *Service) record(ctx context.Context, p authn.Principal, tid uuid.UUID, 
 }
 
 // EnsureTenant creates the default connector for tenant creation hooks.
-//
-//nolint:revive // Public service methods mirror authorized API operations.
 func (s *Service) EnsureTenant(ctx context.Context, tenantID, createdBy uuid.UUID) error {
 	if s.platform == nil {
 		return nil
@@ -179,7 +174,7 @@ func (s *Service) EnsureTenant(ctx context.Context, tenantID, createdBy uuid.UUI
 	return err
 }
 
-//nolint:revive // Public service methods mirror authorized API operations.
+// EnsureDefault returns the tenant's platform-openbao "default" connector, creating it if missing.
 func (s *Service) EnsureDefault(ctx context.Context, tenantID, createdBy uuid.UUID) (Connector, error) {
 	if s.platform == nil {
 		return Connector{}, apperr.New(apperr.Validation, "PLATFORM_SECRETS_REQUIRED", "platform OpenBao is not configured")
@@ -200,7 +195,7 @@ func (s *Service) EnsureDefault(ctx context.Context, tenantID, createdBy uuid.UU
 	return s.repo.GetConnector(ctx, tenants.TenantScope(tenantID), tenantID, c.ID.String())
 }
 
-//nolint:revive // Public service methods mirror authorized API operations.
+// CreateConnector stores the credential in platform OpenBao, creates an openbao connector, and rolls back if its connectivity check fails.
 func (s *Service) CreateConnector(ctx context.Context, p authn.Principal, tc tenants.TenantContext, in CreateConnector) (Connector, error) {
 	if err := s.require(ctx, p, authz.SecretConnectorManage, tc.Tenant.ID, nil); err != nil {
 		return Connector{}, err
@@ -253,7 +248,7 @@ func (s *Service) CreateConnector(ctx context.Context, p authn.Principal, tc ten
 	return c, nil
 }
 
-//nolint:revive // Public service methods mirror authorized API operations.
+// ListConnectors lists the tenant's secret connectors.
 func (s *Service) ListConnectors(ctx context.Context, p authn.Principal, tc tenants.TenantContext) ([]Connector, error) {
 	if err := s.require(ctx, p, authz.SecretConnectorRead, tc.Tenant.ID, nil); err != nil {
 		return nil, err
@@ -261,7 +256,7 @@ func (s *Service) ListConnectors(ctx context.Context, p authn.Principal, tc tena
 	return s.repo.ListConnectors(ctx, tenants.ScopeFor(&tc), tc.Tenant.ID)
 }
 
-//nolint:revive // Public service methods mirror authorized API operations.
+// GetConnector returns a tenant connector by id or name.
 func (s *Service) GetConnector(ctx context.Context, p authn.Principal, tc tenants.TenantContext, ref string) (Connector, error) {
 	if err := s.require(ctx, p, authz.SecretConnectorRead, tc.Tenant.ID, nil); err != nil {
 		return Connector{}, err
@@ -269,7 +264,7 @@ func (s *Service) GetConnector(ctx context.Context, p authn.Principal, tc tenant
 	return s.repo.GetConnector(ctx, tenants.ScopeFor(&tc), tc.Tenant.ID, ref)
 }
 
-//nolint:revive // Public service methods mirror authorized API operations.
+// UpdateConnector applies a partial update to a tenant connector.
 func (s *Service) UpdateConnector(ctx context.Context, p authn.Principal, tc tenants.TenantContext, ref string, in UpdateConnector) (Connector, error) {
 	if err := s.require(ctx, p, authz.SecretConnectorManage, tc.Tenant.ID, nil); err != nil {
 		return Connector{}, err
@@ -328,7 +323,7 @@ func (s *Service) UpdateConnector(ctx context.Context, p authn.Principal, tc ten
 	return c, nil
 }
 
-//nolint:revive // Public service methods mirror authorized API operations.
+// DeleteConnector deletes a tenant connector.
 func (s *Service) DeleteConnector(ctx context.Context, p authn.Principal, tc tenants.TenantContext, ref string) error {
 	if err := s.require(ctx, p, authz.SecretConnectorManage, tc.Tenant.ID, nil); err != nil {
 		return err
@@ -364,7 +359,7 @@ func (s *Service) DeleteConnector(ctx context.Context, p authn.Principal, tc ten
 	return nil
 }
 
-//nolint:revive // Public service methods mirror authorized API operations.
+// TestConnector checks connector connectivity and reports how long the check took.
 func (s *Service) TestConnector(ctx context.Context, p authn.Principal, tc tenants.TenantContext, ref string) (Connector, time.Duration, error) {
 	if err := s.require(ctx, p, authz.SecretConnectorManage, tc.Tenant.ID, nil); err != nil {
 		return Connector{}, 0, err
@@ -399,7 +394,7 @@ func validPath(v string) bool {
 	return true
 }
 
-//nolint:revive // Public service methods mirror authorized API operations.
+// CreateReference creates a secret reference owned by the caller (or another user, for managers).
 func (s *Service) CreateReference(ctx context.Context, p authn.Principal, tc tenants.TenantContext, in CreateReference) (Reference, error) {
 	if err := s.require(ctx, p, authz.SecretReferenceCreate, tc.Tenant.ID, in.OwnerID); err != nil {
 		return Reference{}, err
@@ -459,7 +454,6 @@ func (s *Service) CreateReference(ctx context.Context, p authn.Principal, tc ten
 	return x, nil
 }
 
-//nolint:revive // Public service methods mirror authorized API operations.
 func (s *Service) visible(ctx context.Context, p authn.Principal, tid uuid.UUID, x Reference) error {
 	if err := s.require(ctx, p, authz.SecretReferenceRead, tid, x.OwnerID); err != nil {
 		return err
@@ -470,7 +464,7 @@ func (s *Service) visible(ctx context.Context, p authn.Principal, tid uuid.UUID,
 	return nil
 }
 
-//nolint:revive // Public service methods mirror authorized API operations.
+// GetReference returns a secret reference by id or name if it is visible to the caller.
 func (s *Service) GetReference(ctx context.Context, p authn.Principal, tc tenants.TenantContext, ref string) (Reference, error) {
 	x, err := s.repo.GetReference(ctx, tenants.ScopeFor(&tc), tc.Tenant.ID, ref)
 	if err != nil {
@@ -482,7 +476,7 @@ func (s *Service) GetReference(ctx context.Context, p authn.Principal, tc tenant
 	return x, nil
 }
 
-//nolint:revive // Public service methods mirror authorized API operations.
+// ListReferences lists the tenant's secret references visible to the caller.
 func (s *Service) ListReferences(ctx context.Context, p authn.Principal, tc tenants.TenantContext) ([]Reference, error) {
 	if err := s.require(ctx, p, authz.SecretReferenceRead, tc.Tenant.ID, nil); err != nil {
 		return nil, err
@@ -503,7 +497,7 @@ func (s *Service) ListReferences(ctx context.Context, p authn.Principal, tc tena
 	return out, nil
 }
 
-//nolint:revive // Public service methods mirror authorized API operations.
+// UpdateReference applies a partial update to a secret reference.
 func (s *Service) UpdateReference(ctx context.Context, p authn.Principal, tc tenants.TenantContext, ref string, in UpdateReference) (Reference, error) {
 	x, err := s.GetReference(ctx, p, tc, ref)
 	if err != nil {
@@ -554,7 +548,7 @@ func (s *Service) UpdateReference(ctx context.Context, p authn.Principal, tc ten
 	return x, nil
 }
 
-//nolint:revive // Public service methods mirror authorized API operations.
+// DeleteReference deletes a secret reference.
 func (s *Service) DeleteReference(ctx context.Context, p authn.Principal, tc tenants.TenantContext, ref string) error {
 	x, err := s.GetReference(ctx, p, tc, ref)
 	if err != nil {
@@ -738,7 +732,7 @@ func (s *Service) Deliver(ctx context.Context, req DeliveryRequest) (DeliveredSe
 	return out, err
 }
 
-//nolint:revive // Public service methods mirror authorized API operations.
+// TestReference resolves a secret reference without returning its value and reports when it was checked.
 func (s *Service) TestReference(ctx context.Context, p authn.Principal, tc tenants.TenantContext, ref string) (Reference, time.Time, error) {
 	x, err := s.GetReference(ctx, p, tc, ref)
 	if err != nil {

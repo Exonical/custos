@@ -23,7 +23,7 @@ type Repository struct{ pool *pgxpool.Pool }
 // New returns a secret-reference repository on pool.
 func New(pool *pgxpool.Pool) *Repository { return &Repository{pool: pool} }
 
-//nolint:revive // Methods implement the secretrefs.Repository port.
+// CreateConnector implements secretrefs.Repository.
 func (r *Repository) CreateConnector(ctx context.Context, s tenants.Scope, c secretrefs.Connector) error {
 	cfg, err := json.Marshal(c.Config)
 	if err != nil {
@@ -76,7 +76,7 @@ func scanConnector(row pgx.Row) (secretrefs.Connector, error) {
 	return c, nil
 }
 
-//nolint:revive // Methods implement the secretrefs.Repository port.
+// GetConnector implements secretrefs.Repository.
 func (r *Repository) GetConnector(ctx context.Context, s tenants.Scope, tenantID uuid.UUID, ref string) (secretrefs.Connector, error) {
 	return getConnectorTx(ctx, r.pool, s, tenantID, ref)
 }
@@ -99,7 +99,7 @@ func getConnectorTx(ctx context.Context, pool *pgxpool.Pool, s tenants.Scope, te
 	return out, err
 }
 
-//nolint:revive // Methods implement the secretrefs.Repository port.
+// ListConnectors implements secretrefs.Repository.
 func (r *Repository) ListConnectors(ctx context.Context, s tenants.Scope, tenantID uuid.UUID) ([]secretrefs.Connector, error) {
 	var out []secretrefs.Connector
 	err := db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
@@ -123,7 +123,7 @@ func (r *Repository) ListConnectors(ctx context.Context, s tenants.Scope, tenant
 	return out, err
 }
 
-//nolint:revive // Methods implement the secretrefs.Repository port.
+// UpdateConnector implements secretrefs.Repository.
 func (r *Repository) UpdateConnector(ctx context.Context, s tenants.Scope, c secretrefs.Connector) error {
 	cfg, err := json.Marshal(c.Config)
 	if err != nil {
@@ -152,7 +152,7 @@ func (r *Repository) UpdateConnector(ctx context.Context, s tenants.Scope, c sec
 	})
 }
 
-//nolint:revive // Methods implement the secretrefs.Repository port.
+// DeleteConnector implements secretrefs.Repository.
 func (r *Repository) DeleteConnector(ctx context.Context, s tenants.Scope, tenantID, id uuid.UUID) error {
 	return db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
 		if err := db.ApplyScope(ctx, tx, s); err != nil {
@@ -169,7 +169,7 @@ func (r *Repository) DeleteConnector(ctx context.Context, s tenants.Scope, tenan
 	})
 }
 
-//nolint:revive // Methods implement the secretrefs.Repository port.
+// ConnectorReferenceCount implements secretrefs.Repository.
 func (r *Repository) ConnectorReferenceCount(ctx context.Context, s tenants.Scope, id uuid.UUID) (int, error) {
 	var n int
 	err := db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
@@ -193,7 +193,7 @@ func scanRef(row pgx.Row) (secretrefs.Reference, error) {
 	return x, db.MapError(err)
 }
 
-//nolint:revive // Methods implement the secretrefs.Repository port.
+// CreateReference implements secretrefs.Repository.
 func (r *Repository) CreateReference(ctx context.Context, s tenants.Scope, x secretrefs.Reference) error {
 	if x.AllowedUses == nil {
 		x.AllowedUses = []string{}
@@ -207,7 +207,7 @@ func (r *Repository) CreateReference(ctx context.Context, s tenants.Scope, x sec
 	})
 }
 
-//nolint:revive // Methods implement the secretrefs.Repository port.
+// GetReference implements secretrefs.Repository.
 func (r *Repository) GetReference(ctx context.Context, s tenants.Scope, tenantID uuid.UUID, ref string) (secretrefs.Reference, error) {
 	var x secretrefs.Reference
 	err := db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
@@ -227,12 +227,12 @@ func (r *Repository) GetReference(ctx context.Context, s tenants.Scope, tenantID
 	return x, err
 }
 
-//nolint:revive // Methods implement the secretrefs.Repository port.
+// GetReferenceByName implements secretrefs.Repository.
 func (r *Repository) GetReferenceByName(ctx context.Context, s tenants.Scope, tenantID uuid.UUID, name string) (secretrefs.Reference, error) {
 	return r.GetReference(ctx, s, tenantID, name)
 }
 
-//nolint:revive // Methods implement the secretrefs.Repository port.
+// ListReferences implements secretrefs.Repository.
 func (r *Repository) ListReferences(ctx context.Context, s tenants.Scope, tenantID uuid.UUID) ([]secretrefs.Reference, error) {
 	var out []secretrefs.Reference
 	err := db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
@@ -256,7 +256,7 @@ func (r *Repository) ListReferences(ctx context.Context, s tenants.Scope, tenant
 	return out, err
 }
 
-//nolint:revive // Methods implement the secretrefs.Repository port.
+// UpdateReference implements secretrefs.Repository.
 func (r *Repository) UpdateReference(ctx context.Context, s tenants.Scope, x secretrefs.Reference) error {
 	return db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
 		if err := db.ApplyScope(ctx, tx, s); err != nil {
@@ -273,7 +273,7 @@ func (r *Repository) UpdateReference(ctx context.Context, s tenants.Scope, x sec
 	})
 }
 
-//nolint:revive // Methods implement the secretrefs.Repository port.
+// DeleteReference implements secretrefs.Repository.
 func (r *Repository) DeleteReference(ctx context.Context, s tenants.Scope, tenantID, id uuid.UUID) error {
 	return db.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
 		if err := db.ApplyScope(ctx, tx, s); err != nil {

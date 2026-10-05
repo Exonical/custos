@@ -113,7 +113,7 @@ func NewRuntime(repo Repository, f secrets.ConnectorFactory, platform secrets.Re
 	return &Runtime{repo: repo, factory: f, platform: platform, cache: map[uuid.UUID]cached{}}
 }
 
-//nolint:revive // Methods are the runtime resolver's public lifecycle API.
+// Invalidate closes and evicts the cached connector for id.
 func (r *Runtime) Invalidate(id uuid.UUID) {
 	r.mu.Lock()
 	if c, ok := r.cache[id]; ok {
@@ -123,7 +123,7 @@ func (r *Runtime) Invalidate(id uuid.UUID) {
 	r.mu.Unlock()
 }
 
-//nolint:revive // Methods are the runtime resolver's public lifecycle API.
+// Close closes and evicts every cached connector, returning the last close error.
 func (r *Runtime) Close() error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -158,7 +158,7 @@ func (r *Runtime) CheckCandidate(ctx context.Context, c Connector, credential *s
 	return conn.Check(ctx)
 }
 
-//nolint:revive // Methods are the runtime resolver's public lifecycle API.
+// Resolve fetches ref's secret value through its active, cached connector.
 func (r *Runtime) Resolve(ctx context.Context, tenantID uuid.UUID, ref Reference) (secrets.Value, error) {
 	c, err := r.repo.GetConnector(ctx, tenants.TenantScope(tenantID), tenantID, ref.ConnectorID.String())
 	if err != nil {
@@ -174,7 +174,6 @@ func (r *Runtime) Resolve(ctx context.Context, tenantID uuid.UUID, ref Reference
 	return conn.Resolve(ctx, ref.SecretReference())
 }
 
-//nolint:revive // Methods are the runtime resolver's public lifecycle API.
 func (r *Runtime) connector(ctx context.Context, c Connector) (secrets.Connector, error) {
 	r.mu.Lock()
 	if x, ok := r.cache[c.ID]; ok && x.version == c.Version {

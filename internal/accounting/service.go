@@ -54,7 +54,6 @@ type UsageResult struct {
 	NextCursor string     `json:"next_cursor,omitempty"`
 }
 
-//nolint:revive // Public methods mirror accounting API operations.
 func (s *Service) scope(ctx context.Context, p authn.Principal, tc tenants.TenantContext) (bool, []uuid.UUID, error) {
 	res := authz.Resource{Kind: "tenant", ID: tc.Tenant.ID.String(),
 		TenantID: tc.Tenant.ID.String(), OwnerID: p.UserID.String()}
@@ -89,7 +88,7 @@ func validateRange(from, to time.Time) error {
 	return nil
 }
 
-//nolint:revive // Public methods mirror accounting API operations.
+// Usage returns aggregated usage for the caller's visible scope, grouped by in.GroupBy.
 func (s *Service) Usage(ctx context.Context, p authn.Principal, tc tenants.TenantContext, in UsageRequest) (UsageResult, error) {
 	if err := validateRange(in.From, in.To); err != nil {
 		return UsageResult{}, err
@@ -205,7 +204,7 @@ type TopRequest struct {
 	Limit      int
 }
 
-//nolint:revive // Public methods mirror accounting API operations.
+// Top ranks users or projects by in.Metric over the requested range.
 func (s *Service) Top(ctx context.Context, p authn.Principal, tc tenants.TenantContext, in TopRequest) ([]TopRow, error) {
 	if !slices.Contains([]string{"cpu_seconds", "gpu_seconds", "jobs"}, in.Metric) || !slices.Contains([]string{"user", "project"}, in.By) {
 		return nil, apperr.New(apperr.Invalid, "ACCOUNTING_TOP_INVALID", "invalid top query")
@@ -243,7 +242,7 @@ func (s *Service) Top(ctx context.Context, p authn.Principal, tc tenants.TenantC
 	return out, nil
 }
 
-//nolint:revive // Public methods mirror accounting API operations.
+// ClusterStatus returns the cluster's collection watermark and unattributed record count.
 func (s *Service) ClusterStatus(ctx context.Context, p authn.Principal, clusterID uuid.UUID) (Watermark, int64, error) {
 	d, e := s.az.Check(ctx, p, authz.ClusterRead, authz.Resource{Kind: "cluster", ID: clusterID.String()})
 	if e != nil || !d.Allow {
