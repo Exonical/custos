@@ -29,6 +29,11 @@ test("login, workflows, executions, jobs, CSRF-protected mutations, and logout",
     await expect(page.getByText("You do not have a tenant membership yet.")).toBeVisible();
     await page.goto("/t/acme/clusters/cluster-e2e");
     await expect(page.getByRole("tab", { name: "Settings" })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "Node hooks" })).toHaveCount(0);
+    await page.goto("/t/acme/clusters/cluster-e2e/node-hooks");
+    await expect(page.getByRole("button", { name: "Save" })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Node hooks" })).toHaveCount(0);
+    await expect(page.getByText(/404/)).toBeVisible();
     return;
   }
   if (selectedUser === "admin") {
@@ -79,6 +84,39 @@ test("login, workflows, executions, jobs, CSRF-protected mutations, and logout",
     await expect(page.getByText("Saved", { exact: true })).toBeVisible();
     await expect(page.getByText("pyxis", { exact: true }).first()).toBeVisible();
 
+    await page.getByRole("link", { name: "Node hooks" }).click();
+    await expect(page).toHaveURL(/\/clusters\/cluster-e2e\/node-hooks$/);
+    await expect(page.getByRole("heading", { name: "Node hooks" })).toBeVisible();
+    await expect(page.getByTestId("node-revision")).toHaveText("0");
+    await page.getByRole("button", { name: "Add shared mount" }).click();
+    const sharedRow = page.getByTestId("mount-row").first();
+    await sharedRow.getByLabel("Name").fill("apps");
+    await sharedRow.getByLabel("Source").fill("server:/hpc/apps");
+    await sharedRow.getByLabel("Target").fill("/apps");
+    await expect(sharedRow.getByRole("checkbox", { name: "Read-only" })).toBeChecked();
+    await page.getByRole("combobox", { name: "Add tenant" }).click();
+    await page.getByRole("option", { name: "Acme Research (acme)" }).click();
+    const tenantRow = page.getByTestId("mount-row").nth(1);
+    await expect(tenantRow.getByRole("checkbox", { name: "Read-only" })).not.toBeChecked();
+    await tenantRow.getByLabel("Name").fill("flight-data");
+    await tenantRow.getByLabel("Source").fill("server:/tenantA/flight_data");
+    await tenantRow.getByLabel("Target").fill("/mnt/data");
+    await page.getByRole("button", { name: "Save" }).click();
+    await expect(page.getByText("Saved", { exact: true })).toBeVisible();
+    await expect(page.getByTestId("node-revision")).toHaveText("1");
+    await expect(page.getByText("0 of 3 nodes current")).toBeVisible();
+    await expect(page.getByText("Stale", { exact: true }).first()).toBeVisible();
+
+    await page.getByRole("button", { name: "Create token" }).click();
+    await page.getByLabel("Token name").fill("rack-1");
+    await page.getByRole("button", { name: "Create", exact: true }).click();
+    await expect(page.getByText("This token will not be shown again.")).toBeVisible();
+    await expect(page.getByLabel("Token", { exact: true })).toHaveValue(/^cnt_/);
+    await page.getByRole("button", { name: "Done" }).click();
+    await expect(page.getByLabel("Token", { exact: true })).toHaveCount(0);
+    await expect(page.getByRole("cell", { name: "rack-1", exact: true })).toBeVisible();
+    await page.goto("/t/acme/clusters/cluster-e2e");
+
     await page.goto("/t/acme/secrets");
     await expect(page.getByRole("tab", { name: "Connectors" })).toBeVisible();
     await expect(page.getByText("research-vault")).toBeVisible();
@@ -116,6 +154,11 @@ test("login, workflows, executions, jobs, CSRF-protected mutations, and logout",
     await page.goto("/t/acme/clusters/cluster-e2e");
     await expect(page.getByRole("tab", { name: "Partitions" })).toBeVisible();
     await expect(page.getByRole("tab", { name: "Settings" })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "Node hooks" })).toHaveCount(0);
+    await page.goto("/t/acme/clusters/cluster-e2e/node-hooks");
+    await expect(page.getByText("403 // Forbidden")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Save" })).toHaveCount(0);
+    await page.goto("/t/acme/clusters/cluster-e2e");
 
     const workflowConsoleIssues: string[] = [];
     page.on("console", (message) => {

@@ -5258,7 +5258,7 @@ components:
         script:
           type: string
           maxLength: 65536
-          description: Starts with #!/bin/bash or #!/bin/sh; syntax-checked.
+          description: "Starts with #!/bin/bash or #!/bin/sh; syntax-checked."
     ClusterNodeConfig:
       type: object
       required: [isolation_mode, mount_timeout_seconds, shared_mounts, tenant_mounts, hooks]

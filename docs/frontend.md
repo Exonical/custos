@@ -160,6 +160,18 @@ pages download YAML and selected executable tasks offer standalone sbatch
 downloads through the BFF, which forwards `Accept` and `Content-Disposition`.
 Platform admins can edit per-cluster container-runtime and software-module
 settings from the cluster detail Settings tab using optimistic version checks.
+They also manage node hooks (ADR-032) at
+`/t/{tenant}/clusters/{cluster}/node-hooks`, linked from the cluster header only
+for platform admins; other users get the usual 403/404 states. The page edits the
+isolation mode and tenant-exclusive mechanism, shared and per-tenant NFS mounts,
+and custom Prolog/Epilog hooks (lazy-loaded Monaco, shell), and shows API
+warnings, the revision, content hash and update time. Saves send the loaded
+`version`; a 409 shows a banner whose Reload asks before discarding edits, and
+422 `details[].field` paths such as `tenant_mounts[2].target` are mapped onto the
+row and field. The bundle downloads through the BFF as a binary
+(`Content-Disposition` is passed through), node tokens are shown once in a dialog
+and never kept in state after it closes, and a node-status table shows which
+nodes hold the current bundle.
 Draft workflow versions open a split React Flow canvas and Properties/YAML editor at
 `/t/{tenant}/workflows/{workflow}/versions/{version}/edit`. YAML remains the
 source of truth; graph edits preserve document comments, validation is debounced,

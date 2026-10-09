@@ -251,6 +251,36 @@ cause (`scontrol update nodename=... state=resume`).
 | `403 CLUSTER_DISABLED` | The cluster is disabled in Custos. |
 | `429` | The pull endpoint is rate limited per client address; nodes behind one NAT share the limit. |
 
+## Admin UI
+
+Platform admins can do everything above from the web UI. Open a cluster
+(`Clusters`, then the cluster) and choose **Node hooks** in the page header; the
+link is hidden for everyone else and the route itself returns the forbidden
+state when the API answers 403.
+
+- **Isolation**: mode, the `mcs_label`/`user` mechanism with the `slurm.conf`
+  requirement shown inline, the mount timeout, and the API warnings.
+- **Shared mounts** and **Tenant mounts**: rows of name, type, source, target,
+  a read-only toggle (on by default for shared mounts, off for tenant mounts)
+  and extra options as chips. Tenant mounts are grouped per tenant; the tenant
+  picker lists tenants assigned to the cluster (every tenant when the cluster is
+  visible to all tenants). `nosuid,nodev` are always applied to tenant mounts.
+  The form checks targets, sources, names and options with the same rules as the
+  server for quick feedback; the server remains authoritative and its
+  field-path errors (for example `tenant_mounts[2].target`) are shown on the
+  matching row.
+- **Custom hooks**: name, phase, order and a shell editor. New hooks start from a
+  `#!/bin/bash` template. Hooks run as root on every compute node.
+- **Save bar**: shows revision, version, content hash and when and by whom the
+  configuration was last updated. If someone else saved first (HTTP 409), a
+  banner offers **Reload**, which asks before discarding your edits.
+- **Bundle**: **Download bundle** saves `custos-node-<cluster>-r<revision>.tar.gz`
+  (the saved configuration, not unsaved edits).
+- **Node tokens**: create (the token and an `agent.conf` snippet are shown once
+  and are not kept after the dialog closes), list and revoke with confirmation.
+- **Node status**: per-node revision, bundle hash, fetch time and a Current/Stale
+  badge, with a summary such as "2 of 3 nodes current".
+
 ## How Custos submits jobs
 
 Admission reads the cluster node configuration for every task (ad hoc jobs,

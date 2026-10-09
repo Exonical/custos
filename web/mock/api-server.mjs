@@ -3,6 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import http from "node:http";
 import { parseDocument, stringify } from "yaml";
 import { createMockData, userNameFromAccessToken } from "./data.mjs";
+import { handleNodeHooks } from "./node-hooks.mjs";
 import { loadWorkflowTemplates, templateSummary } from "./templates.mjs";
 
 /** @typedef {import("../lib/api/schema").components["schemas"]["Me"]} Me */
@@ -613,6 +614,11 @@ const server = http.createServer(async (request, response) => {
     const template = workflowTemplates.find((item) => item.id === templateDetail[1]);
     return template ? send(response, 200, template) : sendError(response, 404, "NOT_FOUND", "workflow template not found", id);
   }
+
+  if (await handleNodeHooks({
+    request, response, url, id, data, send, sendError, sendEmpty, readJsonBody,
+    isAdmin: user.me.platform_roles.includes("platform-admin"),
+  })) return;
 
   const platformCluster = url.pathname.match(/^\/api\/v1\/clusters\/([^/]+)$/);
   if (platformCluster && (request.method === "GET" || request.method === "PATCH")) {

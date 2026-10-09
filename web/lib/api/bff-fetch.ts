@@ -56,3 +56,25 @@ export async function sendText(
   const payload: unknown = await response.json().catch(() => null);
   return { status: response.status, payload };
 }
+
+export async function sendDelete(url: string, csrfToken: string) {
+  const response = await fetch(url, {
+    method: "DELETE",
+    credentials: "same-origin",
+    cache: "no-store",
+    headers: { Accept: "application/json", "X-CSRF-Token": csrfToken },
+  });
+  const payload: unknown = await response.json().catch(() => null);
+  return { status: response.status, payload };
+}
+
+export async function getJson(url: string) {
+  const response = await fetch(url, {
+    method: "GET",
+    credentials: "same-origin",
+    cache: "no-store",
+    headers: { Accept: "application/json" },
+  });
+  const payload: unknown = await response.json().catch(() => null);
+  return { status: response.status, payload };
+}

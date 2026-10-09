@@ -73,3 +73,25 @@ describe("BFF proxy path and headers", () => {
     expect(output.get("cache-control")).toBe("no-store");
   });
 });
+
+describe("BFF binary downloads", () => {
+  it("passes content type, disposition and ETag through untouched", () => {
+    const output = copyResponseHeaders(new Headers({
+      "content-type": "application/gzip",
+      "content-disposition": 'attachment; filename="custos-node-e2e-r3.tar.gz"',
+      etag: '"abc"',
+      "x-custos-revision": "3",
+      "set-cookie": "a=b",
+    }));
+    expect(output.get("content-type")).toBe("application/gzip");
+    expect(output.get("content-disposition")).toBe('attachment; filename="custos-node-e2e-r3.tar.gz"');
+    expect(output.get("etag")).toBe('"abc"');
+    expect(output.get("x-custos-revision")).toBe("3");
+    expect(output.has("set-cookie")).toBe(false);
+  });
+
+  it("forwards the node-hooks routes unchanged", () => {
+    expect(sanitizeBffPath("/api/bff/clusters/e2e/node-config/bundle")).toBe("clusters/e2e/node-config/bundle");
+    expect(sanitizeBffPath("/api/bff/clusters/e2e/node-tokens/0192f6c4-0000-7000-8000-000000000001")).toBe("clusters/e2e/node-tokens/0192f6c4-0000-7000-8000-000000000001");
+  });
+});

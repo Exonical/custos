@@ -2898,7 +2898,7 @@ export interface components {
             /** @enum {string} */
             phase: "prolog" | "epilog";
             order: number;
-            /** @description Starts with */
+            /** @description Starts with #!/bin/bash or #!/bin/sh; syntax-checked. */
             script: string;
         };
         ClusterNodeConfig: {

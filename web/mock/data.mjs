@@ -126,7 +126,7 @@ function makeClusters() {
   return {
     acme: [
       { id: clusterIds["cluster-e2e"], name: "cluster-e2e", display_name: "E2E Cluster", state: "active", slurm_version: "26.05.4", partitions: ["debug", "compute"], node_summary: { idle: 18, allocated: 6 }, defaults: {}, container_runtime: { type: "apptainer" } },
-      { id: clusterIds.hopper, name: "hopper", display_name: "Hopper", state: "active", slurm_version: "26.05.4", partitions: ["gpu", "batch"], node_summary: { idle: 4, allocated: 12 }, defaults: {}, container_runtime: null },
+      { id: clusterIds.hopper, name: "hopper", display_name: "Hopper", state: "active", slurm_version: "25.05.4", partitions: ["gpu", "batch"], node_summary: { idle: 4, allocated: 12 }, defaults: {}, container_runtime: null },
     ],
     globex: [
       { id: clusterIds.titan, name: "titan", display_name: "Titan", state: "degraded", slurm_version: "26.05.3", partitions: ["cpu", "long"], node_summary: { idle: 3, allocated: 21 }, defaults: {}, container_runtime: null },

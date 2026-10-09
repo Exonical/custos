@@ -53,7 +53,17 @@ export default async function ClusterDetailPage({ params }: { params: Promise<{ 
             <p className="mt-1 font-mono text-[10px] tracking-[0.08em] text-muted-foreground">{current.name}</p>
           </div>
         </div>
-        <RefreshJobButton />
+        <div className="flex items-center gap-2">
+          {canManageSettings ? (
+            <Link
+              href={`/t/${encodeURIComponent(tenant)}/clusters/${encodeURIComponent(cluster)}/node-hooks`}
+              className="inline-flex h-8 items-center border border-border px-3 font-mono text-[10px] uppercase tracking-[0.1em] hover:bg-muted"
+            >
+              Node hooks
+            </Link>
+          ) : null}
+          <RefreshJobButton />
+        </div>
       </header>
 
       <section aria-label="Cluster metadata" className="grid grid-cols-2 gap-px border border-border bg-border sm:grid-cols-5">
