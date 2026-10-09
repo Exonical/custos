@@ -116,6 +116,11 @@ type JobSubmission struct {
 	Nice         *int
 	Comment      string
 	UserName     string
+
+	// Shared is the node-sharing mode: "", "none" (exclusive node), "user"
+	// or "mcs". MCSLabel is the mcs/label value to attach.
+	Shared   string
+	MCSLabel string
 }
 
 // GRESRequest is a generic-resource request ({Name:"gpu",Type:"h100"}).

@@ -212,7 +212,16 @@ absolute-path references and may be digest-pinned with `@sha256:<hex>`. The
 platform cluster's `container_runtime` selects `apptainer` or `pyxis`, an
 optional image-prefix allow-list, digest requirement, MPI plugin, and whether
 a compatible Slurm client is available inside the image. No site bind paths
-are configured; both runtimes mount only `$CUSTOS_JOB_DIR`.
+are configured by tasks; both runtimes mount `$CUSTOS_JOB_DIR` plus the cluster's
+node mounts (ADR-032): the shared NFS mounts and the tenant's own mounts,
+bound at the **same paths** inside the container, read-only where the admin
+configured `ro`. Other tenants' mounts are never bound. The set is frozen in
+`ExecutionSpec.isolation.mounts` at admission; the wrapper checks each target
+with `mountpoint -q` before launching and exits 97 with `custos: required
+node mount <target> is missing (node bundle out of date?)` when one is absent.
+Apptainer receives one extra `--bind /a:/a:ro,/b:/b`; Pyxis appends the same
+entries to `--container-mounts`. Non-container tasks use the host paths
+directly.
 
 Private images may declare `image.pullSecret` with exactly one literal
 `username` or `usernameSecret`, and a required `passwordSecret`. Secret handles

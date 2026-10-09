@@ -47,6 +47,8 @@ var jobDescAllowList = map[string]bool{
 	"Comment":                 true,
 	"Script":                  true,
 	"Argv":                    true,
+	"Shared":                  true, // node sharing: none|user|mcs
+	"McsLabel":                true,
 }
 
 func strp(s string) *string {
@@ -159,6 +161,11 @@ func toJobDesc(req slurm.JobSubmission) *api.V0045JobDescMsg {
 		Licenses:      strp(strings.Join(req.Licenses, ",")),
 		Dependency:    strp(depString(req.Dependencies)),
 		Array:         strp(arrayString(req.Array)),
+		McsLabel:      strp(req.MCSLabel),
+	}
+	if req.Shared != "" {
+		shared := []api.V0045JobDescMsgShared{api.V0045JobDescMsgShared(req.Shared)}
+		d.Shared = &shared
 	}
 	if req.Nice != nil {
 		n := int32(*req.Nice) // #nosec G115 -- nice is a small scheduler value

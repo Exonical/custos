@@ -2907,6 +2907,12 @@ export interface components {
              * @enum {string}
              */
             isolation_mode: "namespace" | "tenant_exclusive" | "node_exclusive";
+            /**
+             * @description How tenant_exclusive keeps tenants off shared nodes: mcs_label submits with --exclusive=mcs and the tenant slug as label (needs mcs/label); user submits with --exclusive=user (needs one Slurm user per tenant). Ignored in other modes.
+             * @default mcs_label
+             * @enum {string}
+             */
+            tenant_exclusive_mechanism: "mcs_label" | "user";
             /** @default 30 */
             mount_timeout_seconds: number;
             shared_mounts: components["schemas"]["NodeMount"][];
@@ -2920,7 +2926,7 @@ export interface components {
         };
         NodeConfigWarning: {
             /** @enum {string} */
-            code: "SHARED_SERVICE_USER" | "NAMESPACE_REQUIRES_SLURM_25_11";
+            code: "SHARED_SERVICE_USER" | "NAMESPACE_REQUIRES_SLURM_25_11" | "TENANT_EXCLUSIVE_SHARED_USER";
             message: string;
         };
         NodeConfigView: {

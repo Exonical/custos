@@ -224,6 +224,7 @@ type ExecutionSpec struct {
 	Launch            string         `json:"launch,omitempty"`
 	Container         *ContainerSpec `json:"container,omitempty"`
 	Multinode         *MultinodeSpec `json:"multinode,omitempty"`
+	Isolation         *IsolationSpec `json:"isolation,omitempty"`
 	CPUBind           string         `json:"cpu_bind,omitempty"`
 	Attempt           int            `json:"attempt"`
 

@@ -182,8 +182,9 @@ func cmdServe(parent context.Context, configPath string, lookupEnv config.Lookup
 		Logger: logger,
 	})
 	reg.Register(clustersync.UnreachableChecker(clusterRepo), false)
+	nodeHookRepo := nodehookspg.New(pool)
 	nodeHookSvc := nodehookssvc.New(nodehookssvc.Deps{
-		Repo: nodehookspg.New(pool), Clusters: clusterRepo, Tenants: tenantRepo,
+		Repo: nodeHookRepo, Clusters: clusterRepo, Tenants: tenantRepo,
 		Bindings: projectpg.New(pool), AZ: authz.RBAC{}, Audit: recorder,
 		Logger: logger,
 	})
@@ -228,6 +229,7 @@ func cmdServe(parent context.Context, configPath string, lookupEnv config.Lookup
 		Audit:       recorder,
 		Secrets:     secretSvc,
 		Allocations: allocationSvc,
+		NodeConfig:  nodeHookRepo,
 	})
 
 	wfSvc := wfsvc.New(wfsvc.Deps{
@@ -243,6 +245,7 @@ func cmdServe(parent context.Context, configPath string, lookupEnv config.Lookup
 		Metrics:         vMetrics,
 		AZ:              authz.RBAC{},
 		Audit:           recorder,
+		NodeConfig:      nodeHookRepo,
 	})
 
 	execSvc := execsvc.New(execsvc.Deps{

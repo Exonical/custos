@@ -19,6 +19,7 @@ import (
 	"github.com/Exonical/custos/internal/authz"
 	"github.com/Exonical/custos/internal/clusters"
 	"github.com/Exonical/custos/internal/jobs"
+	"github.com/Exonical/custos/internal/nodehooks"
 	"github.com/Exonical/custos/internal/platform/apperr"
 	"github.com/Exonical/custos/internal/platform/workqueue"
 	policiessvc "github.com/Exonical/custos/internal/policies/service"
@@ -58,6 +59,7 @@ type Deps struct {
 	Audit       audit.Recorder
 	Secrets     *secretrefs.Service
 	Allocations *allocations.Service
+	NodeConfig  nodehooks.ConfigReader // node isolation snapshot; may be nil
 }
 
 // Service is the jobs application service.
@@ -373,8 +375,12 @@ func (s *Service) Submit(ctx context.Context, p authn.Principal,
 		},
 	}
 	alloc := allocations.NewEnforcement(s.d.Allocations, tenants.ScopeFor(&tc), bindingMeta.ID)
+	node, err := nodehooks.LoadIsolation(ctx, s.d.NodeConfig, cluster.ID, tenantID, tc.Tenant.Slug)
+	if err != nil {
+		return Result{}, nil, err
+	}
 	built, denial := admission.Build(admission.BuildInput{
-		Spec: spec, Request: in.Resources, Policy: pol,
+		Node: node, Spec: spec, Request: in.Resources, Policy: pol,
 		Binding: binding, Cluster: *snap,
 		Allocate: alloc.Allocate(ctx),
 	})

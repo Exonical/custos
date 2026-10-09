@@ -18,6 +18,7 @@ import (
 	"github.com/Exonical/custos/internal/executions"
 	"github.com/Exonical/custos/internal/jobs"
 	jobssvc "github.com/Exonical/custos/internal/jobs/service"
+	"github.com/Exonical/custos/internal/nodehooks"
 	"github.com/Exonical/custos/internal/platform/apperr"
 	"github.com/Exonical/custos/internal/platform/workqueue"
 	"github.com/Exonical/custos/internal/tenants"
@@ -558,7 +559,12 @@ func admitTask(ctx context.Context, d Deps,
 		resolved.ProcsPerNode = st.EffectiveProcsPerNode()
 		multinode = &resolved
 	}
+	nodeIsolation, err := d.nodeIsolation(ctx, scope, cluster.ID, e.TenantID)
+	if err != nil {
+		return err
+	}
 	built, denial := admission.Build(admission.BuildInput{
+		Node: nodeIsolation,
 		Spec: espec, Software: st.Software, Request: res,
 		Image: st.Image, Multinode: multinode,
 		CPUAffinity: st.Resources.CPUAffinity, ContainerEnv: env.User,
@@ -886,4 +892,20 @@ func interpreterFor(l workflowspec.Language) (admission.Interpreter, error) {
 		return "", apperr.New(apperr.Validation, "LANGUAGE_UNSUPPORTED",
 			"script language "+string(l)+" is not supported for jobs")
 	}
+}
+
+// nodeIsolation loads the cluster node configuration for the tenant. A read
+// failure is returned (retryable); only a missing configuration falls back to
+// the defaults.
+func (d Deps) nodeIsolation(ctx context.Context, scope tenants.Scope,
+	clusterID, tenantID uuid.UUID) (*admission.NodeIsolation, error) {
+	slug := ""
+	if d.NodeConfig != nil && d.Tenants != nil {
+		t, err := d.Tenants.GetBySlugOrID(ctx, scope, tenantID.String())
+		if err != nil {
+			return nil, err
+		}
+		slug = t.Slug
+	}
+	return nodehooks.LoadIsolation(ctx, d.NodeConfig, clusterID, tenantID, slug)
 }

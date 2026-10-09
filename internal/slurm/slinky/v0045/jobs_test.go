@@ -35,6 +35,7 @@ func fullSubmission() slurm.JobSubmission {
 		}},
 		Nice:    &nice,
 		Comment: "custos:x/adhoc", UserName: "svc",
+		Shared: "mcs", MCSLabel: "tenant-a",
 	}
 }
 
@@ -74,6 +75,26 @@ func TestJobDependencyAfterServiceStart(t *testing.T) {
 	})
 	if d.Dependency == nil || *d.Dependency != "after:42" {
 		t.Fatalf("dependency = %v, want after:42", d.Dependency)
+	}
+}
+
+func TestJobDescSharedAndMCS(t *testing.T) {
+	d := toJobDesc(fullSubmission())
+	if d.Shared == nil || len(*d.Shared) != 1 || (*d.Shared)[0] != api.V0045JobDescMsgSharedMcs {
+		t.Errorf("Shared = %v, want [mcs]", d.Shared)
+	}
+	if d.McsLabel == nil || *d.McsLabel != "tenant-a" {
+		t.Errorf("McsLabel = %v", d.McsLabel)
+	}
+	for _, mode := range []string{"none", "user"} {
+		d = toJobDesc(slurm.JobSubmission{Shared: mode})
+		if d.Shared == nil || string((*d.Shared)[0]) != mode || d.McsLabel != nil {
+			t.Errorf("Shared %q = %v label %v", mode, d.Shared, d.McsLabel)
+		}
+	}
+	d = toJobDesc(slurm.JobSubmission{MCSLabel: "t"})
+	if d.Shared != nil || d.McsLabel == nil {
+		t.Errorf("label without shared: %v %v", d.Shared, d.McsLabel)
 	}
 }
 

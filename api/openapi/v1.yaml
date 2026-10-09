@@ -5264,6 +5264,15 @@ components:
       required: [isolation_mode, mount_timeout_seconds, shared_mounts, tenant_mounts, hooks]
       properties:
         isolation_mode: {type: string, enum: [namespace, tenant_exclusive, node_exclusive], default: namespace}
+        tenant_exclusive_mechanism:
+          type: string
+          enum: [mcs_label, user]
+          default: mcs_label
+          description: >
+            How tenant_exclusive keeps tenants off shared nodes: mcs_label submits
+            with --exclusive=mcs and the tenant slug as label (needs mcs/label);
+            user submits with --exclusive=user (needs one Slurm user per tenant).
+            Ignored in other modes.
         mount_timeout_seconds: {type: integer, minimum: 5, maximum: 300, default: 30}
         shared_mounts: {type: array, items: {$ref: "#/components/schemas/NodeMount"}}
         tenant_mounts: {type: array, items: {$ref: "#/components/schemas/NodeTenantMount"}}
@@ -5278,7 +5287,7 @@ components:
       type: object
       required: [code, message]
       properties:
-        code: {type: string, enum: [SHARED_SERVICE_USER, NAMESPACE_REQUIRES_SLURM_25_11]}
+        code: {type: string, enum: [SHARED_SERVICE_USER, NAMESPACE_REQUIRES_SLURM_25_11, TENANT_EXCLUSIVE_SHARED_USER]}
         message: {type: string}
     NodeConfigView:
       type: object

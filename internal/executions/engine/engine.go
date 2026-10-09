@@ -28,6 +28,7 @@ import (
 	"github.com/Exonical/custos/internal/executions"
 	"github.com/Exonical/custos/internal/jobs"
 	jobssvc "github.com/Exonical/custos/internal/jobs/service"
+	"github.com/Exonical/custos/internal/nodehooks"
 	"github.com/Exonical/custos/internal/platform/apperr"
 	"github.com/Exonical/custos/internal/platform/workqueue"
 	policiessvc "github.com/Exonical/custos/internal/policies/service"
@@ -74,6 +75,8 @@ type Deps struct {
 	SecretReference    func(context.Context, uuid.UUID, string) (wfvalidate.SecretReferenceInfo, bool)
 	AuthorizeSecretUse func(context.Context, uuid.UUID, uuid.UUID, uuid.UUID, string) error
 	Allocations        *allocations.Service
+	NodeConfig         nodehooks.ConfigReader // node isolation snapshot; may be nil
+	Tenants            tenants.Repository     // tenant slug for NodeConfig
 	Policies           *policiessvc.Service
 	VPolicy            *vpolicy.Service
 	Clusters           clusters.Repository

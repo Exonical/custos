@@ -29,6 +29,13 @@ const (
 	ModeNodeExclusive   = "node_exclusive"
 )
 
+// Tenant-exclusive mechanisms: how Slurm keeps tenants off shared nodes
+// when the mode is tenant_exclusive.
+const (
+	MechanismMCSLabel = "mcs_label"
+	MechanismUser     = "user"
+)
+
 // Hook phases.
 const (
 	PhaseProlog = "prolog"
@@ -57,11 +64,12 @@ const (
 
 // Config is the per-cluster node configuration.
 type Config struct {
-	IsolationMode       string        `json:"isolation_mode"`
-	MountTimeoutSeconds int           `json:"mount_timeout_seconds"`
-	SharedMounts        []Mount       `json:"shared_mounts"`
-	TenantMounts        []TenantMount `json:"tenant_mounts"`
-	Hooks               []Hook        `json:"hooks"`
+	IsolationMode            string        `json:"isolation_mode"`
+	TenantExclusiveMechanism string        `json:"tenant_exclusive_mechanism"`
+	MountTimeoutSeconds      int           `json:"mount_timeout_seconds"`
+	SharedMounts             []Mount       `json:"shared_mounts"`
+	TenantMounts             []TenantMount `json:"tenant_mounts"`
+	Hooks                    []Hook        `json:"hooks"`
 }
 
 // Mount is one NFS mount.
@@ -135,11 +143,12 @@ var enumOptions = map[string][]string{
 // Default returns the configuration used before an admin sets one.
 func Default() Config {
 	return Config{
-		IsolationMode:       ModeNamespace,
-		MountTimeoutSeconds: DefaultMountTimeoutSeconds,
-		SharedMounts:        []Mount{},
-		TenantMounts:        []TenantMount{},
-		Hooks:               []Hook{},
+		IsolationMode:            ModeNamespace,
+		TenantExclusiveMechanism: MechanismMCSLabel,
+		MountTimeoutSeconds:      DefaultMountTimeoutSeconds,
+		SharedMounts:             []Mount{},
+		TenantMounts:             []TenantMount{},
+		Hooks:                    []Hook{},
 	}
 }
 
@@ -148,14 +157,18 @@ func Default() Config {
 // not validate; call Validate on the result.
 func Normalize(c Config) Config {
 	out := Config{
-		IsolationMode:       c.IsolationMode,
-		MountTimeoutSeconds: c.MountTimeoutSeconds,
-		SharedMounts:        make([]Mount, 0, len(c.SharedMounts)),
-		TenantMounts:        make([]TenantMount, 0, len(c.TenantMounts)),
-		Hooks:               make([]Hook, 0, len(c.Hooks)),
+		IsolationMode:            c.IsolationMode,
+		TenantExclusiveMechanism: c.TenantExclusiveMechanism,
+		MountTimeoutSeconds:      c.MountTimeoutSeconds,
+		SharedMounts:             make([]Mount, 0, len(c.SharedMounts)),
+		TenantMounts:             make([]TenantMount, 0, len(c.TenantMounts)),
+		Hooks:                    make([]Hook, 0, len(c.Hooks)),
 	}
 	if out.IsolationMode == "" {
 		out.IsolationMode = ModeNamespace
+	}
+	if out.TenantExclusiveMechanism == "" {
+		out.TenantExclusiveMechanism = MechanismMCSLabel
 	}
 	if out.MountTimeoutSeconds == 0 {
 		out.MountTimeoutSeconds = DefaultMountTimeoutSeconds
@@ -207,6 +220,12 @@ func Validate(c Config) []FieldError {
 	default:
 		add("isolation_mode", CodeConfigInvalid,
 			"must be namespace, tenant_exclusive or node_exclusive")
+	}
+	switch c.TenantExclusiveMechanism {
+	case MechanismMCSLabel, MechanismUser:
+	default:
+		add("tenant_exclusive_mechanism", CodeConfigInvalid,
+			"must be mcs_label or user")
 	}
 	if c.MountTimeoutSeconds < MinMountTimeoutSeconds ||
 		c.MountTimeoutSeconds > MaxMountTimeoutSeconds {

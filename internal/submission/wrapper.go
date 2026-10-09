@@ -57,7 +57,8 @@ export CUSTOS_JOB_DIR="${SLURM_TMPDIR:-${TMPDIR:-/tmp}}/custos-${SLURM_JOB_ID}"
 mkdir -p "$CUSTOS_JOB_DIR"
 creds_dir=
 trap 'if [ -n "${creds_dir:-}" ]; then rm -rf "$creds_dir" || true; fi; rm -rf "$CUSTOS_JOB_DIR"' EXIT
-{{ range .Modules }}module load {{ q . }}
+{{ range .MountChecks }}{{ . }}
+{{ end }}{{ range .Modules }}module load {{ q . }}
 {{ end }}{{ if .GenericMultinode }}
 CUSTOS_HOSTS=$(scontrol show hostnames "$SLURM_JOB_NODELIST")
 export MULTINODE_HOSTLIST_NOSLOTS=$(printf '%s\n' $CUSTOS_HOSTS | paste -sd, -)
@@ -104,6 +105,7 @@ type wrapperData struct {
 	SpecDigest        SafeToken
 	TaskName          string
 	Modules           []string
+	MountChecks       []string // Custos-authored node mount checks
 	Env               []envKV
 	ServiceSetup      []string
 	Nonce             SafeToken
@@ -269,7 +271,51 @@ func containerEnvNames(spec admission.ExecutionSpec) ([]string, error) {
 	return out, nil
 }
 
-func apptainerWords(container *admission.ContainerSpec) []string {
+var nodeMountTargetRe = regexp.MustCompile(`^/[A-Za-z0-9._/-]+$`)
+
+func isolationMounts(spec admission.ExecutionSpec) []admission.NodeMount {
+	if spec.Isolation == nil {
+		return nil
+	}
+	return spec.Isolation.Mounts
+}
+
+// mountEntries renders frozen node mounts as same-path bind entries
+// ("/apps:/apps:ro"). Targets were validated at admission; they are
+// re-checked here because the spec is persisted data.
+func mountEntries(mounts []admission.NodeMount) ([]string, error) {
+	out := make([]string, 0, len(mounts))
+	for _, m := range mounts {
+		if !nodeMountTargetRe.MatchString(m.Target) || strings.Contains(m.Target, "..") {
+			return nil, apperr.New(apperr.Internal, "INTERNAL",
+				"submission: invalid frozen node mount target "+strconv.Quote(m.Target))
+		}
+		entry := m.Target + ":" + m.Target
+		if m.ReadOnly {
+			entry += ":ro"
+		}
+		out = append(out, entry)
+	}
+	return out, nil
+}
+
+// mountChecks makes the batch script fail fast (exit 97) when a frozen
+// node mount is absent on the node, e.g. an outdated node bundle.
+func mountChecks(mounts []admission.NodeMount) ([]string, error) {
+	out := make([]string, 0, len(mounts))
+	for _, m := range mounts {
+		if !nodeMountTargetRe.MatchString(m.Target) || strings.Contains(m.Target, "..") {
+			return nil, apperr.New(apperr.Internal, "INTERNAL",
+				"submission: invalid frozen node mount target "+strconv.Quote(m.Target))
+		}
+		msg := "custos: required node mount " + m.Target + " is missing (node bundle out of date?)"
+		out = append(out, fmt.Sprintf(
+			"mountpoint -q -- %s || { printf '%%s\\n' %s >&2; exit 97; }", q(m.Target), q(msg)))
+	}
+	return out, nil
+}
+
+func apptainerWords(container *admission.ContainerSpec, mounts []admission.NodeMount) ([]string, error) {
 	binary := container.Binary
 	if binary == "" {
 		binary = "apptainer"
@@ -278,7 +324,15 @@ func apptainerWords(container *admission.ContainerSpec) []string {
 	if container.PullSecret {
 		image = `"$CUSTOS_JOB_DIR/image.sif"`
 	}
-	return []string{q(binary), q("exec"), q("--no-eval"), q("--bind"), `"$CUSTOS_JOB_DIR"`, image}
+	words := []string{q(binary), q("exec"), q("--no-eval"), q("--bind"), `"$CUSTOS_JOB_DIR"`}
+	entries, err := mountEntries(mounts)
+	if err != nil {
+		return nil, err
+	}
+	if len(entries) > 0 {
+		words = append(words, q("--bind"), q(strings.Join(entries, ",")))
+	}
+	return append(words, image), nil
 }
 
 func pyxisWords(spec admission.ExecutionSpec) ([]string, error) {
@@ -286,8 +340,15 @@ func pyxisWords(spec admission.ExecutionSpec) ([]string, error) {
 	if spec.Container.PullSecret {
 		image = `--container-image="$CUSTOS_JOB_DIR/image.sqsh"`
 	}
-	words := []string{image,
-		`--container-mounts="$CUSTOS_JOB_DIR:$CUSTOS_JOB_DIR"`}
+	mountsWord := `--container-mounts="$CUSTOS_JOB_DIR:$CUSTOS_JOB_DIR"`
+	entries, err := mountEntries(isolationMounts(spec))
+	if err != nil {
+		return nil, err
+	}
+	if len(entries) > 0 {
+		mountsWord += q("," + strings.Join(entries, ","))
+	}
+	words := []string{image, mountsWord}
 	names, err := containerEnvNames(spec)
 	if err != nil {
 		return nil, err
@@ -433,11 +494,13 @@ func containerWords(spec admission.ExecutionSpec) (words, envPrefix, rshWords, r
 	}
 	switch spec.Container.Runtime {
 	case validation.ContainerRuntimeApptainer:
-		words = apptainerWords(spec.Container)
-		rshWords = append([]string(nil), words...)
-		envPrefix, err = containerEnvPrefix(spec)
+		words, err = apptainerWords(spec.Container, isolationMounts(spec))
 		if err == nil {
-			rshEnvPrefix = append([]string(nil), envPrefix...)
+			rshWords = append([]string(nil), words...)
+			envPrefix, err = containerEnvPrefix(spec)
+			if err == nil {
+				rshEnvPrefix = append([]string(nil), envPrefix...)
+			}
 		}
 	case validation.ContainerRuntimePyxis:
 		words, err = pyxisWords(spec)
@@ -490,6 +553,10 @@ func Wrapper(spec admission.ExecutionSpec, payload []byte) (string, error) {
 		return "", err
 	}
 	serviceSetup, err := serviceHostSetup(spec)
+	if err != nil {
+		return "", err
+	}
+	mountCheckLines, err := mountChecks(isolationMounts(spec))
 	if err != nil {
 		return "", err
 	}
@@ -555,6 +622,7 @@ func Wrapper(spec admission.ExecutionSpec, payload []byte) (string, error) {
 	d := wrapperData{
 		TaskName:          spec.TaskName,
 		Modules:           modules,
+		MountChecks:       mountCheckLines,
 		Env:               env,
 		ServiceSetup:      serviceSetup,
 		Nonce:             SafeToken(nonce),
@@ -635,6 +703,12 @@ func JobSubmission(spec admission.ExecutionSpec, wrapper string) slurm.JobSubmis
 		Constraints:      spec.Resources.Constraints,
 		Licenses:         spec.Resources.Licenses,
 		Walltime:         time.Duration(spec.Resources.WalltimeSeconds) * time.Second,
+	}
+	if iso := spec.Isolation; iso != nil {
+		sub.Shared = iso.Shared
+		sub.MCSLabel = iso.MCSLabel
+	} else if spec.Resources.Exclusive {
+		sub.Shared = admission.SharedNone
 	}
 	for _, dep := range spec.ServiceDependencies {
 		if dep.After && dep.SlurmJobID != 0 {

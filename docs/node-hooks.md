@@ -37,6 +37,7 @@ tree. Tenant ids are the tenant uuids.
   "version": 0,
   "config": {
     "isolation_mode": "namespace",
+    "tenant_exclusive_mechanism": "mcs_label",
     "mount_timeout_seconds": 30,
     "shared_mounts": [
       {"name": "apps", "fstype": "nfs4", "source": "server:/hpc/apps",
@@ -77,6 +78,7 @@ the returned `version` with the next update; a stale value returns
 | tenant | must exist, not be deleting/deleted, and be assigned to the cluster (unless the cluster is visible to all tenants) |
 | hooks | script at most 64 KiB, first line `#!/bin/bash` or `#!/bin/sh`, LF endings, no NUL bytes, must parse as shell; `order` 0 to 99, unique per phase; at most 32 hooks |
 | timeout | `mount_timeout_seconds` 5 to 300 |
+| `tenant_exclusive_mechanism` | `mcs_label` (default) or `user`; only used in `tenant_exclusive` mode |
 
 Validation errors are `422` with codes `NODE_MOUNT_INVALID`,
 `NODE_HOOK_INVALID` or `NODE_CONFIG_INVALID` and `details[].field` paths such
@@ -89,8 +91,12 @@ service, so lint hook text yourself if you want ShellCheck coverage.
 | Mode | Where tenant shares are mounted | Needs | Use when |
 | --- | --- | --- | --- |
 | `namespace` (default) | Inside each job's private mount namespace only | Slurm 25.11+, cgroup v2, `PrologFlags=Contain`, `NamespaceType=namespace/linux`, `namespace.yaml` | You can run `namespace/linux`; jobs of different tenants may share nodes |
-| `tenant_exclusive` | On the host while the tenant has jobs on the node | Placement that keeps tenants apart | No `namespace/linux`; combine with per-tenant partitions or node features |
-| `node_exclusive` | On the host; a second Custos-account job always fails the Prolog | Exclusive node allocation | Strictest host isolation |
+| `tenant_exclusive` | On the host while the tenant has jobs on the node | Slurm node-sharing: Custos submits `--exclusive=mcs` or `--exclusive=user` | No `namespace/linux`; see "How Custos submits jobs" |
+| `node_exclusive` | On the host; a second Custos-account job always fails the Prolog | Custos submits every job with `--exclusive` | Strictest host isolation |
+
+In `tenant_exclusive` mode `tenant_exclusive_mechanism` decides how Slurm keeps
+tenants apart (see "How Custos submits jobs" below): `mcs_label` (default) or
+`user`.
 
 Rules common to all modes: shared mounts are mounted by the Prolog if not
 already mounted and are never unmounted; a target already mounted from a
@@ -108,6 +114,11 @@ The configuration views carry non-blocking `warnings`:
   tenants on the cluster share the cluster's Slurm service user. All of their
   jobs run as one OS user, so file ownership cannot separate tenants and the
   mount isolation is the only barrier.
+- `TENANT_EXCLUSIVE_SHARED_USER`: `tenant_exclusive` with mechanism `user` while
+  bindings of two or more tenants on the cluster use the one Slurm service
+  user. Jobs of different tenants can co-locate, the Prolog then refuses
+  them and drains the node. Give each tenant its own Slurm service user or use
+  `mcs_label`.
 - `NAMESPACE_REQUIRES_SLURM_25_11`: namespace mode on a cluster whose
   reported Slurm version is older than 25.11, or unknown (the cluster has not
   synced capabilities yet).
@@ -240,12 +251,57 @@ cause (`scontrol update nodename=... state=resume`).
 | `403 CLUSTER_DISABLED` | The cluster is disabled in Custos. |
 | `429` | The pull endpoint is rate limited per client address; nodes behind one NAT share the limit. |
 
-## Planned, not implemented yet
+## How Custos submits jobs
 
-These belong to a later phase and are **not** part of the current feature:
+Admission reads the cluster node configuration for every task (ad hoc jobs,
+workflow tasks and preview) and freezes a per-tenant snapshot in
+`ExecutionSpec.isolation`: the mode, the Slurm node-sharing choice and MCS
+label, and the mounts the task may see (the shared mounts plus **this tenant's**
+mounts, never another tenant's). Specs created before this feature have no
+`isolation` block and keep their digests. A configuration read failure makes
+admission retry; it never admits without the isolation the admin configured,
+and a cluster with no stored configuration uses the defaults (`namespace`, no
+mounts).
 
-- Automatic container bind mounts of tenant shares into Apptainer/Pyxis tasks.
-- Submission flags derived from the isolation mode: `--exclusive=user` for
-  tenant isolation and `--exclusive` for node isolation. Today you must
-  arrange exclusivity with Slurm configuration (partitions, node features,
-  QOS or user-level policies) yourself.
+| Mode | Slurm submission |
+| --- | --- |
+| `namespace` | nothing extra (`--exclusive` only if the user requested `exclusive`) |
+| `tenant_exclusive` + `mcs_label` | `--exclusive=mcs` with the tenant slug as the MCS label |
+| `tenant_exclusive` + `user` | `--exclusive=user` |
+| `node_exclusive` | `--exclusive` |
+
+A user's own `resources.exclusive` still requires the policy's
+`allowExclusive` and becomes `--exclusive`. Exclusivity imposed by the mode is
+admin policy and is not denied by `allowExclusive`. (`resources.exclusive`
+itself used to be dropped before reaching Slurm; this phase fixes that.)
+
+Why `mcs_label` is the default: it works when all tenants share one Slurm
+service user, which is the common Custos deployment, because Slurm separates
+jobs by label rather than by user. `--exclusive=user` only separates tenants
+that run as different Slurm users, so with a shared service user it would let
+tenants co-locate and the Prolog would then drain the node (hence the
+`TENANT_EXCLUSIVE_SHARED_USER` warning).
+
+### `mcs_label` setup and its gap
+
+Enable the plugin in `slurm.conf`:
+
+```text
+MCSPlugin=mcs/label
+MCSParameters=ondemand,select
+```
+
+`mcs/label` does not enforce who may use a label: any submitter who sets
+`--mcs-label=tenant-a` is co-located only with that label. Install a
+`job_submit` filter that rejects tenant labels from every identity except the
+Custos service user(s), so a non-Custos submitter cannot join a tenant's nodes
+and read its mounts. The bundle README repeats this guidance.
+
+### Mount checks and containers
+
+The wrapper checks each frozen mount with `mountpoint -q` on the batch node
+before it starts the payload; a missing mount exits 97 with
+`custos: required node mount <target> is missing (node bundle out of date?)`.
+Container tasks bind the same mounts at the same paths, read-only where the
+admin set `ro` (Apptainer `--bind`, Pyxis `--container-mounts`), including for
+pull-secret and multinode tasks. See `docs/workflows.md`.

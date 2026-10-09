@@ -26,6 +26,8 @@ import (
 	jobpg "github.com/Exonical/custos/internal/jobs/postgres"
 	jobssvc "github.com/Exonical/custos/internal/jobs/service"
 	jobsworker "github.com/Exonical/custos/internal/jobs/worker"
+	"github.com/Exonical/custos/internal/nodehooks"
+	nodehookspg "github.com/Exonical/custos/internal/nodehooks/postgres"
 	"github.com/Exonical/custos/internal/platform/config"
 	"github.com/Exonical/custos/internal/platform/db/dbtest"
 	"github.com/Exonical/custos/internal/platform/health"
@@ -116,6 +118,7 @@ func TestAPIJobs(t *testing.T) {
 		VPolicy:     vpolSvc,
 		Validations: vpolicypg.NewValidationStore(pool),
 		AZ:          authz.RBAC{}, Audit: rec, Secrets: secretSvc,
+		NodeConfig: nodehookspg.New(pool),
 	})
 	clusterSvc := clustersvc.New(clustersvc.Deps{
 		Repository: clusterRepo, Tenants: trepo,
@@ -353,6 +356,55 @@ func TestAPIJobs(t *testing.T) {
 		t.Fatalf("fake submissions: %d", n)
 	}
 
+	// Node isolation (ADR-032 phase 2): a tenant_exclusive cluster freezes
+	// Shared=mcs, the tenant label and only this tenant's mounts.
+	nodeCfg := nodehooks.Normalize(nodehooks.Config{
+		IsolationMode: nodehooks.ModeTenantExclusive,
+		SharedMounts: []nodehooks.Mount{{Name: "apps", FSType: "nfs4",
+			Source: "nfs1.example.org:/hpc/apps", Target: "/apps"}},
+		TenantMounts: []nodehooks.TenantMount{
+			{Tenant: tid.String(), Name: "data", FSType: "nfs4",
+				Source: "nfs2.example.org:/mine", Target: "/mnt/data"},
+			{Tenant: uuid.NewString(), Name: "other", FSType: "nfs4",
+				Source: "nfs2.example.org:/theirs", Target: "/mnt/other"},
+		},
+	})
+	if _, err := nodehookspg.New(pool).PutConfig(context.Background(), cid, nodeCfg,
+		nodehooks.ContentSHA256(nodeCfg), 0, nil); err != nil {
+		t.Fatal(err)
+	}
+	code, nr := call(tokR, "POST", base, jobBody, "idem-node")
+	if code != 202 {
+		t.Fatalf("node isolation submit: %d %v", code, nr)
+	}
+	nid, _ := nr["id"].(string)
+	if err := jobsworker.Submit(jobsworker.Deps{
+		Jobs: jobRepo, Scripts: scriptpg.New(pool),
+		Clusters: clusterRepo, Factory: fakeFactory{fc},
+		Exec: pool, Audit: rec,
+	})(context.Background(), workqueue.Item{
+		Kind: jobssvc.KindSubmit, Key: "job:" + nid,
+		Payload: json.RawMessage(`{"job_id":"` + nid + `"}`),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	subs := fc.Submissions()
+	if len(subs) != 2 || subs[1].Shared != "mcs" || subs[1].MCSLabel != "j-tenant" {
+		t.Fatalf("tenant_exclusive submission: %+v", subs)
+	}
+	if !strings.Contains(subs[1].Script, "mountpoint -q -- '/mnt/data'") ||
+		strings.Contains(subs[1].Script, "/mnt/other") {
+		t.Fatalf("wrapper mount checks wrong:\n%s", subs[1].Script)
+	}
+	code, nspec := call(tokR, "GET", base+"/"+nid+"/execution-spec", nil, "")
+	iso, _ := nspec["isolation"].(map[string]any)
+	if code != 200 || iso["mode"] != "tenant_exclusive" || iso["shared"] != "mcs" ||
+		iso["mcs_label"] != "j-tenant" || len(iso["mounts"].([]any)) != 2 {
+		t.Fatalf("frozen isolation: %d %v", code, nspec)
+	}
+	if subs[0].Shared != "" || subs[0].MCSLabel != "" {
+		t.Fatal("namespace-default job must not set Shared")
+	}
 	code, listed := call(tokR, "GET", base, nil, "")
 	if code != http.StatusOK {
 		t.Fatalf("list own jobs: %d %v", code, listed)

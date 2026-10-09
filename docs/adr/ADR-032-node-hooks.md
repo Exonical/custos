@@ -106,7 +106,7 @@ to a tenant.
 
 - **Configure mounts through slurmrestd or job submission flags**: neither
   can mount filesystems on a node; container bind mounts only cover
-  containerized tasks (planned separately, see Consequences).
+  containerized tasks (implemented in phase 2, see below).
 - **Pod/Kubernetes style volume mounts**: not applicable on bare-metal Slurm;
   reserved for a later Kubernetes/Slinky design.
 - **Always mounting every tenant's shares on every node**: exposes tenant
@@ -129,9 +129,39 @@ to a tenant.
 - Host isolation modes depend on Slurm placement: jobs of non-Custos accounts
   are not blocked by tenant markers and can see tenant mounts that are active
   on the node. Use dedicated partitions or node features, or namespace mode.
-- Planned, not implemented in this phase: automatic container bind mounts for
-  tenant mounts and the matching submission flags (`--exclusive=user` for
-  tenant isolation, `--exclusive` for node isolation).
+- Phase 2 (implemented): admission snapshots the cluster configuration per
+  tenant into `ExecutionSpec.isolation`, the wrapper checks node mounts
+  (exit 97) and binds them into Apptainer/Pyxis containers at the same paths,
+  and submissions carry the node-sharing mode.
+
+## Phase 2: submission side
+
+- **Admission snapshot.** `isolation` records mode, `shared`
+  (`none|user|mcs`), `mcs_label` and the mounts visible to the tenant (shared
+  plus the tenant's own, never other tenants'). The field is omitted when
+  empty, so previously frozen specs keep their digests and
+  `SchemaVersion` stays 1.
+- **Tenant-exclusive mechanism.** `tenant_exclusive_mechanism` is `mcs_label`
+  (default) or `user`. `mcs_label` submits `--exclusive=mcs` with the tenant
+  slug as label and works when every tenant shares one Slurm service user;
+  `user` submits `--exclusive=user` and needs one Slurm user per tenant. The
+  default is `mcs_label` because shared service users are the common
+  deployment and `--exclusive=user` would not separate such tenants. The
+  `TENANT_EXCLUSIVE_SHARED_USER` warning flags the mismatch.
+- **MCS gap.** `mcs/label` does not restrict who may use a label, so sites
+  should add a `job_submit` filter that only lets the Custos service identity
+  set tenant labels.
+- **Exclusivity is policy.** Exclusivity imposed by the mode is not denied by
+  the resource policy's `allowExclusive`, which gates only the user's own
+  `exclusive` request.
+- **Fixed defect.** `resources.exclusive` was admitted and frozen but never
+  sent to Slurm; the neutral submission now carries it as `shared: none`.
+- **Fail closed and retryable.** A node configuration read error during
+  admission is returned to the caller/queue for retry; only "no configuration
+  stored" falls back to the defaults.
+- **Containers and mount checks.** The wrapper verifies each frozen mount
+  with `mountpoint -q` (exit 97 when absent) and binds mounts into containers
+  at identical paths, read-only where configured.
 
 See also `docs/node-hooks.md`, `docs/slurm.md`, `docs/threat-model.md`
 (TM-40 to TM-43) and `docs/api.md`.

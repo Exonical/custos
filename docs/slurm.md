@@ -270,7 +270,7 @@ ever sets: account, partition, qos, reservation, nodes, tasks,
 tasks_per_node, cpus_per_task, memory_per_node/memory_per_cpu, tres_per_node
 (gres), constraints, licenses, time_limit, current_working_directory,
 standard_output, standard_error, environment (explicit, no inheritance),
-dependency, array, nice, name, comment. Mail is never set. Anything the
+dependency, array, nice, name, comment, shared and mcs_label. Mail is never set. Anything the
 spec cannot express cannot reach Slurm.
 Workflow `resources.memoryPerCpu` maps to `memory_per_cpu`; it is mutually
 exclusive with `memory` and `memoryPerNode`.
@@ -369,9 +369,26 @@ built under `PrologFlags=Contain`. The Prolog records the account in
 `/run/custos/jobs/<jobid>/account` (root-only) and the namespace scripts
 fall back to that file, failing closed if neither source resolves.
 
-Custos submissions are unchanged by node hooks. Container auto-binds of tenant
-mounts and submission flags derived from the isolation mode (`--exclusive=user`,
-`--exclusive`) are planned, not implemented.
+Node hooks also change submissions (ADR-032 phase 2). `resources.exclusive`,
+which admission always accepted and froze into the spec, was previously never
+sent to Slurm; it now maps to `shared: none` (`--exclusive`). The neutral
+`JobSubmission` carries `Shared` (`""`, `none`, `user`, `mcs`) and `MCSLabel`,
+which the v0.0.45 adapter sends as `shared` and `mcs_label`. Admission derives
+them from the cluster isolation mode and the user's request:
+
+| Mode | `Shared` | `MCSLabel` |
+| --- | --- | --- |
+| `namespace` | `none` only if the user asked for `exclusive`, else unset | unset |
+| `tenant_exclusive` + `mcs_label` | `mcs` (`none` if the user asked for `exclusive`) | tenant slug |
+| `tenant_exclusive` + `user` | `user` (`none` if the user asked for `exclusive`) | unset |
+| `node_exclusive` | `none` | unset |
+
+Exclusivity imposed by the mode is admin policy and is not subject to the
+resource policy's `allowExclusive`, which only gates what a user requests. The
+`mcs_label` mechanism needs `MCSPlugin=mcs/label` and
+`MCSParameters=ondemand,select` in `slurm.conf`. Specs frozen before this
+change carry no `isolation` block; their `resources.exclusive` still maps to
+`shared: none`, so submissions of existing specs gain only that fix.
 
 ## Cluster synchronization
 

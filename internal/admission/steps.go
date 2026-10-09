@@ -225,6 +225,7 @@ type BuildInput struct {
 	Policy       ResourcePolicy
 	Binding      Binding
 	Cluster      validation.ClusterSnapshot
+	Node         *NodeIsolation                               // nil: namespace mode, no mounts
 	Allocate     func(ResolvedResources) (*Denial, []Warning) // nil → no budgets
 }
 
@@ -478,6 +479,7 @@ func Build(in BuildInput) (ExecutionSpec, *Denial) {
 	spec.Account = account
 	spec.Partition = partition
 	spec.QoS = qos
+	spec.Isolation = resolveIsolation(in.Node, in.Request.Exclusive)
 	spec.Resources = ResolvedResources{
 		Nodes:            in.Request.Nodes,
 		Tasks:            in.Request.Tasks,

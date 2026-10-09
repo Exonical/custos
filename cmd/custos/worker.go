@@ -24,6 +24,7 @@ import (
 	jobpg "github.com/Exonical/custos/internal/jobs/postgres"
 	jobssvc "github.com/Exonical/custos/internal/jobs/service"
 	jobsworker "github.com/Exonical/custos/internal/jobs/worker"
+	nodehookspg "github.com/Exonical/custos/internal/nodehooks/postgres"
 	"github.com/Exonical/custos/internal/platform/config"
 	"github.com/Exonical/custos/internal/platform/db"
 	"github.com/Exonical/custos/internal/platform/health"
@@ -173,6 +174,8 @@ func cmdWorker(parent context.Context, configPath string, lookupEnv config.Looku
 		Workflows:       wfpg.New(pool),
 		SecretReference: secretSvc.ReferenceInfo,
 		Allocations:     allocationSvc,
+		NodeConfig:      nodehookspg.New(pool),
+		Tenants:         tenantRepo,
 		AuthorizeSecretUse: func(ctx context.Context, tenantID, projectID,
 			userID uuid.UUID, name string) error {
 			_, err := secretSvc.AuthorizeUserUse(ctx, tenantID, projectID, userID, name)

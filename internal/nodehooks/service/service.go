@@ -31,8 +31,9 @@ import (
 
 // Warning codes (non-blocking findings returned with the configuration).
 const (
-	WarnSharedServiceUser = "SHARED_SERVICE_USER"
-	WarnNamespaceVersion  = "NAMESPACE_REQUIRES_SLURM_25_11"
+	WarnSharedServiceUser         = "SHARED_SERVICE_USER"
+	WarnNamespaceVersion          = "NAMESPACE_REQUIRES_SLURM_25_11"
+	WarnTenantExclusiveSharedUser = "TENANT_EXCLUSIVE_SHARED_USER"
 )
 
 // TokenPrefix marks node pull tokens.
@@ -320,7 +321,9 @@ func (s *Service) warnings(ctx context.Context, c clusters.Cluster, cfg nodehook
 		warns = append(warns, Warning{Code: WarnNamespaceVersion,
 			Message: "namespace mode needs Slurm 25.11 or newer with namespace/linux; cluster reports " + ver})
 	}
-	if len(cfg.TenantMounts) > 0 && c.IdentityMode == clusters.IdentityService {
+	userMechanism := cfg.IsolationMode == nodehooks.ModeTenantExclusive &&
+		cfg.TenantExclusiveMechanism == nodehooks.MechanismUser
+	if (len(cfg.TenantMounts) > 0 || userMechanism) && c.IdentityMode == clusters.IdentityService {
 		bindings, err := s.d.Bindings.ListBindingsByCluster(ctx, c.ID)
 		if err != nil {
 			return nil, err
@@ -329,7 +332,11 @@ func (s *Service) warnings(ctx context.Context, c clusters.Cluster, cfg nodehook
 		for _, b := range bindings {
 			distinct[b.TenantID] = true
 		}
-		if len(distinct) >= 2 {
+		if len(distinct) >= 2 && userMechanism {
+			warns = append(warns, Warning{Code: WarnTenantExclusiveSharedUser,
+				Message: fmt.Sprintf("tenant_exclusive with mechanism user needs one Slurm user per tenant, but bindings of %d tenants share the service user %q; jobs of different tenants can co-locate, the prolog will refuse them and drain the node", len(distinct), c.ServiceUser)})
+		}
+		if len(distinct) >= 2 && len(cfg.TenantMounts) > 0 {
 			warns = append(warns, Warning{Code: WarnSharedServiceUser,
 				Message: fmt.Sprintf("bindings of %d tenants share the Slurm service user %q; "+
 					"jobs of different tenants run as the same OS user and tenant NFS isolation "+

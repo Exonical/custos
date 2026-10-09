@@ -129,12 +129,17 @@ func renderReadme(in RenderInput) ([]byte, error) {
 	}
 	var buf bytes.Buffer
 	err = t.Execute(&buf, map[string]any{
-		"Cluster":   in.Cluster,
-		"Revision":  in.Revision,
-		"Mode":      in.Config.IsolationMode,
-		"Timeout":   in.Config.MountTimeoutSeconds,
-		"Wait":      in.Config.MountTimeoutSeconds + 5,
-		"Namespace": in.Config.IsolationMode == ModeNamespace,
+		"Cluster":         in.Cluster,
+		"Revision":        in.Revision,
+		"Mode":            in.Config.IsolationMode,
+		"Timeout":         in.Config.MountTimeoutSeconds,
+		"Wait":            in.Config.MountTimeoutSeconds + 5,
+		"Namespace":       in.Config.IsolationMode == ModeNamespace,
+		"NodeExclusive":   in.Config.IsolationMode == ModeNodeExclusive,
+		"TenantExclusive": in.Config.IsolationMode == ModeTenantExclusive,
+		"MCS":             in.Config.IsolationMode == ModeTenantExclusive && in.Config.TenantExclusiveMechanism != MechanismUser,
+		"UserMechanism":   in.Config.IsolationMode == ModeTenantExclusive && in.Config.TenantExclusiveMechanism == MechanismUser,
+		"Mechanism":       in.Config.TenantExclusiveMechanism,
 	})
 	return buf.Bytes(), err
 }
@@ -150,6 +155,7 @@ func renderMounts(in RenderInput) ([]byte, []string) {
 	}
 	line("meta", "revision", strconv.FormatInt(in.Revision, 10))
 	line("meta", "mode", cfg.IsolationMode)
+	line("meta", "mechanism", cfg.TenantExclusiveMechanism)
 	line("meta", "timeout", strconv.Itoa(cfg.MountTimeoutSeconds))
 
 	shared := append([]Mount(nil), cfg.SharedMounts...)

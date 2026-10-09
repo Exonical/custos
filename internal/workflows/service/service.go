@@ -23,6 +23,7 @@ import (
 	"github.com/Exonical/custos/internal/authn"
 	"github.com/Exonical/custos/internal/authz"
 	"github.com/Exonical/custos/internal/clusters"
+	"github.com/Exonical/custos/internal/nodehooks"
 	"github.com/Exonical/custos/internal/platform/apperr"
 	policiessvc "github.com/Exonical/custos/internal/policies/service"
 	projectsvc "github.com/Exonical/custos/internal/projects/service"
@@ -66,6 +67,7 @@ type Deps struct {
 	Metrics         *pipeline.Metrics // may be nil
 	AZ              authz.Authorizer
 	Audit           audit.Recorder
+	NodeConfig      nodehooks.ConfigReader // node isolation snapshot; may be nil
 }
 
 // Service is the workflows application service.
@@ -1151,7 +1153,12 @@ func (s *Service) PreviewSubmission(ctx context.Context, p authn.Principal,
 		resolved.ProcsPerNode = task.EffectiveProcsPerNode()
 		multinode = &resolved
 	}
+	node, err := nodehooks.LoadIsolation(ctx, s.d.NodeConfig, cluster.ID, w.TenantID, tc.Tenant.Slug)
+	if err != nil {
+		return Preview{}, err
+	}
 	built, denial := admission.Build(admission.BuildInput{
+		Node: node,
 		Spec: espec, Software: in.Software, Request: in.Resources,
 		Image: task.Image, Multinode: multinode,
 		CPUAffinity: task.Resources.CPUAffinity, ContainerEnv: env,

@@ -579,3 +579,61 @@ func TestNonPlatformAdminForbidden(t *testing.T) {
 		t.Fatal("forbidden calls must not write")
 	}
 }
+
+func TestWarningTenantExclusiveSharedUser(t *testing.T) {
+	ctx := context.Background()
+	put := func(h *harness, mode, mech string, noMounts bool) {
+		cfg := h.config()
+		cfg.IsolationMode = mode
+		cfg.TenantExclusiveMechanism = mech
+		if noMounts {
+			cfg.TenantMounts = nil
+		}
+		if _, err := h.svc.PutConfig(ctx, h.admin, "c1", cfg, 0); err != nil {
+			t.Fatal(err)
+		}
+	}
+	twoTenants := func(h *harness) {
+		h.bindings.list = []projects.ClusterBinding{bind(h.tenantA, "a1"), bind(h.tenantB, "b1")}
+	}
+
+	h := newHarness()
+	twoTenants(h)
+	put(h, "tenant_exclusive", "user", true)
+	v, _ := h.svc.GetConfig(ctx, h.admin, "c1")
+	if !warningCodes(v)[service.WarnTenantExclusiveSharedUser] {
+		t.Fatalf("user mechanism with 2 tenants on one service user must warn: %+v", v.Warnings)
+	}
+	if warningCodes(v)[service.WarnSharedServiceUser] {
+		t.Fatal("no tenant mounts: SHARED_SERVICE_USER must stay off")
+	}
+
+	h = newHarness()
+	twoTenants(h)
+	put(h, "tenant_exclusive", "mcs_label", false)
+	if v, _ = h.svc.GetConfig(ctx, h.admin, "c1"); warningCodes(v)[service.WarnTenantExclusiveSharedUser] {
+		t.Fatal("mcs_label must not warn")
+	}
+
+	h = newHarness()
+	twoTenants(h)
+	put(h, "namespace", "user", true)
+	if v, _ = h.svc.GetConfig(ctx, h.admin, "c1"); warningCodes(v)[service.WarnTenantExclusiveSharedUser] {
+		t.Fatal("namespace mode must not warn")
+	}
+
+	h = newHarness()
+	h.bindings.list = []projects.ClusterBinding{bind(h.tenantA, "a1")}
+	put(h, "tenant_exclusive", "user", true)
+	if v, _ = h.svc.GetConfig(ctx, h.admin, "c1"); warningCodes(v)[service.WarnTenantExclusiveSharedUser] {
+		t.Fatal("one tenant must not warn")
+	}
+
+	h = newHarness()
+	twoTenants(h)
+	h.clusters.c.IdentityMode = clusters.IdentityImpersonate
+	put(h, "tenant_exclusive", "user", true)
+	if v, _ = h.svc.GetConfig(ctx, h.admin, "c1"); warningCodes(v)[service.WarnTenantExclusiveSharedUser] {
+		t.Fatal("impersonation must not warn")
+	}
+}
