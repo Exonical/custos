@@ -187,7 +187,7 @@ cmd_up() {
 
 	echo "e2e: waiting for Custos readiness..."
 	for i in $(seq 1 60); do
-		if curl -sf --ssl-no-revoke --cacert "$CA" https://127.0.0.1:8080/health/ready >/dev/null 2>&1; then
+		if curl -sf --ssl-no-revoke --cacert "$CA" https://127.0.0.1:${CUSTOS_E2E_API_PORT:-8080}/health/ready >/dev/null 2>&1; then
 			break
 		fi
 		sleep 2
@@ -224,11 +224,11 @@ cmd_up() {
 			curl -sf --ssl-no-revoke --cacert "$CA" -X "$m" \
 				-H "Authorization: Bearer $at" \
 				-H 'Content-Type: application/json' \
-				-d "$d" "https://127.0.0.1:8080/api/v1$p"
+				-d "$d" "https://127.0.0.1:${CUSTOS_E2E_API_PORT:-8080}/api/v1$p"
 		else
 			curl -sf --ssl-no-revoke --cacert "$CA" -X "$m" \
 				-H "Authorization: Bearer $at" \
-				"https://127.0.0.1:8080/api/v1$p"
+				"https://127.0.0.1:${CUSTOS_E2E_API_PORT:-8080}/api/v1$p"
 		fi
 	}
 	kcurl POST /tenants \
@@ -256,7 +256,7 @@ cmd_up() {
 			"$KEYCLOAK/realms/custos/protocol/openid-connect/token")
 		alice_at=$(printf '%s' "$alice_resp" | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p')
 		alice_me=$(curl -sf --ssl-no-revoke --cacert "$CA" \
-			-H "Authorization: Bearer $alice_at" https://127.0.0.1:8080/api/v1/me)
+			-H "Authorization: Bearer $alice_at" https://127.0.0.1:${CUSTOS_E2E_API_PORT:-8080}/api/v1/me)
 		alice_id=$(printf '%s' "$alice_me" | sed -n 's/.*"user_id":"\([^"]*\)".*/\1/p')
 		[ -n "$tenant_id" ] && [ -n "$alice_id" ] || die "tenant/alice id lookup failed"
 		# Idempotent safety net for reruns where Alice was provisioned before
@@ -289,7 +289,7 @@ Host resolution (required once, needs admin):
 
 Test environment:
   export CUSTOS_E2E=1
-  export CUSTOS_E2E_API=https://127.0.0.1:8080
+  export CUSTOS_E2E_API=https://127.0.0.1:${CUSTOS_E2E_API_PORT:-8080}
   export CUSTOS_E2E_CA=$REPO/$CA
   export CUSTOS_E2E_KEYCLOAK=$KEYCLOAK/realms/custos
   export CUSTOS_E2E_CLIENT_ID=custos-e2e

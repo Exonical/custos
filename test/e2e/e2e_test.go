@@ -1150,6 +1150,186 @@ func TestE2E(t *testing.T) {
 			return x["state"] == "CANCELED"
 		})
 	})
+
+	t.Run("10_node_isolation_submission", func(t *testing.T) {
+		// Prolog/Epilog cannot run here (slurmd is unprivileged); this
+		// covers the submission side of ADR-032: the node-sharing mode
+		// and MCS label Custos sends to real Slurm, plus the bundle,
+		// token and pull endpoints.
+		nodeConfig := func(mode, mechanism string) map[string]any {
+			return map[string]any{
+				"isolation_mode": mode, "tenant_exclusive_mechanism": mechanism,
+				"mount_timeout_seconds": 30,
+				"shared_mounts":         []any{}, "tenant_mounts": []any{}, "hooks": []any{},
+			}
+		}
+		status, cur := api(t, http.MethodGet, "/clusters/e2e/node-config", nil, tokAdmin, nil)
+		want(t, status, cur, http.StatusOK, "get node config")
+		version := int(cur["version"].(float64))
+		putMode := func(mode, mechanism string) map[string]any {
+			t.Helper()
+			status, view := api(t, http.MethodPut, "/clusters/e2e/node-config",
+				map[string]any{"config": nodeConfig(mode, mechanism), "version": version},
+				tokAdmin, nil)
+			want(t, status, view, http.StatusOK, "put node config "+mode)
+			version = int(view["version"].(float64))
+			return view
+		}
+		t.Cleanup(func() {
+			status, view := api(t, http.MethodPut, "/clusters/e2e/node-config",
+				map[string]any{"config": nodeConfig("namespace", "mcs_label"), "version": version},
+				tokAdmin, nil)
+			if status != http.StatusOK {
+				t.Errorf("restore default node config: HTTP %d: %v", status, view)
+			}
+		})
+		submit := func(name string, resources map[string]any) (int, map[string]any) {
+			return api(t, http.MethodPost, "/tenants/acme/projects/p1/jobs",
+				map[string]any{
+					"cluster": "e2e", "partition": "debug", "resources": resources,
+					"script": map[string]any{"language": "bash", "body": "echo " + name + "; sleep 1"},
+				}, tokAlice, map[string]string{
+					"Idempotency-Key": "e2e-" + name + "-" + fmt.Sprint(time.Now().UnixNano()),
+				})
+		}
+		// runJob submits, waits for COMPLETED and returns `scontrol show
+		// job` captured while the record is still in memory (MinJobAge).
+		runJob := func(name string, resources map[string]any) string {
+			t.Helper()
+			status, job := submit(name, resources)
+			want(t, status, job, http.StatusAccepted, "submit "+name)
+			jobID, _ := job["id"].(string)
+			var final map[string]any
+			poll(t, name+" COMPLETED", 90*time.Second, func() bool {
+				_, j := api(t, http.MethodGet, "/tenants/acme/projects/p1/jobs/"+jobID,
+					nil, tokAlice, nil)
+				final = j
+				return j["state"] == "COMPLETED"
+			})
+			sid := strings.TrimSuffix(fmt.Sprint(final["slurm_job_id"]), ".0")
+			out := cexec(t, "slurmctld", "scontrol", "show", "job", sid)
+			t.Logf("%s: slurm job %s: %s", name, sid, scontrolFields(out, "JobState", "OverSubscribe", "Exclusive", "MCS_label", "Account", "Partition"))
+			return out
+		}
+		oneCPU := func() map[string]any { return map[string]any{"tasks": 1, "walltime": "2m"} }
+
+		// (a) tenant_exclusive + mcs_label: shared=mcs, label = tenant slug.
+		putMode("tenant_exclusive", "mcs_label")
+		out := runJob("node-mcs", oneCPU())
+		if f := scontrolField(out, "Exclusive"); f != "MCS" {
+			t.Fatalf("tenant_exclusive/mcs_label: Exclusive=%q, want MCS\n%s", f, out)
+		}
+		if f := scontrolField(out, "MCS_label"); f != "acme" {
+			t.Fatalf("tenant_exclusive/mcs_label: MCS_label=%q, want acme\n%s", f, out)
+		}
+
+		// Bundle download, token, pull (200 then 304) and node status.
+		hdr := map[string]string{"Authorization": "Bearer " + tokAdmin}
+		resp := rawGet(t, "/api/v1/clusters/e2e/node-config/bundle", hdr)
+		if resp.status != http.StatusOK || !strings.Contains(resp.header.Get("Content-Disposition"), "custos-node-e2e-r") {
+			t.Fatalf("bundle: HTTP %d %v", resp.status, resp.header)
+		}
+		files := untarGz(t, resp.body)
+		tsv := string(files["etc/custos/node/mounts.tsv"])
+		if !strings.Contains(tsv, "meta\tmode\ttenant_exclusive") || !strings.Contains(tsv, "meta\tmechanism\tmcs_label") {
+			t.Fatalf("mounts.tsv lacks the configured mode:\n%s", tsv)
+		}
+		for _, name := range []string{"etc/custos/node/prolog.d/900-custos-mounts",
+			"etc/custos/node/epilog.d/100-custos-unmount", "etc/custos/node/custos-node-sync", "README.md"} {
+			if len(files[name]) == 0 {
+				t.Fatalf("bundle lacks %s (have %d files)", name, len(files))
+			}
+		}
+
+		status, tok := api(t, http.MethodPost, "/clusters/e2e/node-tokens",
+			map[string]any{"name": "e2e-node" + runSfx}, tokAdmin, nil)
+		want(t, status, tok, http.StatusCreated, "create node token")
+		nodeTok, _ := tok["token"].(string)
+		tokenID, _ := tok["id"].(string)
+		if !strings.HasPrefix(nodeTok, "cnt_") || tokenID == "" {
+			t.Fatalf("node token response: %v", tok)
+		}
+		revoked := false
+		t.Cleanup(func() {
+			if !revoked {
+				api(t, http.MethodDelete, "/clusters/e2e/node-tokens/"+tokenID, nil, tokAdmin, nil)
+			}
+		})
+		pullHdr := map[string]string{"Authorization": "Bearer " + nodeTok, "X-Custos-Node": "c1"}
+		first := rawGet(t, "/api/v1/node/bundle", pullHdr)
+		etag := first.header.Get("ETag")
+		if first.status != http.StatusOK || etag == "" || first.header.Get("X-Custos-Revision") == "" {
+			t.Fatalf("node pull: HTTP %d %v", first.status, first.header)
+		}
+		if len(untarGz(t, first.body)["etc/custos/node/mounts.tsv"]) == 0 {
+			t.Fatal("node pull archive lacks mounts.tsv")
+		}
+		pullHdr["If-None-Match"] = etag
+		if again := rawGet(t, "/api/v1/node/bundle", pullHdr); again.status != http.StatusNotModified {
+			t.Fatalf("conditional pull: HTTP %d, want 304", again.status)
+		}
+		status, ns := api(t, http.MethodGet, "/clusters/e2e/node-status", nil, tokAdmin, nil)
+		want(t, status, ns, http.StatusOK, "node status")
+		var seen bool
+		for _, it := range ns["items"].([]any) {
+			row := it.(map[string]any)
+			if row["node_name"] == "c1" {
+				seen = true
+				if row["bundle_sha256"] != strings.Trim(etag, `"`) || row["stale"] != false {
+					t.Fatalf("node status row = %v (etag %s)", row, etag)
+				}
+			}
+		}
+		if !seen || ns["current_bundle_sha256"] != strings.Trim(etag, `"`) {
+			t.Fatalf("node c1 missing from node-status: %v", ns)
+		}
+		status, rv := api(t, http.MethodDelete, "/clusters/e2e/node-tokens/"+tokenID, nil, tokAdmin, nil)
+		if status != http.StatusNoContent {
+			t.Fatalf("revoke node token: HTTP %d: %v", status, rv)
+		}
+		revoked = true
+		delete(pullHdr, "If-None-Match")
+		if after := rawGet(t, "/api/v1/node/bundle", pullHdr); after.status != http.StatusUnauthorized {
+			t.Fatalf("pull with revoked token: HTTP %d, want 401", after.status)
+		}
+
+		// (b) node_exclusive is exclusive even though the project policy
+		// does not allow users to request exclusive.
+		putMode("node_exclusive", "mcs_label")
+		out = runJob("node-exclusive", oneCPU())
+		if f := scontrolField(out, "Exclusive"); f != "NODE" {
+			t.Fatalf("node_exclusive: Exclusive=%q, want NODE\n%s", f, out)
+		}
+
+		// (c) namespace mode: a user exclusive request is gated by the
+		// policy and, once allowed, reaches Slurm (the old defect dropped it).
+		putMode("namespace", "mcs_label")
+		out = runJob("node-namespace", oneCPU())
+		if f := scontrolField(out, "Exclusive"); f != "NO" || scontrolField(out, "MCS_label") != "N/A" {
+			t.Fatalf("namespace job must carry no sharing option: Exclusive=%q\n%s", f, out)
+		}
+		exclusive := oneCPU()
+		exclusive["exclusive"] = true
+		status, denied := submit("denied-exclusive", exclusive)
+		if status == http.StatusAccepted {
+			t.Fatalf("exclusive accepted without allow_exclusive: %v", denied)
+		}
+		t.Logf("exclusive without policy: HTTP %d %v", status, errCode(denied))
+		policyURL := "/tenants/acme/projects/p1/policies/resource"
+		setPolicy := func(p map[string]any) {
+			t.Helper()
+			status, body := api(t, http.MethodPut, policyURL, map[string]any{"policy": p}, tokAdmin, nil)
+			if status != http.StatusOK && status != http.StatusCreated {
+				t.Fatalf("project resource policy: HTTP %d: %v", status, body)
+			}
+		}
+		t.Cleanup(func() { setPolicy(map[string]any{"max_walltime": "10m"}) })
+		setPolicy(map[string]any{"max_walltime": "10m", "allow_exclusive": true})
+		out = runJob("user-exclusive", exclusive)
+		if f := scontrolField(out, "Exclusive"); f != "NODE" {
+			t.Fatalf("namespace + resources.exclusive: Exclusive=%q, want NODE\n%s", f, out)
+		}
+	})
 }
 
 func triggerPolicySync(t *testing.T, token string) {

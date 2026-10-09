@@ -11,7 +11,9 @@
 package e2e
 
 import (
+	"archive/tar"
 	"bytes"
+	"compress/gzip"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -325,4 +327,76 @@ func poll(t *testing.T, what string, timeout time.Duration,
 		time.Sleep(2 * time.Second)
 	}
 	t.Fatalf("%s: not satisfied within %s", what, timeout)
+}
+
+type rawResponse struct {
+	status int
+	header http.Header
+	body   []byte
+}
+
+// rawGet issues a GET against the API without decoding the body.
+func rawGet(t *testing.T, path string, headers map[string]string) rawResponse {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodGet, e.api+path, nil)
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+	resp, err := e.hc.Do(req)
+	if err != nil {
+		t.Fatalf("GET %s: %v", path, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	b, _ := io.ReadAll(resp.Body)
+	return rawResponse{status: resp.StatusCode, header: resp.Header, body: b}
+}
+
+// untarGz returns the regular files of a gzip tar archive by name.
+func untarGz(t *testing.T, data []byte) map[string][]byte {
+	t.Helper()
+	zr, err := gzip.NewReader(bytes.NewReader(data))
+	if err != nil {
+		t.Fatalf("not a gzip archive: %v", err)
+	}
+	out := map[string][]byte{}
+	tr := tar.NewReader(zr)
+	for {
+		h, err := tr.Next()
+		if err == io.EOF {
+			return out
+		}
+		if err != nil {
+			t.Fatalf("tar: %v", err)
+		}
+		if h.Typeflag != tar.TypeReg {
+			continue
+		}
+		b, err := io.ReadAll(tr)
+		if err != nil {
+			t.Fatalf("tar entry %s: %v", h.Name, err)
+		}
+		out[h.Name] = b
+	}
+}
+
+// scontrolField returns the value of Key=value in `scontrol show` output.
+func scontrolField(out, key string) string {
+	for _, f := range strings.Fields(out) {
+		if v, ok := strings.CutPrefix(f, key+"="); ok {
+			return v
+		}
+	}
+	return ""
+}
+
+// scontrolFields renders selected fields for test logs.
+func scontrolFields(out string, keys ...string) string {
+	parts := make([]string, 0, len(keys))
+	for _, k := range keys {
+		parts = append(parts, k+"="+scontrolField(out, k))
+	}
+	return strings.Join(parts, " ")
 }

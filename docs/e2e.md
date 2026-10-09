@@ -72,6 +72,17 @@ go test ./test/e2e/... -count=1 -v
 ```
 
 The web service is served through the same e2e CA at `https://127.0.0.1:3000`.
+
+If another process already holds host port 8080, forward the API to a free port
+(for example `ssh -L 127.0.0.1:18080:127.0.0.1:8080` into the Podman machine) and run
+`scripts/e2e.sh` and the tests with `CUSTOS_E2E_API_PORT=18080` /
+`CUSTOS_E2E_API=https://127.0.0.1:18080`. The `10_node_isolation_submission`
+scenario covers the submission side of node isolation (ADR-032 phase 2): real
+Slurm jobs must carry `Exclusive=MCS` plus `MCS_label=<tenant slug>`
+(`tenant_exclusive`), `Exclusive=NODE` (`node_exclusive` or a user
+`exclusive` request), and the bundle, node token, pull and node-status
+endpoints. Prolog/Epilog scripts do not run because slurmd is unprivileged;
+`slurm.conf` enables `MCSPlugin=mcs/label` so labelled jobs are accepted.
 After the Go suite, run the live browser check (it signs in as Alice and
 requires at least one visible Acme job):
 
