@@ -146,7 +146,7 @@ services:
     entrypoint: ["/usr/bin/tini", "-g", "--", "/bin/bash", "-c"]
     command:
       - >-
-        useradd -r -u 1500 -m slurmrestd &&
+        { id slurmrestd >/dev/null 2>&1 || useradd -r -u 1500 -m slurmrestd; } &&
         install -m 600 -o slurmrestd /etc/slurm-secrets/slurm.key /etc/slurm/slurm.key &&
         install -m 600 -o slurmrestd /etc/slurm-secrets/jwt_hs256.key /etc/slurm/jwt_hs256.key &&
         exec runuser -u slurmrestd -- /usr/sbin/slurmrestd -vvv -a rest_auth/jwt
