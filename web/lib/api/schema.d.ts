@@ -416,6 +416,128 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/clusters/{cluster}/node-config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the node configuration (cluster.manage, platform-admin)
+         * @description Admin-managed NFS mounts and prolog/epilog hooks installed on the cluster's compute nodes (ADR-032). A cluster without a stored configuration returns the defaults with revision 0 and version 0. Warnings are non-blocking.
+         */
+        get: operations["getClusterNodeConfig"];
+        /**
+         * Replace the node configuration (cluster.manage, platform-admin)
+         * @description Validates and stores the configuration. version is the stored version (0 to create). Every successful write bumps revision. Audited as cluster.node_config.updated without script bodies.
+         */
+        put: operations["putClusterNodeConfig"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/clusters/{cluster}/node-config/bundle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download the rendered node bundle (cluster.manage, platform-admin)
+         * @description Deterministic gzip tar of the scripts, mounts table, pull agent and README for the current configuration and bindings. The ETag is the sha256 of the archive.
+         */
+        get: operations["downloadClusterNodeBundle"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/clusters/{cluster}/node-tokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List node pull tokens (cluster.manage, platform-admin) */
+        get: operations["listClusterNodeTokens"];
+        put?: never;
+        /**
+         * Create a node pull token (cluster.manage, platform-admin)
+         * @description Returns the token exactly once (cnt_ + 32 random bytes base64url); only its sha256 is stored.
+         */
+        post: operations["createClusterNodeToken"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/clusters/{cluster}/node-tokens/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke a node pull token (cluster.manage, platform-admin) */
+        delete: operations["revokeClusterNodeToken"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/clusters/{cluster}/node-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Which bundle each node last fetched (cluster.manage, platform-admin)
+         * @description A node is stale when the sha256 of the bundle it last fetched differs from the bundle that would be served now; bindings change the bundle without bumping the configuration revision.
+         */
+        get: operations["getClusterNodeStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/node/bundle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Pull the node bundle with a node token (no OIDC)
+         * @description Called by custos-node-sync on compute nodes. Authenticates with a node token (Authorization Bearer cnt_...) and names the node in X-Custos-Node. Supports If-None-Match with the bundle sha256. Rate limited per client address. The token is never logged.
+         */
+        get: operations["pullNodeBundle"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tenants/{tenant}/clusters": {
         parameters: {
             query?: never;
@@ -2750,6 +2872,120 @@ export interface components {
             };
             diagnostics?: components["schemas"]["Diagnostic"][];
         };
+        NodeMount: {
+            name: string;
+            /** @enum {string} */
+            fstype: "nfs" | "nfs4";
+            /** @example server:/hpc/apps */
+            source: string;
+            /** @example /apps */
+            target: string;
+            /** @description Allow-listed mount options. Default ro (shared) or rw (tenant); tenant mounts always add nosuid,nodev. */
+            options?: string[];
+        };
+        NodeTenantMount: {
+            /** Format: uuid */
+            tenant: string;
+            name: string;
+            /** @enum {string} */
+            fstype: "nfs" | "nfs4";
+            source: string;
+            target: string;
+            options?: string[];
+        };
+        NodeHook: {
+            name: string;
+            /** @enum {string} */
+            phase: "prolog" | "epilog";
+            order: number;
+            /** @description Starts with */
+            script: string;
+        };
+        ClusterNodeConfig: {
+            /**
+             * @default namespace
+             * @enum {string}
+             */
+            isolation_mode: "namespace" | "tenant_exclusive" | "node_exclusive";
+            /** @default 30 */
+            mount_timeout_seconds: number;
+            shared_mounts: components["schemas"]["NodeMount"][];
+            tenant_mounts: components["schemas"]["NodeTenantMount"][];
+            hooks: components["schemas"]["NodeHook"][];
+        };
+        NodeConfigUpdate: {
+            config: components["schemas"]["ClusterNodeConfig"];
+            /** @description Stored version; 0 creates. */
+            version: number;
+        };
+        NodeConfigWarning: {
+            /** @enum {string} */
+            code: "SHARED_SERVICE_USER" | "NAMESPACE_REQUIRES_SLURM_25_11";
+            message: string;
+        };
+        NodeConfigView: {
+            /** Format: uuid */
+            cluster_id: string;
+            config: components["schemas"]["ClusterNodeConfig"];
+            /** Format: int64 */
+            revision: number;
+            content_sha256: string;
+            version: number;
+            /** Format: date-time */
+            updated_at?: string;
+            /** Format: uuid */
+            updated_by?: string;
+            warnings: components["schemas"]["NodeConfigWarning"][];
+        };
+        NodeTokenCreate: {
+            name: string;
+        };
+        NodeToken: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            cluster_id: string;
+            name: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: uuid */
+            created_by?: string;
+            /** Format: date-time */
+            last_used_at?: string;
+            /** Format: date-time */
+            revoked_at?: string;
+        };
+        NodeTokenCreated: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            cluster_id: string;
+            name: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: uuid */
+            created_by?: string;
+            /** @description Shown once: cnt_ + base64url(32 random bytes). */
+            token: string;
+        };
+        NodeTokenList: {
+            items: components["schemas"]["NodeToken"][];
+        };
+        NodeStatus: {
+            node_name: string;
+            /** Format: int64 */
+            revision: number;
+            bundle_sha256: string;
+            /** Format: date-time */
+            fetched_at: string;
+            stale: boolean;
+        };
+        NodeStatusList: {
+            /** Format: int64 */
+            current_revision: number;
+            current_bundle_sha256: string;
+            items: components["schemas"]["NodeStatus"][];
+        };
     };
     responses: never;
     parameters: {
@@ -4658,6 +4894,480 @@ export interface operations {
             };
             /** @description Cluster visibility is all_tenants (rows are sync-managed). */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getClusterNodeConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Cluster name or uuid. */
+                cluster: components["parameters"]["ClusterRef"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Configuration with warnings. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NodeConfigView"];
+                };
+            };
+            /** @description Unauthenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Requires cluster.manage. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Cluster not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    putClusterNodeConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Cluster name or uuid. */
+                cluster: components["parameters"]["ClusterRef"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NodeConfigUpdate"];
+            };
+        };
+        responses: {
+            /** @description Stored configuration with warnings. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NodeConfigView"];
+                };
+            };
+            /** @description Malformed body or unknown field. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Requires cluster.manage. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Cluster not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description VERSION_CONFLICT. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description NODE_MOUNT_INVALID, NODE_HOOK_INVALID or NODE_CONFIG_INVALID with path-addressed details (unknown, deleted or unassigned tenants are NODE_MOUNT_INVALID at tenant_mounts[i].tenant). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    downloadClusterNodeBundle: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Cluster name or uuid. */
+                cluster: components["parameters"]["ClusterRef"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description custos-node-<cluster>-r<revision>.tar.gz. */
+            200: {
+                headers: {
+                    "Content-Disposition"?: string;
+                    ETag?: string;
+                    "X-Custos-Revision"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/gzip": string;
+                };
+            };
+            /** @description Unauthenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Requires cluster.manage. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Cluster not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listClusterNodeTokens: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Cluster name or uuid. */
+                cluster: components["parameters"]["ClusterRef"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Token metadata; secrets are never returned. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NodeTokenList"];
+                };
+            };
+            /** @description Unauthenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Requires cluster.manage. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Cluster not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    createClusterNodeToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Cluster name or uuid. */
+                cluster: components["parameters"]["ClusterRef"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NodeTokenCreate"];
+            };
+        };
+        responses: {
+            /** @description Token created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NodeTokenCreated"];
+                };
+            };
+            /** @description Malformed body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Requires cluster.manage. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Cluster not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description NODE_TOKEN_INVALID (name must match ^[a-z0-9][a-z0-9-]{0,62}$). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    revokeClusterNodeToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Cluster name or uuid. */
+                cluster: components["parameters"]["ClusterRef"];
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Revoked (idempotent). */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Requires cluster.manage. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Cluster or token not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getClusterNodeStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Cluster name or uuid. */
+                cluster: components["parameters"]["ClusterRef"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Per-node status plus the current bundle identity. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NodeStatusList"];
+                };
+            };
+            /** @description Unauthenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Requires cluster.manage. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Cluster not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    pullNodeBundle: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Slurm node name, ^[A-Za-z0-9._-]{1,128}$. */
+                "X-Custos-Node": string;
+                "If-None-Match"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The bundle. */
+            200: {
+                headers: {
+                    ETag?: string;
+                    "X-Custos-Revision"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/gzip": string;
+                };
+            };
+            /** @description Not modified. */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description NODE_NAME_INVALID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description NODE_TOKEN_INVALID (unknown, malformed or revoked token). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description CLUSTER_DISABLED. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited. */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -1,0 +1,8 @@
+[Unit]
+Description=Custos node bundle sync
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/etc/custos/node/custos-node-sync

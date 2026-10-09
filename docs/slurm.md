@@ -337,6 +337,42 @@ nested steps inherit it. Multinode `resources.cpu` and memory are per node.
 Portable sbatch export rejects image and multinode tasks because runtime
 configuration is cluster-specific.
 
+## Node hooks (tenant NFS mounts)
+
+slurmrestd cannot write files on compute nodes or edit `slurm.conf`, so the
+node-side half of tenant NFS mounts is a rendered bundle that an operator
+installs and, optionally, keeps current with a pull agent (ADR-032,
+`docs/node-hooks.md`). Custos stores a per-cluster node configuration
+(`GET/PUT /clusters/{cluster}/node-config`), renders the bundle from it and
+the project cluster bindings of the cluster, and serves it either as a
+download or to nodes holding a node token.
+
+The bundle's scripts rely on these Slurm behaviours:
+
+- `Prolog=/dir/*` and `Epilog=/dir/*` run every matching script, as root, on
+  each allocated node, in reverse alphabetical order. No `PATH` is set, so
+  the scripts export their own. A non-zero exit drains the node (a failing
+  Prolog also requeues the job). Scripts must not call Slurm commands.
+  `PrologFlags=Alloc,Contain` is required.
+- The job's Slurm account is available as `SLURM_JOB_ACCOUNT` and is the
+  join key to the tenant (account to project binding to tenant).
+- Namespace mode uses `namespace/linux` (Slurm 25.11+, cgroup v2,
+  `NamespaceType=namespace/linux`, `namespace.yaml` beside `slurm.conf`):
+  `clone_ns_script` runs after the private mount namespace is built and
+  receives `SLURM_NS`; `clone_ns_epilog` runs before teardown. NFS targets
+  must never be listed in the namespace `dirs` or `dir_confs`.
+
+Two namespace points are not yet verified against a real node and are handled
+defensively: whether `clone_ns_script` receives `SLURM_JOB_ID` and
+`SLURM_JOB_ACCOUNT`, and whether the Prolog runs before the namespace is
+built under `PrologFlags=Contain`. The Prolog records the account in
+`/run/custos/jobs/<jobid>/account` (root-only) and the namespace scripts
+fall back to that file, failing closed if neither source resolves.
+
+Custos submissions are unchanged by node hooks. Container auto-binds of tenant
+mounts and submission flags derived from the isolation mode (`--exclusive=user`,
+`--exclusive`) are planned, not implemented.
+
 ## Cluster synchronization
 
 Work item `cluster.sync` is a **self-rescheduling chain** per cluster: each

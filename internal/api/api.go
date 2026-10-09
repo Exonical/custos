@@ -24,6 +24,7 @@ import (
 	clustersvc "github.com/Exonical/custos/internal/clusters/service"
 	execsvc "github.com/Exonical/custos/internal/executions/service"
 	jobssvc "github.com/Exonical/custos/internal/jobs/service"
+	nodehookssvc "github.com/Exonical/custos/internal/nodehooks/service"
 	"github.com/Exonical/custos/internal/platform/apperr"
 	"github.com/Exonical/custos/internal/platform/health"
 	"github.com/Exonical/custos/internal/platform/httpx"
@@ -85,6 +86,8 @@ type Deps struct {
 	VStore         ValidationStore               // persists ScriptValidations
 	VMetrics       *pipeline.Metrics             // may be nil
 	VLimiter       *httpx.PrincipalRateLimiter   // may be nil (no limit)
+	NodeHooks      *nodehookssvc.Service         // enables node-config routes
+	NodeLimiter    *httpx.PrincipalRateLimiter   // node pull rate limit; may be nil
 	Workflows      *wfsvc.Service                // enables workflow routes
 	Executions     *execsvc.Service              // enables execution routes
 	SecretRefs     *secretrefs.Service           // enables connector/reference routes
@@ -102,6 +105,11 @@ func Mount(mux *http.ServeMux, deps Deps) {
 	mux.Handle("GET /api/v1/openapi.json", openapiHandler())
 	mux.Handle("GET /api/v1/schemas/workflow/v1alpha1", schemaHandler())
 	mux.Handle("GET /health/live", deps.Health.LiveHandler())
+	var nodeHooks *nodeHookHandlers
+	if deps.NodeHooks != nil {
+		nodeHooks = &nodeHookHandlers{svc: deps.NodeHooks}
+		mountNodePullRoute(mux, nodeHooks, deps.NodeLimiter)
+	}
 	mux.Handle("GET /health/ready",
 		deps.Health.ReadyHandler(deps.ReadyBudget, deps.Logger))
 	if deps.Verifier != nil {
@@ -173,6 +181,10 @@ func Mount(mux *http.ServeMux, deps Deps) {
 			tenantMW := tenants.Require(deps.TenantRepo, deps.Logger, deps.Audit)
 			tr := func(h http.Handler) http.Handler { return bearer(tenantMW(h)) }
 			mountClusterRoutes(mux, ch, bearer, tr)
+		}
+
+		if nodeHooks != nil {
+			mountNodeHookAdminRoutes(mux, nodeHooks, bearer)
 		}
 
 		if deps.Projects != nil && deps.Policies != nil {

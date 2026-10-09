@@ -971,6 +971,258 @@ paths:
           description: Cluster visibility is all_tenants (rows are sync-managed).
           content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
 
+  /clusters/{cluster}/node-config:
+    get:
+      summary: Get the node configuration (cluster.manage, platform-admin)
+      operationId: getClusterNodeConfig
+      description: >
+        Admin-managed NFS mounts and prolog/epilog hooks installed on the
+        cluster's compute nodes (ADR-032). A cluster without a stored
+        configuration returns the defaults with revision 0 and version 0.
+        Warnings are non-blocking.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ClusterRef"
+      responses:
+        "200":
+          description: Configuration with warnings.
+          content: {application/json: {schema: {$ref: "#/components/schemas/NodeConfigView"}}}
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "403":
+          description: Requires cluster.manage.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "404":
+          description: Cluster not found.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+    put:
+      summary: Replace the node configuration (cluster.manage, platform-admin)
+      operationId: putClusterNodeConfig
+      description: >
+        Validates and stores the configuration. version is the stored
+        version (0 to create). Every successful write bumps revision.
+        Audited as cluster.node_config.updated without script bodies.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ClusterRef"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NodeConfigUpdate"
+      responses:
+        "200":
+          description: Stored configuration with warnings.
+          content: {application/json: {schema: {$ref: "#/components/schemas/NodeConfigView"}}}
+        "400":
+          description: Malformed body or unknown field.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "403":
+          description: Requires cluster.manage.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "404":
+          description: Cluster not found.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "409":
+          description: VERSION_CONFLICT.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "422":
+          description: >
+            NODE_MOUNT_INVALID, NODE_HOOK_INVALID or NODE_CONFIG_INVALID with
+            path-addressed details (unknown, deleted or unassigned tenants
+            are NODE_MOUNT_INVALID at tenant_mounts[i].tenant).
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+
+  /clusters/{cluster}/node-config/bundle:
+    get:
+      summary: Download the rendered node bundle (cluster.manage, platform-admin)
+      operationId: downloadClusterNodeBundle
+      description: >
+        Deterministic gzip tar of the scripts, mounts table, pull agent and
+        README for the current configuration and bindings. The ETag is the
+        sha256 of the archive.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ClusterRef"
+      responses:
+        "200":
+          description: custos-node-<cluster>-r<revision>.tar.gz.
+          headers:
+            Content-Disposition: {schema: {type: string}}
+            ETag: {schema: {type: string}}
+            X-Custos-Revision: {schema: {type: integer, format: int64}}
+          content:
+            application/gzip: {schema: {type: string, format: binary}}
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "403":
+          description: Requires cluster.manage.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "404":
+          description: Cluster not found.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+
+  /clusters/{cluster}/node-tokens:
+    get:
+      summary: List node pull tokens (cluster.manage, platform-admin)
+      operationId: listClusterNodeTokens
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ClusterRef"
+      responses:
+        "200":
+          description: Token metadata; secrets are never returned.
+          content: {application/json: {schema: {$ref: "#/components/schemas/NodeTokenList"}}}
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "403":
+          description: Requires cluster.manage.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "404":
+          description: Cluster not found.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+    post:
+      summary: Create a node pull token (cluster.manage, platform-admin)
+      operationId: createClusterNodeToken
+      description: >
+        Returns the token exactly once (cnt_ + 32 random bytes base64url);
+        only its sha256 is stored.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ClusterRef"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NodeTokenCreate"
+      responses:
+        "201":
+          description: Token created.
+          content: {application/json: {schema: {$ref: "#/components/schemas/NodeTokenCreated"}}}
+        "400":
+          description: Malformed body.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "403":
+          description: Requires cluster.manage.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "404":
+          description: Cluster not found.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "422":
+          description: NODE_TOKEN_INVALID (name must match ^[a-z0-9][a-z0-9-]{0,62}$).
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+
+  /clusters/{cluster}/node-tokens/{token}:
+    delete:
+      summary: Revoke a node pull token (cluster.manage, platform-admin)
+      operationId: revokeClusterNodeToken
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ClusterRef"
+        - name: token
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        "204":
+          description: Revoked (idempotent).
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "403":
+          description: Requires cluster.manage.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "404":
+          description: Cluster or token not found.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+
+  /clusters/{cluster}/node-status:
+    get:
+      summary: Which bundle each node last fetched (cluster.manage, platform-admin)
+      operationId: getClusterNodeStatus
+      description: >
+        A node is stale when the sha256 of the bundle it last fetched differs
+        from the bundle that would be served now; bindings change the
+        bundle without bumping the configuration revision.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ClusterRef"
+      responses:
+        "200":
+          description: Per-node status plus the current bundle identity.
+          content: {application/json: {schema: {$ref: "#/components/schemas/NodeStatusList"}}}
+        "401":
+          description: Unauthenticated.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "403":
+          description: Requires cluster.manage.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "404":
+          description: Cluster not found.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+
+  /node/bundle:
+    get:
+      summary: Pull the node bundle with a node token (no OIDC)
+      operationId: pullNodeBundle
+      description: >
+        Called by custos-node-sync on compute nodes. Authenticates with a
+        node token (Authorization Bearer cnt_...) and names the node in
+        X-Custos-Node. Supports If-None-Match with the bundle sha256.
+        Rate limited per client address. The token is never logged.
+      security:
+        - nodeToken: []
+      parameters:
+        - name: X-Custos-Node
+          in: header
+          required: true
+          description: Slurm node name, ^[A-Za-z0-9._-]{1,128}$.
+          schema: {type: string}
+        - name: If-None-Match
+          in: header
+          required: false
+          schema: {type: string}
+      responses:
+        "200":
+          description: The bundle.
+          headers:
+            ETag: {schema: {type: string}}
+            X-Custos-Revision: {schema: {type: integer, format: int64}}
+          content:
+            application/gzip: {schema: {type: string, format: binary}}
+        "304":
+          description: Not modified.
+        "400":
+          description: NODE_NAME_INVALID.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "401":
+          description: NODE_TOKEN_INVALID (unknown, malformed or revoked token).
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "403":
+          description: CLUSTER_DISABLED.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+        "429":
+          description: Rate limited.
+          content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}
+
   /tenants/{tenant}/clusters:
     get:
       summary: List clusters visible to the tenant
@@ -3038,6 +3290,10 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
+    nodeToken:
+      type: http
+      scheme: bearer
+      description: Node pull token (cnt_...) used by custos-node-sync on compute nodes.
   schemas:
     Error:
       type: object
@@ -4970,6 +5226,119 @@ components:
           items:
             $ref: "#/components/schemas/Diagnostic"
 
+    NodeMount:
+      type: object
+      required: [name, fstype, source, target]
+      properties:
+        name: {type: string, pattern: "^[a-z0-9][a-z0-9-]{0,62}$"}
+        fstype: {type: string, enum: [nfs, nfs4]}
+        source: {type: string, maxLength: 512, pattern: "^[A-Za-z0-9.-]+:/[A-Za-z0-9._/-]*$", example: "server:/hpc/apps"}
+        target: {type: string, maxLength: 256, example: /apps}
+        options:
+          type: array
+          description: Allow-listed mount options. Default ro (shared) or rw (tenant); tenant mounts always add nosuid,nodev.
+          items: {type: string}
+    NodeTenantMount:
+      type: object
+      required: [tenant, name, fstype, source, target]
+      properties:
+        tenant: {type: string, format: uuid}
+        name: {type: string, pattern: "^[a-z0-9][a-z0-9-]{0,62}$"}
+        fstype: {type: string, enum: [nfs, nfs4]}
+        source: {type: string, maxLength: 512, pattern: "^[A-Za-z0-9.-]+:/[A-Za-z0-9._/-]*$"}
+        target: {type: string, maxLength: 256}
+        options: {type: array, items: {type: string}}
+    NodeHook:
+      type: object
+      required: [name, phase, order, script]
+      properties:
+        name: {type: string, pattern: "^[a-z0-9][a-z0-9-]{0,62}$"}
+        phase: {type: string, enum: [prolog, epilog]}
+        order: {type: integer, minimum: 0, maximum: 99}
+        script:
+          type: string
+          maxLength: 65536
+          description: Starts with #!/bin/bash or #!/bin/sh; syntax-checked.
+    ClusterNodeConfig:
+      type: object
+      required: [isolation_mode, mount_timeout_seconds, shared_mounts, tenant_mounts, hooks]
+      properties:
+        isolation_mode: {type: string, enum: [namespace, tenant_exclusive, node_exclusive], default: namespace}
+        mount_timeout_seconds: {type: integer, minimum: 5, maximum: 300, default: 30}
+        shared_mounts: {type: array, items: {$ref: "#/components/schemas/NodeMount"}}
+        tenant_mounts: {type: array, items: {$ref: "#/components/schemas/NodeTenantMount"}}
+        hooks: {type: array, items: {$ref: "#/components/schemas/NodeHook"}}
+    NodeConfigUpdate:
+      type: object
+      required: [config, version]
+      properties:
+        config: {$ref: "#/components/schemas/ClusterNodeConfig"}
+        version: {type: integer, minimum: 0, description: Stored version; 0 creates.}
+    NodeConfigWarning:
+      type: object
+      required: [code, message]
+      properties:
+        code: {type: string, enum: [SHARED_SERVICE_USER, NAMESPACE_REQUIRES_SLURM_25_11]}
+        message: {type: string}
+    NodeConfigView:
+      type: object
+      required: [cluster_id, config, revision, content_sha256, version, warnings]
+      properties:
+        cluster_id: {type: string, format: uuid}
+        config: {$ref: "#/components/schemas/ClusterNodeConfig"}
+        revision: {type: integer, format: int64}
+        content_sha256: {type: string}
+        version: {type: integer}
+        updated_at: {type: string, format: date-time}
+        updated_by: {type: string, format: uuid}
+        warnings: {type: array, items: {$ref: "#/components/schemas/NodeConfigWarning"}}
+    NodeTokenCreate:
+      type: object
+      required: [name]
+      properties:
+        name: {type: string, pattern: "^[a-z0-9][a-z0-9-]{0,62}$"}
+    NodeToken:
+      type: object
+      required: [id, cluster_id, name, created_at]
+      properties:
+        id: {type: string, format: uuid}
+        cluster_id: {type: string, format: uuid}
+        name: {type: string}
+        created_at: {type: string, format: date-time}
+        created_by: {type: string, format: uuid}
+        last_used_at: {type: string, format: date-time}
+        revoked_at: {type: string, format: date-time}
+    NodeTokenCreated:
+      type: object
+      required: [id, cluster_id, name, created_at, token]
+      properties:
+        id: {type: string, format: uuid}
+        cluster_id: {type: string, format: uuid}
+        name: {type: string}
+        created_at: {type: string, format: date-time}
+        created_by: {type: string, format: uuid}
+        token: {type: string, description: "Shown once: cnt_ + base64url(32 random bytes)."}
+    NodeTokenList:
+      type: object
+      required: [items]
+      properties:
+        items: {type: array, items: {$ref: "#/components/schemas/NodeToken"}}
+    NodeStatus:
+      type: object
+      required: [node_name, revision, bundle_sha256, fetched_at, stale]
+      properties:
+        node_name: {type: string}
+        revision: {type: integer, format: int64}
+        bundle_sha256: {type: string}
+        fetched_at: {type: string, format: date-time}
+        stale: {type: boolean}
+    NodeStatusList:
+      type: object
+      required: [current_revision, current_bundle_sha256, items]
+      properties:
+        current_revision: {type: integer, format: int64}
+        current_bundle_sha256: {type: string}
+        items: {type: array, items: {$ref: "#/components/schemas/NodeStatus"}}
   parameters:
     Cursor:
       name: cursor

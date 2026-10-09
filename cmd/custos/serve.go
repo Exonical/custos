@@ -33,6 +33,8 @@ import (
 	execsvc "github.com/Exonical/custos/internal/executions/service"
 	jobpg "github.com/Exonical/custos/internal/jobs/postgres"
 	jobssvc "github.com/Exonical/custos/internal/jobs/service"
+	nodehookspg "github.com/Exonical/custos/internal/nodehooks/postgres"
+	nodehookssvc "github.com/Exonical/custos/internal/nodehooks/service"
 	"github.com/Exonical/custos/internal/platform/config"
 	"github.com/Exonical/custos/internal/platform/db"
 	"github.com/Exonical/custos/internal/platform/health"
@@ -180,6 +182,11 @@ func cmdServe(parent context.Context, configPath string, lookupEnv config.Lookup
 		Logger: logger,
 	})
 	reg.Register(clustersync.UnreachableChecker(clusterRepo), false)
+	nodeHookSvc := nodehookssvc.New(nodehookssvc.Deps{
+		Repo: nodehookspg.New(pool), Clusters: clusterRepo, Tenants: tenantRepo,
+		Bindings: projectpg.New(pool), AZ: authz.RBAC{}, Audit: recorder,
+		Logger: logger,
+	})
 
 	projectRepo := projectpg.New(pool)
 	projectSvc := projectsvc.NewService(projectRepo, projectRepo, projectRepo,
@@ -259,6 +266,8 @@ func cmdServe(parent context.Context, configPath string, lookupEnv config.Lookup
 		TenantRepo:     tenantRepo,
 		Users:          provisioner,
 		Clusters:       clusterSvc,
+		NodeHooks:      nodeHookSvc,
+		NodeLimiter:    httpx.NewPrincipalRateLimiter(600, 120, 0),
 		Projects:       projectSvc,
 		ProjectRepo:    projectRepo,
 		ProjectMembers: projectRepo,

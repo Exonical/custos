@@ -157,6 +157,14 @@ GET    /api/v1/tenants/{tenant}/policies/validation            policy.read; retu
 PUT    /api/v1/tenants/{tenant}/policies/validation            policy.manage; optimistic `version`; 422 POLICY_NOT_STRICTER when looser than an assigned cluster's
 GET    /api/v1/clusters/{cluster}/policies/validation          platform admin
 PUT    /api/v1/clusters/{cluster}/policies/validation          platform admin; optimistic `version`
+GET    /api/v1/clusters/{cluster}/node-config               platform admin; mounts + hooks, revision, content_sha256, version, warnings[]
+PUT    /api/v1/clusters/{cluster}/node-config               platform admin; body {config, version}; 409 VERSION_CONFLICT; 422 NODE_MOUNT_INVALID / NODE_HOOK_INVALID / NODE_CONFIG_INVALID
+GET    /api/v1/clusters/{cluster}/node-config/bundle        platform admin; application/gzip tar, ETag = sha256 of the archive
+POST   /api/v1/clusters/{cluster}/node-tokens               platform admin; returns the cnt_ token once; 422 NODE_TOKEN_INVALID
+GET    /api/v1/clusters/{cluster}/node-tokens               platform admin; metadata only
+DELETE /api/v1/clusters/{cluster}/node-tokens/{token}       platform admin; revoke
+GET    /api/v1/clusters/{cluster}/node-status               platform admin; per node bundle_sha256 + stale, current_revision, current_bundle_sha256
+GET    /api/v1/node/bundle                                  node token (Bearer cnt_...) + X-Custos-Node; If-None-Match; 200/304/400/401/403/429; no OIDC
 GET    /api/v1/tenants/{tenant}/projects/{project}/policies/resource   policy.read; includes `effective` (tenant ∩ project)
 PUT    /api/v1/tenants/{tenant}/projects/{project}/policies/resource   policy.manage at tenant level
 GET    /api/v1/tenants/{tenant}/secret-connectors

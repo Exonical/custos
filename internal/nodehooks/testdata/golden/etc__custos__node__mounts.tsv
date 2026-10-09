@@ -1,0 +1,8 @@
+meta	revision	7
+meta	mode	namespace
+meta	timeout	30
+shared	apps	nfs4	nfs1.example.org:/hpc/apps	/apps	nfsvers=4.2,ro
+account	acct-a1	tenant-a	flight-data	nfs4	nfs2.example.org:/tenantA/flight_data	/mnt/data	hard,nodev,nosuid,rw
+account	acct-a2	tenant-a	flight-data	nfs4	nfs2.example.org:/tenantA/flight_data	/mnt/data	hard,nodev,nosuid,rw
+account	acct-b	tenant-b	flight-data	nfs4	nfs2.example.org:/tenantB/flight_data	/mnt/data	nodev,nosuid,rw
+conflict	shared-acct
