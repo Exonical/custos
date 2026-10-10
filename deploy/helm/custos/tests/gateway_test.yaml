@@ -1,0 +1,105 @@
+suite: gateway api
+templates:
+  - gateway.yaml
+release:
+  name: custos
+  namespace: prod
+values:
+  - ../ci/full-values.yaml
+tests:
+  - it: the web HTTPRoute serves path / on the web service
+    documentIndex: 0
+    release:
+      name: custos
+      namespace: prod
+    asserts:
+      - isKind:
+          of: HTTPRoute
+      - equal:
+          path: apiVersion
+          value: gateway.networking.k8s.io/v1
+      - equal:
+          path: spec.parentRefs
+          value:
+            - {name: public, namespace: gateways, sectionName: https}
+      - equal:
+          path: spec.hostnames
+          value: [custos.example.org]
+      - equal:
+          path: spec.rules[0]
+          value:
+            matches:
+              - path: {type: PathPrefix, value: /}
+            backendRefs:
+              - {name: custos-web, port: 3000}
+
+  - it: the API HTTPRoute targets the HTTPS service
+    documentIndex: 1
+    release:
+      name: custos
+      namespace: prod
+    asserts:
+      - isKind:
+          of: HTTPRoute
+      - equal:
+          path: spec.hostnames
+          value: [api.custos.example.org]
+      - equal:
+          path: spec.rules[0].backendRefs
+          value:
+            - {name: custos-api, port: 8443}
+
+  - it: the BackendTLSPolicy verifies the API service name with the supplied CA
+    documentIndex: 2
+    release:
+      name: custos
+      namespace: prod
+    asserts:
+      - isKind:
+          of: BackendTLSPolicy
+      - equal:
+          path: apiVersion
+          value: gateway.networking.k8s.io/v1
+      - equal:
+          path: spec
+          value:
+            targetRefs:
+              - {group: "", kind: Service, name: custos-api}
+            validation:
+              caCertificateRefs:
+                - {group: "", kind: ConfigMap, name: custos-api-ca}
+              hostname: custos-api.prod.svc
+
+  - it: the BackendTLSPolicy apiVersion and hostname are overridable
+    documentIndex: 2
+    set:
+      gateway.api.backendTLS.apiVersion: gateway.networking.k8s.io/v1alpha3
+      gateway.api.backendTLS.hostname: api.internal
+    asserts:
+      - equal:
+          path: apiVersion
+          value: gateway.networking.k8s.io/v1alpha3
+      - equal:
+          path: spec.validation.hostname
+          value: api.internal
+
+  - it: nothing is rendered unless the gateway is enabled
+    set:
+      gateway.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: the API route can be left out
+    set:
+      gateway.api.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 1
+
+  - it: parentRefs are required
+    set:
+      gateway.parentRefs: []
+    asserts:
+      - failedTemplate:
+          errorPattern: "gateway.parentRefs is required"

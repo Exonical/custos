@@ -1,0 +1,94 @@
+# Everything on: Gateway API routes with backend TLS, cert-manager API
+# certificate, OpenBao subchart + client with workload identity, autoscaling,
+# PDBs, restricted egress and ServiceMonitor.
+config:
+  dev_mode: false
+  auth:
+    oidc:
+      issuer: https://idp.example.org/realms/custos
+      client_id: custos
+      audiences: [custos]
+  secrets:
+    file_roots: [/etc/custos/secrets]
+
+auth:
+  oidc:
+    clientSecret: {name: custos-oidc, key: client-secret}
+    caSecret: {name: idp-ca, key: ca.crt}
+
+database:
+  migrateURLSecret: {name: custos-db-owner, key: url}
+  appURLSecret: {name: custos-db-app, key: url}
+  caSecret: {name: custos-db-ca, key: ca.crt}
+  appRole: custos_app
+
+api:
+  tls:
+    certManager:
+      enabled: true
+      issuerRef: {name: custos-ca, kind: ClusterIssuer}
+
+serve:
+  replicas: 3
+  autoscaling: {enabled: true, minReplicas: 2, maxReplicas: 8, targetCPUUtilizationPercentage: 70}
+  podAnnotations: {example.org/team: hpc}
+worker:
+  replicas: 1
+
+web:
+  publicOrigin: https://custos.example.org
+  client:
+    secret: {name: custos-web-oidc, key: client-secret}
+  authSecrets: {name: custos-web-auth, key: auth-secrets}
+  idpCaSecret: {name: idp-ca, key: ca.crt}
+  autoscaling: {enabled: true, minReplicas: 2, maxReplicas: 4, targetCPUUtilizationPercentage: 70}
+
+openbao:
+  enabled: true
+
+openbaoClient:
+  enabled: true
+  address: https://custos-openbao.custos.svc:8200
+  namespace: custos
+  caSecret: {name: openbao-ca, key: ca.crt}
+  auth:
+    role: custos
+    workloadIdentity:
+      enabled: true
+      audience: openbao
+
+gateway:
+  enabled: true
+  parentRefs:
+    - {name: public, namespace: gateways, sectionName: https}
+  web:
+    hostnames: [custos.example.org]
+  api:
+    enabled: true
+    hostnames: [api.custos.example.org]
+    backendTLS:
+      enabled: true
+      caConfigMap: custos-api-ca
+
+networkPolicy:
+  enabled: true
+  apiFrom:
+    - namespaceSelector:
+        matchLabels: {kubernetes.io/metadata.name: gateways}
+  metricsFrom:
+    - namespaceSelector:
+        matchLabels: {kubernetes.io/metadata.name: monitoring}
+  webFrom:
+    - namespaceSelector:
+        matchLabels: {kubernetes.io/metadata.name: gateways}
+  egress:
+    restrict: true
+    extra:
+      - to:
+          - ipBlock: {cidr: 10.0.0.0/8}
+        ports:
+          - {port: 6820, protocol: TCP}
+          - {port: 443, protocol: TCP}
+
+serviceMonitor:
+  enabled: true

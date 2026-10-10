@@ -1,0 +1,106 @@
+suite: bundled postgresql and token mounts
+templates:
+  - configmap.yaml
+  - serve-deployment.yaml
+  - worker-deployment.yaml
+  - networkpolicy.yaml
+release:
+  name: custos
+  namespace: prod
+values:
+  - ../ci/bundled-postgres-values.yaml
+tests:
+  - it: serve reads the CloudNativePG app secret uri and CA
+    template: serve-deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.volumes[1].projected.sources[0].secret
+          value:
+            name: custos-postgresql-app
+            items:
+              - {key: uri, path: database-url}
+      - equal:
+          path: spec.template.spec.volumes[2].projected.sources[0].secret
+          value:
+            name: custos-postgresql-ca
+            items:
+              - {key: ca.crt, path: database-ca.crt}
+
+  - it: the cluster name follows fullnameOverride
+    template: serve-deployment.yaml
+    set:
+      postgresql.fullnameOverride: pg-main
+    asserts:
+      - equal:
+          path: spec.template.spec.volumes[1].projected.sources[0].secret.name
+          value: pg-main-app
+
+  - it: no projected OpenBao token without workload identity
+    template: serve-deployment.yaml
+    asserts:
+      - notContains:
+          path: spec.template.spec.volumes
+          any: true
+          content: {name: openbao-token}
+
+  - it: workload identity projects an audience-bound token only into the mounts
+    templates:
+      - serve-deployment.yaml
+      - worker-deployment.yaml
+    set:
+      openbaoClient.enabled: true
+      openbaoClient.address: https://openbao.example.org:8200
+      openbaoClient.auth.workloadIdentity.enabled: true
+      openbaoClient.auth.workloadIdentity.audience: bao
+      openbaoClient.auth.workloadIdentity.expirationSeconds: 900
+    asserts:
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: openbao-token
+            projected:
+              defaultMode: 288
+              sources:
+                - serviceAccountToken: {audience: bao, expirationSeconds: 900, path: token}
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content: {name: openbao-token, mountPath: /var/run/secrets/custos/openbao, readOnly: true}
+      - equal:
+          path: spec.template.spec.automountServiceAccountToken
+          value: false
+
+  - it: OIDC client credentials mount the client secret file instead of a token
+    template: serve-deployment.yaml
+    set:
+      openbaoClient.enabled: true
+      openbaoClient.address: https://openbao.example.org:8200
+      openbaoClient.auth.oidcClientCredentials.enabled: true
+      openbaoClient.auth.oidcClientCredentials.tokenURL: https://idp.example.org/token
+      openbaoClient.auth.oidcClientCredentials.clientID: custos-openbao
+      openbaoClient.auth.oidcClientCredentials.clientSecret.name: bao-client
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: CUSTOS_SECRETS__OPENBAO__AUTH__JWT__OIDC_CLIENT_CREDENTIALS__CLIENT_SECRET_FILE
+            value: /etc/custos/secrets/openbao-client-secret
+      - notContains:
+          path: spec.template.spec.volumes
+          any: true
+          content: {name: openbao-token}
+
+  - it: restricted egress allows the bundled cluster pods by label
+    template: networkpolicy.yaml
+    documentIndex: 0
+    set:
+      networkPolicy.egress.restrict: true
+    asserts:
+      - contains:
+          path: spec.egress
+          content:
+            to:
+              - podSelector:
+                  matchLabels:
+                    cnpg.io/cluster: custos-postgresql
+            ports:
+              - {port: 5432, protocol: TCP}

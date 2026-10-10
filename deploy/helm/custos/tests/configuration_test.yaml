@@ -1,0 +1,181 @@
+suite: configuration
+templates:
+  - configmap.yaml
+release:
+  name: custos
+  namespace: prod
+values:
+  - ../ci/external-minimal-values.yaml
+tests:
+  - it: chart-managed keys win over user config
+    set:
+      config.server.listen: ":9999"
+      config.server.tls.mode: disabled
+      config.metrics.enabled: false
+      config.metrics.tls.mode: required
+      config.database.ssl_mode: disable
+      config.validation.shellcheck.endpoint: http://evil:1
+    asserts:
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: "listen: :8443"
+      - notMatchRegex:
+          path: data["config.yaml"]
+          pattern: ":9999"
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: "cert_file: /etc/custos/tls/tls.crt"
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: "metrics:\\n  enabled: true\\n  listen: :9090\\n  tls:\\n    mode: upstream"
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: "ssl_mode: verify-full"
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: "endpoint: http://127.0.0.1:8481"
+      - notMatchRegex:
+          path: data["config.yaml"]
+          pattern: "evil"
+
+  - it: unmanaged passthrough keys survive
+    set:
+      config.slurm.dial_policy.allow_private: true
+      config.worker.cluster_sync_interval: 10s
+    asserts:
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: "allow_private: true"
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: "cluster_sync_interval: 10s"
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: "issuer: https://idp.example.org/realms/custos"
+
+  - it: the validator switch controls shellcheck
+    set:
+      validator.enabled: false
+    asserts:
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: "enabled: false\\n\\s+endpoint: http://127.0.0.1:8481"
+
+  - it: database and OIDC CA files are wired when secrets are set
+    set:
+      database.caSecret.name: db-ca
+      auth.oidc.caSecret.name: idp-ca
+    asserts:
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: "root_ca_file: /etc/custos/ca/database-ca.crt"
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: "ca_file: /etc/custos/ca/oidc-ca.crt"
+
+  - it: the bundled cluster provides the database CA
+    values:
+      - ../ci/bundled-postgres-values.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: "root_ca_file: /etc/custos/ca/database-ca.crt"
+
+  - it: OpenBao workload identity points at the projected token
+    set:
+      openbaoClient.enabled: true
+      openbaoClient.address: https://openbao.example.org:8200
+      openbaoClient.namespace: custos
+      openbaoClient.auth.workloadIdentity.enabled: true
+    asserts:
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: "token_file: /var/run/secrets/custos/openbao/token"
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: "address: https://openbao.example.org:8200"
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: "method: jwt"
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: "role: custos"
+      - notMatchRegex:
+          path: data["config.yaml"]
+          pattern: "oidc_client_credentials"
+
+  - it: OpenBao client credentials omit the token file
+    set:
+      openbaoClient.enabled: true
+      openbaoClient.address: https://openbao.example.org:8200
+      openbaoClient.auth.oidcClientCredentials.enabled: true
+      openbaoClient.auth.oidcClientCredentials.tokenURL: https://idp.example.org/token
+      openbaoClient.auth.oidcClientCredentials.clientID: custos-openbao
+      openbaoClient.auth.oidcClientCredentials.clientSecret.name: bao-client
+    asserts:
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: "token_url: https://idp.example.org/token"
+      - notMatchRegex:
+          path: data["config.yaml"]
+          pattern: "token_file"
+
+  - it: rendering fails without an API TLS source
+    set:
+      api.tls.secretName: ""
+    asserts:
+      - failedTemplate:
+          errorPattern: "API TLS is required"
+
+  - it: rendering fails when cert-manager has no issuer
+    set:
+      api.tls.secretName: ""
+      api.tls.certManager.enabled: true
+    asserts:
+      - failedTemplate:
+          errorPattern: "issuerRef.name is required"
+
+  - it: rendering fails without an OIDC issuer outside dev mode
+    set:
+      config.auth.oidc.issuer: ""
+    asserts:
+      - failedTemplate:
+          errorPattern: "config.auth.oidc.issuer is required"
+
+  - it: dev mode does not require an issuer
+    set:
+      config.auth.oidc.issuer: ""
+      config.dev_mode: true
+      web.enabled: false
+    asserts:
+      - isKind:
+          of: ConfigMap
+
+  - it: rendering fails without web.publicOrigin
+    set:
+      web.publicOrigin: ""
+    asserts:
+      - failedTemplate:
+          errorPattern: "web.publicOrigin is required"
+
+  - it: rendering fails without database secrets for an external database
+    set:
+      database.appURLSecret.name: ""
+    asserts:
+      - failedTemplate:
+          errorPattern: "database.migrateURLSecret.name and database.appURLSecret.name are required"
+
+  - it: OpenBao needs exactly one auth method
+    set:
+      openbaoClient.enabled: true
+      openbaoClient.address: https://openbao.example.org:8200
+    asserts:
+      - failedTemplate:
+          errorPattern: "enable exactly one of"
+
+  - it: unknown chart keys are rejected by the schema
+    set:
+      serve.bogus: true
+    asserts:
+      - failedTemplate:
+          errorPattern: "additional properties 'bogus' not allowed"

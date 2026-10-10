@@ -1,0 +1,211 @@
+suite: workloads
+templates:
+  - configmap.yaml
+  - serve-deployment.yaml
+  - worker-deployment.yaml
+  - web-deployment.yaml
+release:
+  name: custos
+  namespace: prod
+values:
+  - ../ci/external-minimal-values.yaml
+tests:
+  - it: serve has HTTPS probes on the custos container and the validator is a native sidecar
+    template: serve-deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].name
+          value: custos
+      - equal:
+          path: spec.template.spec.containers[0].args
+          value: ["--config", "/etc/custos/config.yaml", "serve"]
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.httpGet
+          value: {path: /health/live, port: api, scheme: HTTPS}
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet
+          value: {path: /health/ready, port: api, scheme: HTTPS}
+      - equal:
+          path: spec.template.spec.containers[0].ports
+          value:
+            - {name: api, containerPort: 8443}
+            - {name: metrics, containerPort: 9090}
+      - equal:
+          path: spec.template.spec.initContainers[0].name
+          value: validator
+      - equal:
+          path: spec.template.spec.initContainers[0].restartPolicy
+          value: Always
+      - equal:
+          path: spec.template.spec.initContainers[0].livenessProbe.httpGet
+          value: {path: /healthz, port: 8481}
+      - notExists:
+          path: spec.template.spec.initContainers[0].ports
+      - notExists:
+          path: spec.template.spec.initContainers[0].readinessProbe
+      - lengthEqual:
+          path: spec.template.spec.containers
+          count: 1
+
+  - it: worker probes the metrics listener over HTTP and keeps the validator as a sidecar
+    template: worker-deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].args
+          value: ["--config", "/etc/custos/config.yaml", "worker"]
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet
+          value: {path: /health/ready, port: metrics, scheme: HTTP}
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.tcpSocket.port
+          value: metrics
+      - equal:
+          path: spec.template.spec.initContainers[0].name
+          value: validator
+      - equal:
+          path: spec.template.spec.initContainers[0].restartPolicy
+          value: Always
+      - notExists:
+          path: spec.template.spec.containers[0].ports[?(@.containerPort==8481)]
+
+  - it: web has no validator, probes /api/health and runs node server.js as uid 1001
+    template: web-deployment.yaml
+    asserts:
+      - notExists:
+          path: spec.template.spec.initContainers
+      - equal:
+          path: spec.template.spec.containers[0].command
+          value: ["node", "server.js"]
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.httpGet
+          value: {path: /api/health, port: http}
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet
+          value: {path: /api/health, port: http}
+      - equal:
+          path: spec.template.spec.securityContext.runAsUser
+          value: 1001
+
+  - it: validator can be disabled
+    set:
+      validator.enabled: false
+    template: serve-deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[0].name
+          value: migrate-wait
+      - lengthEqual:
+          path: spec.template.spec.initContainers
+          count: 1
+
+  - it: serve and worker wait for migrations with the runtime database URL
+    templates:
+      - serve-deployment.yaml
+      - worker-deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[1].name
+          value: migrate-wait
+      - equal:
+          path: spec.template.spec.initContainers[1].args
+          value: [--config, /etc/custos/config.yaml, migrate, wait, --timeout, "10m"]
+      - equal:
+          path: spec.template.spec.volumes[1].projected.sources[0].secret.name
+          value: custos-db-app
+      - contains:
+          path: spec.template.spec.initContainers[1].env
+          content: {name: CUSTOS_DATABASE__URL_FILE, value: /etc/custos/secrets/database-url}
+
+  - it: the wait timeout comes from values
+    set:
+      migrations.waitTimeout: 3m
+    template: serve-deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[1].args[5]
+          value: 3m
+
+  - it: every container satisfies the restricted pod security standard
+    templates:
+      - serve-deployment.yaml
+      - worker-deployment.yaml
+      - web-deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.automountServiceAccountToken
+          value: false
+      - equal:
+          path: spec.template.spec.securityContext.runAsNonRoot
+          value: true
+      - equal:
+          path: spec.template.spec.securityContext.seccompProfile.type
+          value: RuntimeDefault
+      - equal:
+          path: spec.template.spec.containers[0].securityContext
+          value:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities: {drop: [ALL]}
+            seccompProfile: {type: RuntimeDefault}
+
+  - it: init containers and sidecars are restricted too
+    templates:
+      - serve-deployment.yaml
+      - worker-deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[0].securityContext
+          value:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities: {drop: [ALL]}
+            seccompProfile: {type: RuntimeDefault}
+      - equal:
+          path: spec.template.spec.initContainers[1].securityContext
+          value:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities: {drop: [ALL]}
+            seccompProfile: {type: RuntimeDefault}
+
+  - it: pod annotations carry a config checksum
+    templates:
+      - serve-deployment.yaml
+      - worker-deployment.yaml
+    asserts:
+      - matchRegex:
+          path: spec.template.metadata.annotations["checksum/config"]
+          pattern: "^[a-f0-9]{64}$"
+
+  - it: image digest wins over tag and the tag defaults to appVersion
+    template: serve-deployment.yaml
+    set:
+      image.digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: exonical/custos@sha256:0000000000000000000000000000000000000000000000000000000000000000
+      - equal:
+          path: spec.template.spec.initContainers[0].image
+          value: exonical/custos-validator:0.1.0
+
+  - it: topology spread is soft by default and replaceable
+    template: serve-deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.topologySpreadConstraints[0].whenUnsatisfiable
+          value: ScheduleAnyway
+      - equal:
+          path: spec.template.spec.topologySpreadConstraints[0].topologyKey
+          value: kubernetes.io/hostname
+
+  - it: replicas are omitted when the HPA owns them
+    template: serve-deployment.yaml
+    set:
+      serve.autoscaling.enabled: true
+    asserts:
+      - notExists:
+          path: spec.replicas

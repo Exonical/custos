@@ -1,0 +1,68 @@
+suite: migrations
+templates:
+  - migrate-job.yaml
+release:
+  name: custos
+  namespace: prod
+values:
+  - ../ci/external-minimal-values.yaml
+tests:
+  - it: the Job name carries the release revision and it is not a Helm hook
+    release:
+      name: custos
+      revision: 4
+    asserts:
+      - equal:
+          path: metadata.name
+          value: custos-migrate-r4
+      - notExists:
+          path: metadata.annotations["helm.sh/hook"]
+      - equal:
+          path: spec.template.spec.containers[0].args
+          value: [--config, /etc/custos/config.yaml, migrate, up]
+      - equal:
+          path: spec.backoffLimit
+          value: 2
+
+  - it: the migrate URL (owner DSN) and app role are used
+    asserts:
+      - equal:
+          path: spec.template.spec.volumes[1].projected.sources[0].secret.name
+          value: custos-db-owner
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: {name: CUSTOS_DATABASE__APP_ROLE, value: custos_app}
+
+  - it: the name suffix can be fixed for GitOps tools
+    set:
+      migrations.jobNameSuffix: stable
+    asserts:
+      - equal:
+          path: metadata.name
+          value: custos-migrate-stable
+
+  - it: the app role is omitted for the bundled cluster
+    values:
+      - ../ci/bundled-postgres-values.yaml
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content: {name: CUSTOS_DATABASE__APP_ROLE, value: custos_app}
+      - equal:
+          path: spec.template.spec.volumes[1].projected.sources[0].secret
+          value:
+            name: custos-postgresql-app
+            items:
+              - {key: uri, path: database-url}
+
+  - it: the Job is restricted
+    asserts:
+      - equal:
+          path: spec.template.spec.securityContext.runAsNonRoot
+          value: true
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.readOnlyRootFilesystem
+          value: true
+      - equal:
+          path: spec.template.spec.automountServiceAccountToken
+          value: false

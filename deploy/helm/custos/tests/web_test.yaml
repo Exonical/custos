@@ -1,0 +1,132 @@
+suite: web
+templates:
+  - web-deployment.yaml
+  - certificate.yaml
+release:
+  name: custos
+  namespace: prod
+values:
+  - ../ci/external-minimal-values.yaml
+tests:
+  - it: web environment matches the e2e wiring
+    template: web-deployment.yaml
+    release:
+      name: custos
+      namespace: prod
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: {name: NODE_ENV, value: production}
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: {name: CUSTOS_WEB_ISSUER, value: "https://idp.example.org/realms/custos"}
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: {name: CUSTOS_WEB_CLIENT_ID, value: custos-web}
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: {name: CUSTOS_WEB_CLIENT_SECRET_FILE, value: /etc/custos-web/secrets/client-secret}
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: CUSTOS_WEB_AUTH_SECRETS
+            valueFrom:
+              secretKeyRef: {name: custos-web-auth, key: auth-secrets}
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: {name: CUSTOS_WEB_PUBLIC_ORIGIN, value: "https://custos.example.org"}
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: {name: CUSTOS_API_URL, value: "https://custos-api.prod.svc:8443"}
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: {name: CUSTOS_API_CA_FILE, value: /etc/custos-web/ca/api-ca.crt}
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: {name: CUSTOS_WEB_TRUSTED_PROXY_HOPS, value: "1"}
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: {name: CUSTOS_WEB_DEV, value: "0"}
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: {name: CUSTOS_WEB_INSECURE_COOKIES, value: "0"}
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          any: true
+          content: {name: CUSTOS_WEB_CA_FILE}
+
+  - it: the API CA comes from the TLS secret ca.crt by default
+    template: web-deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.volumes[1].projected.sources[0].secret
+          value:
+            name: custos-api-tls
+            items:
+              - {key: ca.crt, path: api-ca.crt}
+
+  - it: the API CA and the IdP CA can be set explicitly
+    template: web-deployment.yaml
+    set:
+      api.tls.caSecret.name: api-ca
+      api.tls.caSecret.key: ca-bundle.pem
+      web.idpCaSecret.name: idp-ca
+    asserts:
+      - equal:
+          path: spec.template.spec.volumes[1].projected.sources[0].secret.name
+          value: api-ca
+      - equal:
+          path: spec.template.spec.volumes[1].projected.sources[0].secret.items[0].key
+          value: ca-bundle.pem
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: {name: CUSTOS_WEB_CA_FILE, value: /etc/custos-web/ca/idp-ca.crt}
+
+  - it: the web issuer can be overridden
+    template: web-deployment.yaml
+    set:
+      web.issuer: https://other.example.org/realms/web
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: {name: CUSTOS_WEB_ISSUER, value: "https://other.example.org/realms/web"}
+
+  - it: web can be disabled
+    template: web-deployment.yaml
+    set:
+      web.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: the cert-manager certificate covers the API service names the web uses
+    template: certificate.yaml
+    release:
+      name: custos
+      namespace: prod
+    set:
+      api.tls.secretName: ""
+      api.tls.certManager.enabled: true
+      api.tls.certManager.issuerRef.name: ca-issuer
+      api.tls.certManager.dnsNames: [api.example.org]
+    asserts:
+      - equal:
+          path: spec.secretName
+          value: custos-api-tls
+      - equal:
+          path: spec.dnsNames
+          value:
+            - custos-api
+            - custos-api.prod
+            - custos-api.prod.svc
+            - custos-api.prod.svc.cluster.local
+            - api.example.org
+      - equal:
+          path: spec.issuerRef
+          value: {name: ca-issuer, kind: Issuer, group: cert-manager.io}
+
+  - it: no certificate is rendered when a secret is provided
+    template: certificate.yaml
+    asserts:
+      - hasDocuments:
+          count: 0

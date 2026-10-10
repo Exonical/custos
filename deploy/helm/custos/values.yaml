@@ -343,6 +343,13 @@ postgresql:
     instances: 1
     storage:
       size: 5Gi
+    # Explicit so the rendered Cluster has no null sections (strict schema checks).
+    initdb:
+      database: app
+      owner: app
+    postgresql:
+      parameters:
+        max_connections: "100"
 
 openbao:
   # Deploy-only OpenBao server; initialisation, unseal and JWT auth config

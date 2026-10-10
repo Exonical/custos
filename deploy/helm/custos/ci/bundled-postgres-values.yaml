@@ -1,0 +1,25 @@
+# Evaluation install with the bundled CloudNativePG cluster (the operator must
+# already be installed). Database wiring is automatic.
+config:
+  auth:
+    oidc:
+      issuer: https://idp.example.org/realms/custos
+      client_id: custos
+      audiences: [custos]
+
+postgresql:
+  enabled: true
+  cluster:
+    instances: 1
+    storage:
+      size: 2Gi
+
+api:
+  tls:
+    secretName: custos-api-tls
+
+web:
+  publicOrigin: https://custos.example.org
+  client:
+    secret: {name: custos-web-oidc, key: client-secret}
+  authSecrets: {name: custos-web-auth, key: auth-secrets}

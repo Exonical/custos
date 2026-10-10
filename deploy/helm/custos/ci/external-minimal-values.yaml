@@ -1,0 +1,23 @@
+# Smallest valid install against an existing external PostgreSQL.
+# Secrets referenced here must exist (see docs/kubernetes.md).
+config:
+  auth:
+    oidc:
+      issuer: https://idp.example.org/realms/custos
+      client_id: custos
+      audiences: [custos]
+
+database:
+  migrateURLSecret: {name: custos-db-owner, key: url}
+  appURLSecret: {name: custos-db-app, key: url}
+  appRole: custos_app
+
+api:
+  tls:
+    secretName: custos-api-tls
+
+web:
+  publicOrigin: https://custos.example.org
+  client:
+    secret: {name: custos-web-oidc, key: client-secret}
+  authSecrets: {name: custos-web-auth, key: auth-secrets}

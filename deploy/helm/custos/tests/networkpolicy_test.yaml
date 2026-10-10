@@ -1,0 +1,118 @@
+suite: network policy
+templates:
+  - networkpolicy.yaml
+release:
+  name: custos
+  namespace: prod
+values:
+  - ../ci/external-minimal-values.yaml
+tests:
+  - it: three policies are rendered and none mentions the validator port
+    asserts:
+      - hasDocuments:
+          count: 3
+      - notMatchRegexRaw:
+          pattern: "8481"
+
+  - it: serve opens the API and metrics ports
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.ingress[0].ports[0].port
+          value: 8443
+      - equal:
+          path: spec.ingress[1].ports[0].port
+          value: 9090
+
+  - it: worker opens metrics only
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.ingress[0].ports[0].port
+          value: 9090
+      - lengthEqual:
+          path: spec.ingress
+          count: 1
+
+  - it: web opens its HTTP port only
+    documentIndex: 2
+    asserts:
+      - equal:
+          path: spec.ingress[0].ports[0].port
+          value: 3000
+      - lengthEqual:
+          path: spec.ingress
+          count: 1
+  - it: an empty peer list means from anywhere for that port
+    documentIndex: 0
+    asserts:
+      - notExists:
+          path: spec.ingress[0].from
+      - notExists:
+          path: spec.ingress[1].from
+
+  - it: apiFrom adds peers and always includes the web pods
+    documentIndex: 0
+    set:
+      networkPolicy.apiFrom:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: gateways}
+    asserts:
+      - equal:
+          path: spec.ingress[0].from
+          value:
+            - podSelector:
+                matchLabels:
+                  app.kubernetes.io/name: custos
+                  app.kubernetes.io/instance: custos
+                  app.kubernetes.io/component: web
+            - namespaceSelector:
+                matchLabels: {kubernetes.io/metadata.name: gateways}
+
+  - it: egress is unrestricted unless asked
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.policyTypes
+          value: [Ingress]
+      - notExists:
+          path: spec.egress
+
+  - it: restricted egress allows DNS, web to api and extra rules but never 8481
+    documentIndex: 0
+    set:
+      networkPolicy.egress.restrict: true
+      networkPolicy.egress.extra:
+        - to:
+            - ipBlock: {cidr: 10.0.0.0/8}
+          ports:
+            - {port: 6820, protocol: TCP}
+    asserts:
+      - equal:
+          path: spec.policyTypes
+          value: [Ingress, Egress]
+      - contains:
+          path: spec.egress
+          content:
+            to:
+              - namespaceSelector:
+                  matchLabels: {kubernetes.io/metadata.name: kube-system}
+            ports:
+              - {port: 53, protocol: UDP}
+              - {port: 53, protocol: TCP}
+      - contains:
+          path: spec.egress
+          content:
+            to:
+              - ipBlock: {cidr: 10.0.0.0/8}
+            ports:
+              - {port: 6820, protocol: TCP}
+      - notMatchRegexRaw:
+          pattern: "8481"
+
+  - it: policies can be turned off
+    set:
+      networkPolicy.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
