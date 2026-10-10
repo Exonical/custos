@@ -2,9 +2,13 @@ package db
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"strconv"
+	"strings"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
@@ -65,4 +69,60 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool, cmd MigrateCommand, out io
 		return nil, nil
 	}
 	return nil, apperr.New(apperr.Invalid, "db.migrate", "unknown command")
+}
+
+// LatestVersion returns the highest migration version embedded in this
+// binary. Goose versions are the numeric file-name prefixes.
+func LatestVersion() (int64, error) {
+	entries, err := migrations.FS.ReadDir(".")
+	if err != nil {
+		return 0, apperr.Wrap(err, apperr.Internal, "db.migrate", "cannot read embedded migrations")
+	}
+	var latest int64
+	for _, e := range entries {
+		prefix, _, ok := strings.Cut(e.Name(), "_")
+		if !ok || !strings.HasSuffix(e.Name(), ".sql") {
+			continue
+		}
+		v, err := strconv.ParseInt(prefix, 10, 64)
+		if err != nil {
+			continue
+		}
+		latest = max(latest, v)
+	}
+	if latest == 0 {
+		return 0, apperr.New(apperr.Internal, "db.migrate", "no embedded migrations")
+	}
+	return latest, nil
+}
+
+// AppliedVersion returns the highest applied goose version, or 0 when the
+// goose table does not exist yet (nothing migrated). It only needs SELECT
+// on goose_db_version, which the least-privilege app role holds.
+func AppliedVersion(ctx context.Context, pool *pgxpool.Pool) (int64, error) {
+	var v int64
+	err := pool.QueryRow(ctx,
+		"SELECT coalesce(max(version_id), 0) FROM goose_db_version WHERE is_applied").Scan(&v)
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "42P01" { // undefined_table
+			return 0, nil
+		}
+		return 0, MapError(err)
+	}
+	return v, nil
+}
+
+// SchemaCurrent reports whether the applied version has reached the latest
+// embedded one. ahead is true when the database is newer than this binary.
+func SchemaCurrent(ctx context.Context, pool *pgxpool.Pool) (current, ahead bool, applied, latest int64, err error) {
+	latest, err = LatestVersion()
+	if err != nil {
+		return false, false, 0, 0, err
+	}
+	applied, err = AppliedVersion(ctx, pool)
+	if err != nil {
+		return false, false, 0, latest, err
+	}
+	return applied >= latest, applied > latest, applied, latest, nil
 }

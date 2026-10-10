@@ -14,8 +14,11 @@ import (
 )
 
 func cmdMigrate(ctx context.Context, configPath string, args []string, lookupEnv config.LookupEnv, stdout, stderr io.Writer) int {
+	if len(args) > 0 && args[0] == "wait" {
+		return cmdMigrateWait(ctx, configPath, args[1:], lookupEnv, stderr)
+	}
 	if len(args) != 1 {
-		_, _ = fmt.Fprintln(stderr, "usage: custos migrate <up|down|status>")
+		_, _ = fmt.Fprintln(stderr, "usage: custos migrate <up|down|status|wait>")
 		return 2
 	}
 	var cmd db.MigrateCommand

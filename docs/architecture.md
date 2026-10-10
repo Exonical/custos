@@ -296,6 +296,15 @@ Refinements versus the prompt's list:
 - **Migrations**: plain SQL files, forward and backward, run by
   `custos migrate` (library: `pressly/goose` embedded via `embed.FS`; see
   ADR-002). Migrations run as a separate step, never on API startup.
+  `custos migrate wait [--timeout 10m] [--interval 2s]` is the read-only
+  counterpart for orchestrated rollouts: it polls until the highest applied
+  goose version reaches the newest embedded migration (a missing goose table
+  counts as not yet migrated and keeps polling; a database ahead of the binary
+  logs a warning and succeeds) and exits 1 on timeout or non-zero immediately
+  on configuration errors. It writes no audit event and needs only `SELECT`
+  on `goose_db_version`, which `GrantAppRole` already gives the
+  least-privilege runtime role, so pods can wait with their normal database
+  URL (see ADR-033).
 - **Concurrency**: optimistic concurrency with an integer `version` column on
   aggregates that have state machines (`jobs`, `workflow_executions`,
   `task_executions`, `clusters`). `UPDATE ... WHERE id=$1 AND version=$2`.
