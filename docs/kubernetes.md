@@ -101,6 +101,36 @@ kubectl -n custos exec deploy/custos-serve -c custos -- /custos admin \
   platform-role grant --issuer https://idp.example.org/realms/custos --subject <sub> --role platform-admin
 ```
 
+## slurmrestd tokens and other file secrets
+
+Cluster `TokenRef` / `ClientCertRef` values are resolved by a secret provider.
+Without OpenBao the only option is the file provider, and file references are
+only honoured below the configured file roots. The chart manages that root:
+`secrets.file_roots` is always `[/etc/custos/file-secrets]` (an `emptyDir`, so it
+always exists) and any `config.secrets.file_roots` you set is overridden.
+Custos' own credentials (`database-url`, OIDC and OpenBao client secrets) are in
+`/etc/custos/secrets`, which is deliberately not a file root: otherwise a cluster
+could point a file reference at the database URL and have Custos send it to an
+arbitrary slurmrestd endpoint.
+
+Mount the Secrets you want with `fileSecrets`:
+
+```yaml
+fileSecrets:
+  - secretName: slurm-token          # kubectl create secret generic slurm-token --from-file=token
+```
+
+and reference them when registering the cluster:
+
+```json
+{"provider": "file", "path": "/etc/custos/file-secrets/slurm-token/token"}
+```
+
+Each entry is mounted read-only (mode 0440) at
+`/etc/custos/file-secrets/<mountName>` in serve and worker only (`mountName`
+defaults to `secretName`; `items` selects keys). Alternatively use OpenBao via
+`openbaoClient`.
+
 ## Optional dependencies
 
 Both are disabled by default and pinned in `Chart.yaml` / `Chart.lock`.

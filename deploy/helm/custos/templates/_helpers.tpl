@@ -194,6 +194,23 @@ Fail early with actionable messages.
 {{- fail "openbaoClient.auth.oidcClientCredentials needs tokenURL, clientID and clientSecret.name" -}}
 {{- end -}}
 {{- end -}}
+{{- $seen := dict -}}
+{{- range $i, $fs := .Values.fileSecrets -}}
+{{- if not $fs.secretName -}}
+{{- fail (printf "fileSecrets[%d].secretName is required" $i) -}}
+{{- end -}}
+{{- $mount := default $fs.secretName $fs.mountName -}}
+{{- if not (regexMatch "^[a-z0-9]([-a-z0-9]{0,48}[a-z0-9])?$" $mount) -}}
+{{- fail (printf "fileSecrets[%d]: mountName %q must be a DNS label of at most 50 characters (lowercase alphanumerics and '-')" $i $mount) -}}
+{{- end -}}
+{{- if not (regexMatch "^[a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?$" $fs.secretName) -}}
+{{- fail (printf "fileSecrets[%d]: secretName %q is not a valid Secret name" $i $fs.secretName) -}}
+{{- end -}}
+{{- if hasKey $seen $mount -}}
+{{- fail (printf "fileSecrets: duplicate mountName %q" $mount) -}}
+{{- end -}}
+{{- $_ := set $seen $mount true -}}
+{{- end -}}
 {{- if and .Values.gateway.enabled (not .Values.gateway.parentRefs) -}}
 {{- fail "gateway.parentRefs is required when gateway.enabled=true" -}}
 {{- end -}}
@@ -244,8 +261,10 @@ are set with `set` because mergeOverwrite ignores zero values in the source.
 {{- $_ = set $shellcheck "endpoint" "http://127.0.0.1:8481" -}}
 {{- $_ = set $validation "shellcheck" $shellcheck -}}
 {{- $_ = set $cfg "validation" $validation -}}
-{{- if .Values.openbaoClient.enabled -}}
 {{- $secrets := default (dict) (get $cfg "secrets") -}}
+{{- $_ = set $secrets "file_roots" (list "/etc/custos/file-secrets") -}}
+{{- $_ = set $cfg "secrets" $secrets -}}
+{{- if .Values.openbaoClient.enabled -}}
 {{- $bao := default (dict) (get $secrets "openbao") -}}
 {{- $_ = set $bao "address" .Values.openbaoClient.address -}}
 {{- $_ = set $bao "timeout" .Values.openbaoClient.timeout -}}
@@ -352,6 +371,23 @@ Usage: include "custos.volumes" (dict "root" $ "db" "app" "tls" true)
 - name: tmp
   emptyDir:
     sizeLimit: 64Mi
+{{- if .fileSecrets }}
+{{- if not .root.Values.fileSecrets }}
+- name: file-secrets
+  emptyDir:
+    sizeLimit: 1Mi
+{{- end }}
+{{- range .root.Values.fileSecrets }}
+- name: file-secret-{{ default .secretName .mountName }}
+  secret:
+    secretName: {{ .secretName }}
+    defaultMode: 288
+    {{- with .items }}
+    items:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+{{- end }}
+{{- end }}
 {{- if .tls }}
 - name: tls
   secret:
@@ -385,6 +421,18 @@ Usage: include "custos.volumes" (dict "root" $ "db" "app" "tls" true)
 {{- end }}
 - name: tmp
   mountPath: /tmp
+{{- if .fileSecrets }}
+{{- if not .root.Values.fileSecrets }}
+- name: file-secrets
+  mountPath: /etc/custos/file-secrets
+  readOnly: true
+{{- end }}
+{{- range .root.Values.fileSecrets }}
+- name: file-secret-{{ default .secretName .mountName }}
+  mountPath: /etc/custos/file-secrets/{{ default .secretName .mountName }}
+  readOnly: true
+{{- end }}
+{{- end }}
 {{- if .tls }}
 - name: tls
   mountPath: /etc/custos/tls

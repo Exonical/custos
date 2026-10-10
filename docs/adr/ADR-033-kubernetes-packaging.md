@@ -58,6 +58,10 @@ cluster fleet.
   default**: Custos must reach arbitrary slurmrestd, OpenBao and IdP endpoints
   that the chart cannot enumerate. `networkPolicy.egress.restrict` is
   available for sites that can list them.
+- The file-secret provider root is chart-managed and separate from Custos's own
+  credentials: `secrets.file_roots` is always `/etc/custos/file-secrets`, fed by
+  the `fileSecrets` value, so a cluster `TokenRef` can never read the database
+  URL or client secrets in `/etc/custos/secrets`.
 - `config` is a free-form passthrough merged under chart-managed keys, so new
   configuration options need no chart release, while security-relevant keys
   (TLS, listeners, validator endpoint) cannot be overridden by accident.

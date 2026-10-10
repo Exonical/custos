@@ -58,6 +58,27 @@ The render fails with a clear message when these are missing:
 | `serviceAccount.{create,name,annotations}` | `true` | The token is never mounted. |
 | `topologySpread.enabled` | `true` | Soft per-host spread unless a component sets `topologySpreadConstraints`. |
 
+### File-provider secrets (slurmrestd tokens and certificates)
+
+`secrets.file_roots` is chart-managed: always `[/etc/custos/file-secrets]`, an
+`emptyDir` that exists in serve and worker. Custos' own credentials
+(`database-url`, OIDC and OpenBao client secrets) live in `/etc/custos/secrets`,
+which is deliberately **not** a file root, so a cluster `TokenRef` can never read
+them. Supply slurmrestd tokens (or client certificates) with `fileSecrets`:
+
+```yaml
+fileSecrets:
+  - secretName: slurm-token          # required, an existing Secret
+    mountName: slurm-token           # optional, defaults to secretName
+    items: [{key: token, path: token}]   # optional, defaults to every key
+```
+
+Each entry is mounted read-only (mode 0440) at `/etc/custos/file-secrets/<mountName>`
+in serve and worker only. Reference it from a cluster as
+`{provider: file, path: /etc/custos/file-secrets/<mountName>/<key>}`. Names must
+be DNS labels and unique; the render fails otherwise. OpenBao
+(`openbaoClient`) is the alternative.
+
 ### Components (`serve`, `worker`, `web`)
 
 `replicas`, `resources`, `nodeSelector`, `tolerations`, `affinity`,

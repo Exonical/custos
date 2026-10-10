@@ -39,6 +39,11 @@ Follow-ups
   - The OpenBao subchart is deploy-only: initialise and unseal it, enable JWT auth and set
     openbaoClient.* to point Custos at it (docs/kubernetes.md).
 {{- end }}
+{{- if .Values.fileSecrets }}
+  - File secrets are mounted under /etc/custos/file-secrets/<mountName>/<key>; reference them from a cluster as {provider: file, path: ...}.
+{{- else }}
+  - No fileSecrets configured: without OpenBao, mount slurmrestd tokens with fileSecrets (see docs/kubernetes.md).
+{{- end }}
 {{- if not .Values.openbaoClient.enabled }}
   - openbaoClient.enabled=false: tenant secret providers that use OpenBao are unavailable.
 {{- end }}

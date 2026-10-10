@@ -66,8 +66,8 @@ spec:
           resources:
             {{- toYaml .Values.serve.resources | nindent 12 }}
           volumeMounts:
-            {{- include "custos.volumeMounts" (dict "root" . "tls" true) | nindent 12 }}
+            {{- include "custos.volumeMounts" (dict "root" . "tls" true "fileSecrets" true) | nindent 12 }}
       {{- include "custos.scheduling" .Values.serve | nindent 6 }}
       {{- include "custos.topologySpread" (dict "root" . "component" "serve" "spec" .Values.serve) | nindent 6 }}
       volumes:
-        {{- include "custos.volumes" (dict "root" . "db" "app" "tls" true) | nindent 8 }}
+        {{- include "custos.volumes" (dict "root" . "db" "app" "tls" true "fileSecrets" true) | nindent 8 }}

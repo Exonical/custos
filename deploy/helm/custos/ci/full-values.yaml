@@ -16,6 +16,14 @@ auth:
     clientSecret: {name: custos-oidc, key: client-secret}
     caSecret: {name: idp-ca, key: ca.crt}
 
+fileSecrets:
+  - secretName: slurm-token
+  - secretName: site-b-client-cert
+    mountName: site-b
+    items:
+      - {key: tls.crt, path: client.crt}
+      - {key: tls.key, path: client.key}
+
 database:
   migrateURLSecret: {name: custos-db-owner, key: url}
   appURLSecret: {name: custos-db-app, key: url}

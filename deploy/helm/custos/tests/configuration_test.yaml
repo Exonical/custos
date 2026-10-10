@@ -57,7 +57,7 @@ tests:
     asserts:
       - matchRegex:
           path: data["config.yaml"]
-          pattern: "file_roots:\\n  - /etc/custos/secrets"
+          pattern: "file_roots:\\n  - /etc/custos/file-secrets\\n"
 
   - it: the validator switch controls shellcheck
     set:

@@ -41,8 +41,11 @@ serviceAccount:
 #   auth.oidc.ca_file                                       auth.oidc.caSecret
 #   validation.shellcheck.{enabled,endpoint}                validator sidecar
 #   secrets.openbao.{address,namespace,timeout,ca_file,auth}  openbaoClient
+#   secrets.file_roots                                      always [/etc/custos/file-secrets]
+#                                                           (see fileSecrets; never the
+#                                                           directory of Custos's own credentials)
 # Everything else (dev_mode, auth.oidc.issuer/client_id/audiences,
-# secrets.file_roots, slurm.*, worker.*, log, telemetry, ...) is passed
+# slurm.*, worker.*, log, telemetry, ...) is passed
 # through. The OIDC issuer is required unless config.dev_mode is true.
 # ---------------------------------------------------------------------------
 config:
@@ -52,10 +55,6 @@ config:
     format: json
   telemetry:
     exporter: none
-  secrets:
-    # Custos requires a readable file-secret root; /run/secrets does not exist in
-    # pods. The projected secrets volume is mounted here.
-    file_roots: [/etc/custos/secrets]
   auth:
     oidc:
       issuer: ""
@@ -65,6 +64,19 @@ config:
     unavailable_severity: ERROR
     shellcheck:
       timeout: 10s
+
+# ---------------------------------------------------------------------------
+# File-provider secrets (for example slurmrestd tokens referenced by a cluster's
+# TokenRef/ClientCertRef when OpenBao is not used). The only file root is
+# /etc/custos/file-secrets (an emptyDir, so it always exists); each entry is
+# mounted read-only at /etc/custos/file-secrets/<mountName> in serve and worker.
+# Reference it as {provider: file, path: /etc/custos/file-secrets/<mountName>/<key>}.
+# Custos's own credentials live in /etc/custos/secrets, which is NOT a file root.
+#   - secretName: slurm-token         # required, an existing Secret
+#     mountName: slurm-token          # optional, defaults to secretName
+#     items: [{key: token, path: token}]   # optional, defaults to every key
+# ---------------------------------------------------------------------------
+fileSecrets: []
 
 auth:
   oidc:

@@ -188,6 +188,7 @@ $K -n "$NS" create secret generic keycloak-tls --from-file=tls.crt="$WORK/keyclo
 web_secret=$(head -c 24 /dev/urandom | base64 | tr -d '=+/\n')
 printf '%s' "$web_secret" >"$WORK/web-client-secret"
 head -c 32 /dev/urandom | base64 | tr -d '\n' >"$WORK/web-auth-secrets"
+$K -n "$NS" create secret generic slurm-token --from-literal=token=dummy-slurmrestd-token
 $K -n "$NS" create secret generic web-oidc --from-file=client-secret="$WORK/web-client-secret"
 $K -n "$NS" create secret generic web-auth --from-file=auth-secrets="$WORK/web-auth-secrets"
 sed "s/__CUSTOS_WEB_CLIENT_SECRET__/$web_secret/g" deploy/e2e/keycloak/realm-custos.json >"$WORK/realm-custos.json"
@@ -277,6 +278,8 @@ web:
   idpCaSecret: {name: test-ca, key: ca.crt}
 serve:
   replicas: 1
+fileSecrets:
+  - secretName: slurm-token
 gateway:
   enabled: true
   parentRefs:
@@ -356,6 +359,26 @@ portfwd "$REL-web" 13000 3000
 code=$(curl -sS -o /dev/null -w '%{http_code}' -H "Host: 127.0.0.1:3000" http://127.0.0.1:13000/api/health)
 [ "$code" = 200 ] || die "web /api/health returned $code"
 ok "web /api/health 200"
+
+# File-provider secrets: the dedicated root is configured, the internal credential
+# directory is not a root, and the Secret is mounted read-only in serve and worker.
+cfg=$($K -n "$NS" get configmap "$REL-config" -o jsonpath='{.data.config\.yaml}')
+echo "$cfg" | grep -A1 'file_roots:' | grep -q '/etc/custos/file-secrets$' || die "file_roots is not /etc/custos/file-secrets"
+if [ "$(echo "$cfg" | grep -A3 'file_roots:' | grep -c '/etc/custos/secrets')" != 0 ]; then die "internal credential directory is a file root"; fi
+ok "file_roots is exactly /etc/custos/file-secrets (not /etc/custos/secrets)"
+for comp in serve worker; do
+	mounts=$($K -n "$NS" get pod -l "app.kubernetes.io/component=$comp,app.kubernetes.io/instance=$REL" \
+		-o jsonpath='{range .items[0].spec.containers[0].volumeMounts[*]}{.mountPath}{" ro="}{.readOnly}{"\n"}{end}')
+	echo "$mounts" | grep -qx '/etc/custos/file-secrets/slurm-token ro=true' || die "$comp lacks the read-only slurm-token mount: $mounts"
+	mode=$($K -n "$NS" get pod -l "app.kubernetes.io/component=$comp,app.kubernetes.io/instance=$REL" \
+		-o jsonpath='{.items[0].spec.volumes[?(@.name=="file-secret-slurm-token")].secret.defaultMode}')
+	[ "$mode" = 288 ] || die "$comp slurm-token volume defaultMode is $mode, want 288 (0440)"
+	ok "$comp: /etc/custos/file-secrets/slurm-token mounted read-only (mode 0440) and the pod is Ready"
+done
+for comp in web; do
+	if $K -n "$NS" get pod -l "app.kubernetes.io/component=$comp,app.kubernetes.io/instance=$REL" -o yaml | grep -q file-secret; then die "$comp must not mount file secrets"; fi
+done
+ok "web does not mount file secrets"
 
 $K -n "$NS" get httproute "$REL-web" "$REL-api" >/dev/null && ok "HTTPRoutes accepted by the API server"
 $K -n "$NS" get backendtlspolicy "$REL-api" >/dev/null && ok "BackendTLSPolicy accepted by the API server"
