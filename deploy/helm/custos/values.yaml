@@ -52,6 +52,10 @@ config:
     format: json
   telemetry:
     exporter: none
+  secrets:
+    # Custos requires a readable file-secret root; /run/secrets does not exist in
+    # pods. The projected secrets volume is mounted here.
+    file_roots: [/etc/custos/secrets]
   auth:
     oidc:
       issuer: ""
@@ -102,7 +106,10 @@ migrations:
   # The migrate Job is named <fullname>-migrate-r<release revision>. Set a
   # fixed suffix for Argo CD / Flux (where .Release.Revision is not stable).
   jobNameSuffix: ""
-  backoffLimit: 2
+  # The Job starts with the rest of the release, possibly before a bundled
+  # database is up; Job retries back off exponentially (10s, 20s, 40s, ... up to
+  # 6m), so 6 retries cover a few minutes of database start-up.
+  backoffLimit: 6
   activeDeadlineSeconds: 900
   ttlSecondsAfterFinished: null
   resources:

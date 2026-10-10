@@ -53,6 +53,12 @@ tests:
           path: data["config.yaml"]
           pattern: "issuer: https://idp.example.org/realms/custos"
 
+  - it: a readable file secret root is configured by default
+    asserts:
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: "file_roots:\\n  - /etc/custos/secrets"
+
   - it: the validator switch controls shellcheck
     set:
       validator.enabled: false

@@ -37,8 +37,8 @@ tests:
           path: spec.template.spec.initContainers[0].restartPolicy
           value: Always
       - equal:
-          path: spec.template.spec.initContainers[0].livenessProbe.httpGet
-          value: {path: /healthz, port: 8481}
+          path: spec.template.spec.initContainers[0].livenessProbe.exec.command
+          value: [/custos-validator, healthcheck]
       - notExists:
           path: spec.template.spec.initContainers[0].ports
       - notExists:
@@ -78,10 +78,18 @@ tests:
           value: ["node", "server.js"]
       - equal:
           path: spec.template.spec.containers[0].livenessProbe.httpGet
-          value: {path: /api/health, port: http}
+          value:
+            path: /api/health
+            port: http
+            httpHeaders:
+              - {name: Host, value: custos.example.org}
       - equal:
           path: spec.template.spec.containers[0].readinessProbe.httpGet
-          value: {path: /api/health, port: http}
+          value:
+            path: /api/health
+            port: http
+            httpHeaders:
+              - {name: Host, value: custos.example.org}
       - equal:
           path: spec.template.spec.securityContext.runAsUser
           value: 1001

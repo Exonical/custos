@@ -74,7 +74,7 @@ one replica is possible) and `autoscaling.{enabled,minReplicas,maxReplicas,targe
 | `database.appRole` | `""` | Runtime role granted DML by `migrate up`. |
 | `database.sslMode` | `verify-full` | `require`, `verify-ca` or `verify-full`. |
 | `migrations.jobNameSuffix` | `""` | Replaces `r<revision>`; set for Argo CD / Flux. |
-| `migrations.backoffLimit` / `activeDeadlineSeconds` / `ttlSecondsAfterFinished` | `2` / `900` / `null` | Job settings. |
+| `migrations.backoffLimit` / `activeDeadlineSeconds` / `ttlSecondsAfterFinished` | `6` / `900` / `null` | Job settings. The Job can start before a bundled database is up; exponential retry back-off covers it. |
 | `migrations.waitTimeout` | `10m` | `migrate wait --timeout` in serve and worker. |
 
 ### API TLS, OIDC, web

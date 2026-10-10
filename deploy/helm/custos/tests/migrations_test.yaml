@@ -22,7 +22,7 @@ tests:
           value: [--config, /etc/custos/config.yaml, migrate, up]
       - equal:
           path: spec.backoffLimit
-          value: 2
+          value: 6
 
   - it: the migrate URL (owner DSN) and app role are used
     asserts:

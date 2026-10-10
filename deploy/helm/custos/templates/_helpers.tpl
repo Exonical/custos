@@ -453,11 +453,13 @@ restartPolicy Always (Kubernetes >= 1.29). Loopback only; never exposed.
     {{- include "custos.containerSecurityContext" . | nindent 4 }}
   resources:
     {{- toYaml .Values.validator.resources | nindent 4 }}
+  # The validator listens on loopback only, which the kubelet cannot reach with
+  # httpGet/tcpSocket probes, so liveness execs the binary's healthcheck.
   livenessProbe:
-    httpGet:
-      path: /healthz
-      port: 8481
+    exec:
+      command: [/custos-validator, healthcheck]
     periodSeconds: 15
+    timeoutSeconds: 5
   volumeMounts:
     - name: tmp
       mountPath: /tmp

@@ -72,16 +72,24 @@ spec:
             {{- with .Values.web.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
+          # The web proxy rejects requests whose Host does not match
+          # CUSTOS_WEB_PUBLIC_ORIGIN (421), so probes send that Host.
           livenessProbe:
             httpGet:
               path: /api/health
               port: http
+              httpHeaders:
+                - name: Host
+                  value: {{ (urlParse .Values.web.publicOrigin).host | quote }}
             periodSeconds: 15
             initialDelaySeconds: 5
           readinessProbe:
             httpGet:
               path: /api/health
               port: http
+              httpHeaders:
+                - name: Host
+                  value: {{ (urlParse .Values.web.publicOrigin).host | quote }}
             periodSeconds: 10
           securityContext:
             {{- include "custos.containerSecurityContext" . | nindent 12 }}
