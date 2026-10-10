@@ -109,6 +109,12 @@ jobs:
           curl -fsS http://localhost:9090/metrics | grep -q custos_build_info
       - run: docker compose -f deploy/compose/compose.yaml down -v
 
+  helm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - run: bash scripts/helm-check.sh
+
   vuln:
     runs-on: ubuntu-latest
     steps:
