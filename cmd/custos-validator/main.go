@@ -158,6 +158,28 @@ func handler(version string, sem chan struct{}) http.Handler {
 	return mux
 }
 
+// healthcheck probes the local /healthz endpoint. The listener is loopback
+// only, so Kubernetes cannot reach it with an httpGet probe; it runs this
+// subcommand through an exec probe instead.
+func healthcheck(ctx context.Context, listen string) error {
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	// listen is the loopback address main validated.
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+listen+"/healthz", nil) //nolint:gosec // loopback only
+	if err != nil {
+		return err
+	}
+	resp, err := http.DefaultClient.Do(req) //nolint:gosec // loopback only
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("healthz returned %d", resp.StatusCode)
+	}
+	return nil
+}
+
 func main() {
 	listen := os.Getenv("CUSTOS_VALIDATOR_LISTEN")
 	if listen == "" {
@@ -168,6 +190,13 @@ func main() {
 		_, _ = fmt.Fprintf(os.Stderr,
 			"custos-validator: listen address %q must be loopback\n", listen)
 		os.Exit(2)
+	}
+	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
+		if err := healthcheck(context.Background(), net.JoinHostPort(host, port)); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "custos-validator: %v\n", err)
+			os.Exit(1)
+		}
+		return
 	}
 	maxConc := 4
 	if v := os.Getenv("CUSTOS_VALIDATOR_MAX_CONCURRENT"); v != "" {

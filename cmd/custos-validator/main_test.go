@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -91,5 +92,22 @@ func TestSaturated(t *testing.T) {
 	h.ServeHTTP(r, httptest.NewRequest(http.MethodGet, "/healthz", nil))
 	if r.Code != http.StatusOK {
 		t.Fatalf("healthz under saturation: %d", r.Code)
+	}
+}
+
+func TestHealthcheck(t *testing.T) {
+	srv := httptest.NewServer(handler("test", make(chan struct{}, 1)))
+	defer srv.Close()
+	if err := healthcheck(context.Background(), strings.TrimPrefix(srv.URL, "http://")); err != nil {
+		t.Fatalf("healthy server: %v", err)
+	}
+	down := httptest.NewServer(http.NotFoundHandler())
+	addr := strings.TrimPrefix(down.URL, "http://")
+	if err := healthcheck(context.Background(), addr); err == nil {
+		t.Fatal("non-200 healthz must fail")
+	}
+	down.Close()
+	if err := healthcheck(context.Background(), addr); err == nil {
+		t.Fatal("closed server must fail")
 	}
 }
