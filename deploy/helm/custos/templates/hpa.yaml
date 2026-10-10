@@ -1,0 +1,45 @@
+{{- if .Values.serve.autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "custos.fullname" . }}-serve
+  labels:
+    {{- include "custos.labels" (dict "root" . "component" "serve") | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "custos.fullname" . }}-serve
+  minReplicas: {{ .Values.serve.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.serve.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.serve.autoscaling.targetCPUUtilizationPercentage }}
+{{- end }}
+{{- if and .Values.web.enabled .Values.web.autoscaling.enabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "custos.fullname" . }}-web
+  labels:
+    {{- include "custos.labels" (dict "root" . "component" "web") | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "custos.fullname" . }}-web
+  minReplicas: {{ .Values.web.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.web.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.web.autoscaling.targetCPUUtilizationPercentage }}
+{{- end }}

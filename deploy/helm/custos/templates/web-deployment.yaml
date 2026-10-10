@@ -1,0 +1,135 @@
+{{- if .Values.web.enabled }}
+{{- $apiCA := include "custos.apiCA" . | fromJson }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "custos.fullname" . }}-web
+  labels:
+    {{- include "custos.labels" (dict "root" . "component" "web") | nindent 4 }}
+spec:
+  {{- if not .Values.web.autoscaling.enabled }}
+  replicas: {{ .Values.web.replicas }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "custos.selectorLabels" (dict "root" . "component" "web") | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ dict "origin" .Values.web.publicOrigin "issuer" (default (get (default (dict) (get (default (dict) .Values.config.auth) "oidc")) "issuer") .Values.web.issuer) "client" .Values.web.client.id "api" (include "custos.apiURL" .) | toJson | sha256sum }}
+        {{- with .Values.web.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "custos.labels" (dict "root" . "component" "web") | nindent 8 }}
+        {{- with .Values.web.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "custos.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      securityContext:
+        {{- include "custos.podSecurityContext" (dict "uid" 1001) | nindent 8 }}
+      {{- include "custos.imagePullSecrets" . | nindent 6 }}
+      containers:
+        - name: web
+          image: {{ include "custos.image" (dict "image" .Values.web.image "root" .) | quote }}
+          imagePullPolicy: {{ .Values.web.image.pullPolicy }}
+          command: ["node", "server.js"]
+          ports:
+            - name: http
+              containerPort: 3000
+          env:
+            - name: NODE_ENV
+              value: production
+            - name: CUSTOS_WEB_ISSUER
+              value: {{ default (get (default (dict) (get (default (dict) .Values.config.auth) "oidc")) "issuer") .Values.web.issuer | quote }}
+            - name: CUSTOS_WEB_CLIENT_ID
+              value: {{ .Values.web.client.id | quote }}
+            - name: CUSTOS_WEB_CLIENT_SECRET_FILE
+              value: /etc/custos-web/secrets/client-secret
+            - name: CUSTOS_WEB_AUTH_SECRETS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.web.authSecrets.name }}
+                  key: {{ .Values.web.authSecrets.key }}
+            - name: CUSTOS_WEB_PUBLIC_ORIGIN
+              value: {{ .Values.web.publicOrigin | quote }}
+            - name: CUSTOS_API_URL
+              value: {{ include "custos.apiURL" . | quote }}
+            - name: CUSTOS_API_CA_FILE
+              value: /etc/custos-web/ca/api-ca.crt
+            {{- if .Values.web.idpCaSecret.name }}
+            - name: CUSTOS_WEB_CA_FILE
+              value: /etc/custos-web/ca/idp-ca.crt
+            {{- end }}
+            - name: CUSTOS_WEB_TRUSTED_PROXY_HOPS
+              value: {{ .Values.web.trustedProxyHops | quote }}
+            - name: CUSTOS_WEB_DEV
+              value: "0"
+            - name: CUSTOS_WEB_INSECURE_COOKIES
+              value: "0"
+            {{- with .Values.web.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 15
+            initialDelaySeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 10
+          securityContext:
+            {{- include "custos.containerSecurityContext" . | nindent 12 }}
+          resources:
+            {{- toYaml .Values.web.resources | nindent 12 }}
+          volumeMounts:
+            - name: secrets
+              mountPath: /etc/custos-web/secrets
+              readOnly: true
+            - name: ca
+              mountPath: /etc/custos-web/ca
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+            - name: next-cache
+              mountPath: /app/.next/cache
+      {{- include "custos.scheduling" .Values.web | nindent 6 }}
+      {{- include "custos.topologySpread" (dict "root" . "component" "web" "spec" .Values.web) | nindent 6 }}
+      volumes:
+        - name: secrets
+          projected:
+            defaultMode: 288
+            sources:
+              - secret:
+                  name: {{ .Values.web.client.secret.name }}
+                  items:
+                    - key: {{ .Values.web.client.secret.key }}
+                      path: client-secret
+        - name: ca
+          projected:
+            defaultMode: 292
+            sources:
+              - secret:
+                  name: {{ $apiCA.name }}
+                  items:
+                    - key: {{ $apiCA.key }}
+                      path: api-ca.crt
+              {{- if .Values.web.idpCaSecret.name }}
+              - secret:
+                  name: {{ .Values.web.idpCaSecret.name }}
+                  items:
+                    - key: {{ .Values.web.idpCaSecret.key }}
+                      path: idp-ca.crt
+              {{- end }}
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+        - name: next-cache
+          emptyDir:
+            sizeLimit: 256Mi
+{{- end }}

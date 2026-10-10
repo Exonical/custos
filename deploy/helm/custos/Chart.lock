@@ -1,0 +1,9 @@
+dependencies:
+- name: cluster
+  repository: https://cloudnative-pg.github.io/charts
+  version: 0.9.0
+- name: openbao
+  repository: https://openbao.github.io/openbao-helm
+  version: 0.30.2
+digest: sha256:8b30e336df881168cce9435cca0f907989bfedfee3f732df249355526d1c02bd
+generated: "2026-10-09T20:40:39.5779422-07:00"

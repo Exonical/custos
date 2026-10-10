@@ -1,6 +1,29 @@
 apiVersion: v2
 name: custos
-description: Custos — multi-tenant Slurm gateway / HPC control plane
+description: Custos - multi-tenant Slurm gateway / HPC control plane (API, worker, web)
 type: application
-version: 0.1.0
+version: 0.2.0
 appVersion: "0.1.0"
+kubeVersion: ">=1.29.0-0"
+home: https://github.com/Exonical/custos
+sources:
+  - https://github.com/Exonical/custos
+keywords:
+  - slurm
+  - hpc
+  - control-plane
+dependencies:
+  # Optional, evaluation-grade PostgreSQL via the CloudNativePG operator,
+  # which must already be installed in the cluster (never bundled).
+  - name: cluster
+    alias: postgresql
+    version: 0.9.0
+    repository: https://cloudnative-pg.github.io/charts
+    condition: postgresql.enabled
+  # Optional OpenBao server. Deploy-only: initialisation, unseal and JWT auth
+  # configuration remain manual (docs/kubernetes.md).
+  - name: openbao
+    alias: openbao
+    version: 0.30.2
+    repository: https://openbao.github.io/openbao-helm
+    condition: openbao.enabled

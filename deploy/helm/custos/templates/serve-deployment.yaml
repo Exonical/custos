@@ -1,0 +1,73 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "custos.fullname" . }}-serve
+  labels:
+    {{- include "custos.labels" (dict "root" . "component" "serve") | nindent 4 }}
+spec:
+  {{- if not .Values.serve.autoscaling.enabled }}
+  replicas: {{ .Values.serve.replicas }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "custos.selectorLabels" (dict "root" . "component" "serve") | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- with .Values.serve.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "custos.labels" (dict "root" . "component" "serve") | nindent 8 }}
+        {{- with .Values.serve.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "custos.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      securityContext:
+        {{- include "custos.podSecurityContext" (dict "uid" 65532) | nindent 8 }}
+      {{- include "custos.imagePullSecrets" . | nindent 6 }}
+      initContainers:
+        {{- if .Values.validator.enabled }}
+        {{- include "custos.validatorSidecar" . | nindent 8 }}
+        {{- end }}
+        {{- include "custos.migrateWait" . | nindent 8 }}
+      containers:
+        - name: custos
+          image: {{ include "custos.image" (dict "image" .Values.image "root" .) | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["--config", "/etc/custos/config.yaml", "serve"]
+          ports:
+            - name: api
+              containerPort: 8443
+            - name: metrics
+              containerPort: 9090
+          env:
+            {{- include "custos.env" (dict "root" .) | nindent 12 }}
+            {{- with .Values.serve.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: api
+              scheme: HTTPS
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: api
+              scheme: HTTPS
+            periodSeconds: 10
+          securityContext:
+            {{- include "custos.containerSecurityContext" . | nindent 12 }}
+          resources:
+            {{- toYaml .Values.serve.resources | nindent 12 }}
+          volumeMounts:
+            {{- include "custos.volumeMounts" (dict "root" . "tls" true) | nindent 12 }}
+      {{- include "custos.scheduling" .Values.serve | nindent 6 }}
+      {{- include "custos.topologySpread" (dict "root" . "component" "serve" "spec" .Values.serve) | nindent 6 }}
+      volumes:
+        {{- include "custos.volumes" (dict "root" . "db" "app" "tls" true) | nindent 8 }}

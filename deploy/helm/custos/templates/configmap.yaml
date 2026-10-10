@@ -1,9 +1,10 @@
+{{- include "custos.validate" . -}}
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ .Release.Name }}-custos-config
+  name: {{ include "custos.fullname" . }}-config
   labels:
-    {{- include "custos.labels" . | nindent 4 }}
+    {{- include "custos.labels" (dict "root" . "component" "config") | nindent 4 }}
 data:
   config.yaml: |
-    {{- toYaml .Values.config | nindent 4 }}
+    {{- include "custos.config" . | nindent 4 }}

@@ -1,0 +1,43 @@
+{{- $suffix := default (printf "r%d" .Release.Revision) .Values.migrations.jobNameSuffix -}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "custos.fullname" . }}-migrate-{{ $suffix }}
+  labels:
+    {{- include "custos.labels" (dict "root" . "component" "migrate") | nindent 4 }}
+spec:
+  backoffLimit: {{ .Values.migrations.backoffLimit }}
+  activeDeadlineSeconds: {{ .Values.migrations.activeDeadlineSeconds }}
+  {{- with .Values.migrations.ttlSecondsAfterFinished }}
+  ttlSecondsAfterFinished: {{ . }}
+  {{- end }}
+  template:
+    metadata:
+      labels:
+        {{- include "custos.labels" (dict "root" . "component" "migrate") | nindent 8 }}
+    spec:
+      restartPolicy: Never
+      serviceAccountName: {{ include "custos.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      securityContext:
+        {{- include "custos.podSecurityContext" (dict "uid" 65532) | nindent 8 }}
+      {{- include "custos.imagePullSecrets" . | nindent 6 }}
+      containers:
+        - name: migrate
+          image: {{ include "custos.image" (dict "image" .Values.image "root" .) | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["--config", "/etc/custos/config.yaml", "migrate", "up"]
+          env:
+            {{- include "custos.env" (dict "root" .) | nindent 12 }}
+            {{- with (include "custos.db.appRole" .) }}
+            - name: CUSTOS_DATABASE__APP_ROLE
+              value: {{ . | quote }}
+            {{- end }}
+          securityContext:
+            {{- include "custos.containerSecurityContext" . | nindent 12 }}
+          resources:
+            {{- toYaml .Values.migrations.resources | nindent 12 }}
+          volumeMounts:
+            {{- include "custos.volumeMounts" (dict "root" . "tls" false) | nindent 12 }}
+      volumes:
+        {{- include "custos.volumes" (dict "root" . "db" "migrate" "tls" false) | nindent 8 }}

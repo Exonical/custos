@@ -1,0 +1,41 @@
+{{- if and .Values.serve.pdb.enabled (not .Values.serve.autoscaling.enabled) (gt (int .Values.serve.replicas) 1) }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "custos.fullname" . }}-serve
+  labels:
+    {{- include "custos.labels" (dict "root" . "component" "serve") | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.serve.pdb.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "custos.selectorLabels" (dict "root" . "component" "serve") | nindent 6 }}
+{{- else if and .Values.serve.pdb.enabled .Values.serve.autoscaling.enabled (gt (int .Values.serve.autoscaling.minReplicas) 1) }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "custos.fullname" . }}-serve
+  labels:
+    {{- include "custos.labels" (dict "root" . "component" "serve") | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.serve.pdb.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "custos.selectorLabels" (dict "root" . "component" "serve") | nindent 6 }}
+{{- end }}
+{{- if .Values.web.enabled }}
+{{- if or (and .Values.web.pdb.enabled (not .Values.web.autoscaling.enabled) (gt (int .Values.web.replicas) 1)) (and .Values.web.pdb.enabled .Values.web.autoscaling.enabled (gt (int .Values.web.autoscaling.minReplicas) 1)) }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "custos.fullname" . }}-web
+  labels:
+    {{- include "custos.labels" (dict "root" . "component" "web") | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.web.pdb.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "custos.selectorLabels" (dict "root" . "component" "web") | nindent 6 }}
+{{- end }}
+{{- end }}

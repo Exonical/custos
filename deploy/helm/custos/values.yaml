@@ -1,87 +1,350 @@
+# Custos Helm chart values. See README.md for the full reference and
+# docs/kubernetes.md for the operator guide.
+
+nameOverride: ""
+fullnameOverride: ""
+
+global:
+  # Pull secrets applied to every pod of this chart.
+  imagePullSecrets: []
+
+# ---------------------------------------------------------------------------
+# Images. The default repositories are the published image names from the
+# Harness hardening manifests (exonical/custos, exonical/custos-web,
+# exonical/custos-validator) WITHOUT a registry host: prefix them with your
+# registry (for example registry.example.org/exonical/custos) or override the
+# repositories. tag defaults to .Chart.AppVersion; a digest wins over the tag.
+# ---------------------------------------------------------------------------
 image:
-  repository: custos
-  tag: "0.1.0"
+  # Used by serve, worker, the migrate Job and the migrate-wait init containers.
+  repository: exonical/custos
+  tag: ""
+  digest: ""
   pullPolicy: IfNotPresent
 
-replicas:
-  serve: 2
-  worker: 1
+serviceAccount:
+  create: true
+  # Defaults to the chart fullname when empty. The token is never mounted
+  # (automountServiceAccountToken: false); the optional OpenBao workload
+  # identity uses a projected, audience-bound token instead.
+  name: ""
+  annotations: {}
 
-# ShellCheck validator sidecar (one per pod, loopback only).
-validator:
-  enabled: true
-  image:
-    repository: custos-validator
-    tag: "0.1.0"
-    pullPolicy: IfNotPresent
-  resources:
-    requests:
-      cpu: 50m
-      memory: 64Mi
-    limits:
-      cpu: "1"
-      memory: 256Mi
-
-# Rendered into the custos ConfigMap and mounted at /etc/custos/config.yaml.
+# ---------------------------------------------------------------------------
+# Custos configuration (config.yaml). Free-form passthrough, deep-merged UNDER
+# the chart-managed keys: the chart wins. Chart-managed keys (do not set them
+# here, use the dedicated values):
+#   server.listen / server.tls.{mode,cert_file,key_file}   from api.tls
+#   metrics.{enabled,listen} / metrics.tls.mode            always on, plain HTTP
+#   database.ssl_mode                                       database.sslMode
+#   database.tls.root_ca_file                               database CA (below)
+#   auth.oidc.ca_file                                       auth.oidc.caSecret
+#   validation.shellcheck.{enabled,endpoint}                validator sidecar
+#   secrets.openbao.{address,namespace,timeout,ca_file,auth}  openbaoClient
+# Everything else (dev_mode, auth.oidc.issuer/client_id/audiences,
+# secrets.file_roots, slurm.*, worker.*, log, telemetry, ...) is passed
+# through. The OIDC issuer is required unless config.dev_mode is true.
+# ---------------------------------------------------------------------------
 config:
   dev_mode: false
-  server:
-    listen: ":8443"
-    tls:
-      mode: required
-      cert_file: /etc/custos/tls/tls.crt
-      key_file: /etc/custos/tls/tls.key
-  metrics:
-    enabled: true
-    listen: ":9090"
-    tls:
-      mode: upstream
-  database:
-    ssl_mode: verify-full
   log:
     level: info
     format: json
   telemetry:
     exporter: none
+  auth:
+    oidc:
+      issuer: ""
+      client_id: ""
+      audiences: ["custos"]
   validation:
-    shellcheck:
-      enabled: true
-      endpoint: "http://127.0.0.1:8481"
-      timeout: 10s
     unavailable_severity: ERROR
+    shellcheck:
+      timeout: 10s
 
-# Existing secrets / volumes mounted into the pods.
-databaseURLSecret:
-  # Secret whose `url` key is mounted as CUSTOS_DATABASE__URL_FILE.
-  name: custos-database
-  key: url
+auth:
+  oidc:
+    # Optional OIDC client secret (confidential client) mounted as
+    # CUSTOS_AUTH__OIDC__CLIENT_SECRET_FILE.
+    clientSecret:
+      name: ""
+      key: client-secret
+    # Optional CA bundle for the OIDC issuer (Secret) -> auth.oidc.ca_file.
+    caSecret:
+      name: ""
+      key: ca.crt
 
-tlsSecret:
-  # TLS cert/key for the API listener (mounted at /etc/custos/tls).
-  name: custos-tls
+# ---------------------------------------------------------------------------
+# Database. External PostgreSQL by default: create Secrets holding the DSNs
+# (postgres://user:pass@host:5432/db, TLS settings live in database.sslMode,
+# never in the URL). The migrate Job uses the owner/migration DSN; serve,
+# worker and the migrate-wait init containers use the runtime DSN.
+# With postgresql.enabled=true the chart wires both from the CloudNativePG
+# secrets instead and ignores the settings below (except appRole).
+# ---------------------------------------------------------------------------
+database:
+  migrateURLSecret:
+    name: ""
+    key: url
+  appURLSecret:
+    name: ""
+    key: url
+  # Optional PEM CA for verify-ca/verify-full (database.tls.root_ca_file).
+  caSecret:
+    name: ""
+    key: ca.crt
+  # Runtime role granted least-privilege DML by `migrate up`
+  # (CUSTOS_DATABASE__APP_ROLE). Empty skips the grants.
+  appRole: ""
+  sslMode: verify-full
+
+migrations:
+  # The migrate Job is named <fullname>-migrate-r<release revision>. Set a
+  # fixed suffix for Argo CD / Flux (where .Release.Revision is not stable).
+  jobNameSuffix: ""
+  backoffLimit: 2
+  activeDeadlineSeconds: 900
+  ttlSecondsAfterFinished: null
+  resources:
+    requests: {cpu: 50m, memory: 64Mi}
+    limits: {memory: 256Mi}
+  # Timeout of the `migrate wait` init containers in serve and worker.
+  waitTimeout: 10m
+
+# ---------------------------------------------------------------------------
+# API TLS (required). Provide a kubernetes.io/tls Secret OR let cert-manager
+# issue one. The certificate must cover the API service DNS names
+# (<fullname>-api.<namespace>.svc) because the web frontend connects to it.
+# ---------------------------------------------------------------------------
+api:
+  tls:
+    # Existing kubernetes.io/tls Secret; also the target of certManager.
+    secretName: ""
+    # Where the web frontend reads the API CA (CUSTOS_API_CA_FILE). Defaults to
+    # the ca.crt key of secretName.
+    caSecret:
+      name: ""
+      key: ca.crt
+    certManager:
+      enabled: false
+      issuerRef:
+        name: ""
+        kind: Issuer
+        group: cert-manager.io
+      duration: 2160h
+      renewBefore: 360h
+      # Extra DNS names added to the certificate.
+      dnsNames: []
+  service:
+    type: ClusterIP
+    port: 8443
+    annotations: {}
+
+# ---------------------------------------------------------------------------
+# Workloads
+# ---------------------------------------------------------------------------
+serve:
+  replicas: 2
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {memory: 512Mi}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  podAnnotations: {}
+  podLabels: {}
+  # Replaces the default soft per-host spread when non-empty.
+  topologySpreadConstraints: []
+  extraEnv: []
+  pdb:
+    enabled: true            # created only when replicas > 1
+    minAvailable: 1
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 75
+
+worker:
+  replicas: 1
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {memory: 512Mi}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  podAnnotations: {}
+  podLabels: {}
+  topologySpreadConstraints: []
+  extraEnv: []
+
+# ShellCheck validator: a native sidecar (initContainer with restartPolicy
+# Always, Kubernetes >= 1.29) in serve and worker, loopback only (8481), never
+# exposed by a Service or NetworkPolicy.
+validator:
+  enabled: true
+  image:
+    repository: exonical/custos-validator
+    tag: ""
+    digest: ""
+    pullPolicy: IfNotPresent
+  resources:
+    requests: {cpu: 50m, memory: 64Mi}
+    limits: {memory: 256Mi}
+
+web:
+  enabled: true
+  image:
+    repository: exonical/custos-web
+    tag: ""
+    digest: ""
+    pullPolicy: IfNotPresent
+  replicas: 2
+  # Browser-facing origin (scheme + host[:port], no path). REQUIRED when
+  # web.enabled. Must match the OIDC redirect URI registered for the client.
+  publicOrigin: ""
+  # Defaults to config.auth.oidc.issuer.
+  issuer: ""
+  client:
+    id: custos-web
+    # File mounted as CUSTOS_WEB_CLIENT_SECRET_FILE. REQUIRED.
+    secret:
+      name: ""
+      key: client-secret
+  # Auth.js session secrets (>= 32 bytes each, comma/newline separated),
+  # injected as CUSTOS_WEB_AUTH_SECRETS via secretKeyRef. REQUIRED.
+  authSecrets:
+    name: ""
+    key: auth-secrets
+  # Optional CA bundle for the IdP (CUSTOS_WEB_CA_FILE).
+  idpCaSecret:
+    name: ""
+    key: ca.crt
+  # Overrides the derived https://<fullname>-api.<ns>.svc:8443.
+  apiURL: ""
+  trustedProxyHops: 1
+  service:
+    type: ClusterIP
+    port: 3000
+    annotations: {}
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {memory: 512Mi}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  podAnnotations: {}
+  podLabels: {}
+  topologySpreadConstraints: []
+  extraEnv: []
+  pdb:
+    enabled: true            # created only when replicas > 1
+    minAvailable: 1
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 75
+
+# Soft (ScheduleAnyway) spread across nodes when the component sets none.
+topologySpread:
   enabled: true
 
-service:
-  type: ClusterIP
-  port: 8443
-  metricsPort: 9090
+# ---------------------------------------------------------------------------
+# OpenBao client (Custos side). Named openbaoClient so it does not collide
+# with the optional `openbao` server subchart below.
+# ---------------------------------------------------------------------------
+openbaoClient:
+  enabled: false
+  address: ""              # https://openbao.example.org:8200 (TLS required)
+  namespace: ""
+  timeout: 10s
+  caSecret:
+    name: ""
+    key: ca.crt
+  auth:
+    role: custos
+    # Kubernetes projected service-account token (JWT auth in OpenBao).
+    workloadIdentity:
+      enabled: false
+      audience: openbao
+      expirationSeconds: 600
+    # OIDC client-credentials token source (for example Keycloak).
+    oidcClientCredentials:
+      enabled: false
+      tokenURL: ""
+      clientID: ""
+      clientSecret:
+        name: ""
+        key: client-secret
+
+# ---------------------------------------------------------------------------
+# Gateway API exposure (no Ingress). Requires a Gateway you manage; the chart
+# only renders routes. BackendTLSPolicy lets the gateway verify the API's
+# HTTPS backend.
+# ---------------------------------------------------------------------------
+gateway:
+  enabled: false
+  parentRefs: []           # [{name: my-gateway, namespace: gateways, sectionName: https}]
+  web:
+    hostnames: []
+    annotations: {}
+  api:
+    enabled: false
+    hostnames: []
+    annotations: {}
+    backendTLS:
+      enabled: false
+      # gateway.networking.k8s.io/v1 is GA in the standard channel since
+      # Gateway API v1.4; override only for older CRD bundles.
+      apiVersion: gateway.networking.k8s.io/v1
+      # ConfigMap (same namespace) holding the CA that signed the API
+      # certificate under the key ca.crt.
+      caConfigMap: ""
+      # Defaults to the API service DNS name <fullname>-api.<namespace>.svc.
+      hostname: ""
+
+# ---------------------------------------------------------------------------
+# NetworkPolicy. Ingress lists are NetworkPolicyPeer lists; an EMPTY list means
+# "allow from anywhere" for that port. 8481 (validator) is never opened.
+# ---------------------------------------------------------------------------
+networkPolicy:
+  enabled: true
+  apiFrom: []              # extra peers for 8443; the web pods are always allowed
+  metricsFrom: []          # peers for 9090 (serve and worker)
+  webFrom: []              # peers for 3000
+  egress:
+    # Custos must reach arbitrary slurmrestd / OpenBao / IdP endpoints, so
+    # egress is unrestricted by default. When true only DNS, web -> api, the
+    # bundled postgres/openbao pods and `extra` are allowed.
+    restrict: false
+    dnsNamespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: kube-system
+    extra: []              # raw NetworkPolicyEgressRule entries
 
 serviceMonitor:
   enabled: false
   interval: 30s
+  labels: {}
 
-networkPolicy:
-  enabled: true
-  # Namespaces allowed to reach the API port; empty = same namespace only.
-  ingressFromNamespaces: []
-  egress:
-    postgresCIDR: ""
-    oidcCIDR: ""
+# ---------------------------------------------------------------------------
+# Optional dependency subcharts (off by default). Values here are passed to
+# the subchart; see the subchart documentation for everything else.
+# ---------------------------------------------------------------------------
+postgresql:
+  # EVALUATION-GRADE: a CloudNativePG cluster with a single owner role (no
+  # least-privilege runtime role). Requires the CNPG operator to be installed.
+  enabled: false
+  fullnameOverride: ""
+  version:
+    postgresql: "18"
+  cluster:
+    instances: 1
+    storage:
+      size: 5Gi
 
-resources:
-  requests:
-    cpu: 100m
-    memory: 128Mi
-  limits:
-    cpu: "1"
-    memory: 512Mi
+openbao:
+  # Deploy-only OpenBao server; initialisation, unseal and JWT auth config
+  # stay manual (docs/kubernetes.md).
+  enabled: false

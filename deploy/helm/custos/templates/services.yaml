@@ -1,0 +1,63 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "custos.apiService" . }}
+  labels:
+    {{- include "custos.labels" (dict "root" . "component" "serve") | nindent 4 }}
+    app.kubernetes.io/metrics: "true"
+  {{- with .Values.api.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.api.service.type }}
+  selector:
+    {{- include "custos.selectorLabels" (dict "root" . "component" "serve") | nindent 4 }}
+  ports:
+    - name: api
+      port: {{ .Values.api.service.port }}
+      targetPort: api
+      protocol: TCP
+    - name: metrics
+      port: 9090
+      targetPort: metrics
+      protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "custos.workerMetricsService" . }}
+  labels:
+    {{- include "custos.labels" (dict "root" . "component" "worker") | nindent 4 }}
+    app.kubernetes.io/metrics: "true"
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "custos.selectorLabels" (dict "root" . "component" "worker") | nindent 4 }}
+  ports:
+    - name: metrics
+      port: 9090
+      targetPort: metrics
+      protocol: TCP
+{{- if .Values.web.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "custos.webService" . }}
+  labels:
+    {{- include "custos.labels" (dict "root" . "component" "web") | nindent 4 }}
+  {{- with .Values.web.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.web.service.type }}
+  selector:
+    {{- include "custos.selectorLabels" (dict "root" . "component" "web") | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.web.service.port }}
+      targetPort: http
+      protocol: TCP
+{{- end }}
