@@ -296,12 +296,12 @@ EOF
 step "helm install (bundled PostgreSQL, web, gateway routes, network policies)"
 helm dependency build deploy/helm/custos
 $H install "$REL" deploy/helm/custos -n "$NS" -f "$WORK/values.yaml" --wait --timeout 10m
-$H -n "$NS" status "$REL" | head -5
+$H -n "$NS" status "$REL" | sed -n 1,6p
 
 step "assertions"
 $K -n "$NS" wait --for=condition=complete "job/$REL-migrate-r1" --timeout=60s >/dev/null
 ok "migrate Job $REL-migrate-r1 complete"
-$K -n "$NS" logs "job/$REL-migrate-r1" | grep -q 'schema.migrate\|goose\|migrat' && ok "migrate Job logged migration activity"
+$K -n "$NS" logs "job/$REL-migrate-r1" | grep -c 'migrat' >/dev/null && ok "migrate Job logged migration activity"
 for d in serve worker web; do
 	$K -n "$NS" rollout status "deploy/$REL-$d" --timeout=120s >/dev/null
 	ok "deployment $REL-$d is Ready"
@@ -352,14 +352,15 @@ anon=$(curl -sS -o /dev/null -w '%{http_code}' --cacert "$WORK/ca.crt" \
 ok "unauthenticated GET /api/v1/me -> 401"
 
 portfwd "$REL-web" 13000 3000
-code=$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:13000/api/health)
+# The web proxy answers 421 unless Host matches web.publicOrigin.
+code=$(curl -sS -o /dev/null -w '%{http_code}' -H "Host: 127.0.0.1:3000" http://127.0.0.1:13000/api/health)
 [ "$code" = 200 ] || die "web /api/health returned $code"
 ok "web /api/health 200"
 
 $K -n "$NS" get httproute "$REL-web" "$REL-api" >/dev/null && ok "HTTPRoutes accepted by the API server"
 $K -n "$NS" get backendtlspolicy "$REL-api" >/dev/null && ok "BackendTLSPolicy accepted by the API server"
 $K -n "$NS" get networkpolicy "$REL-serve" "$REL-worker" "$REL-web" >/dev/null && ok "NetworkPolicies created"
-$K -n "$NS" get networkpolicy -o yaml | grep -q 8481 && die "a NetworkPolicy opens the validator port 8481"
+if [ "$($K -n "$NS" get networkpolicy -o yaml | grep -c 8481)" != 0 ]; then die "a NetworkPolicy opens the validator port 8481"; fi
 ok "no NetworkPolicy mentions 8481"
 
 step "helm upgrade (config change)"
