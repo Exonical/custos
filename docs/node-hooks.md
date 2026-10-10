@@ -130,7 +130,7 @@ Download the archive and unpack it as root on the node (or into your image):
 ```sh
 curl -fsS -H "Authorization: Bearer $OIDC_TOKEN" -o node.tar.gz \
   https://custos.example.org/api/v1/clusters/hpc1/node-config/bundle
-tar -xzf node.tar.gz -C /
+tar -xpzf node.tar.gz -C /
 ```
 
 The archive contains `etc/custos/node/` (scripts, `mounts.tsv`, the agent) and
@@ -165,6 +165,32 @@ Slurm runs scripts matched by `Prolog=/dir/*` in reverse alphabetical order.
 The bundle names them so that `900-custos-mounts` runs first and
 `100-custos-unmount` last; custom hooks are `<800-order>-<name>`, so order 0
 runs first and order 99 last among custom hooks.
+
+### File permissions
+
+The whole `/etc/custos/node` tree is root-only, because `mounts.tsv` lists every
+tenant's NFS sources and the account-to-tenant map and hooks may contain
+sensitive logic. Slurm runs the Prolog, Epilog and `clone_ns_*` scripts as root
+and the job wrapper's mount checks only call `mountpoint`, so no other user needs
+to read anything here.
+
+| Path | Mode |
+| --- | --- |
+| `etc/custos/node/` and its `lib/`, `prolog.d/`, `epilog.d/` directories | `0700` |
+| `mounts.tsv`, `lib/common.sh` | `0600` |
+| Prolog, Epilog and ns scripts, custom hooks, `custos-node-sync` | `0700` |
+| systemd units, `README.md` | `0644` (no secrets) |
+
+The archive carries explicit directory entries for exactly these four
+directories and none for `/etc` or `/etc/custos`, so extracting as root never
+changes the modes of existing system directories. Extract with `tar -xp` as root
+and verify with `stat -c '%a %U %n' /etc/custos/node /etc/custos/node/mounts.tsv`
+(`700 root`, `600 root`). The pull agent additionally runs `chmod -R go-rwx` on
+every release it installs (and on a replaced real directory), so bundles from
+older Custos versions end up root-only too.
+
+Do not put secrets in hooks: scripts are stored in Custos and shipped to every
+node. Read credentials from root-only files provisioned on the node instead.
 
 ## The pull agent
 

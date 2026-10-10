@@ -126,6 +126,10 @@ to a tenant.
 - A stolen node token yields read-only access to one cluster's bundle (mount
   topology, account names, tenant slugs and hook text). It can be revoked
   without redeploying the bundle.
+- The installed tree is root-only (directories 0700, scripts 0700, data 0600),
+  since `mounts.tsv` exposes every tenant's NFS sources and the account to
+  tenant map; the agent normalizes modes on install. Hooks must not contain
+  secrets because they are stored in Custos and shipped to every node.
 - Host isolation modes depend on Slurm placement: jobs of non-Custos accounts
   are not blocked by tenant markers and can see tenant mounts that are active
   on the node. Use dedicated partitions or node features, or namespace mode.

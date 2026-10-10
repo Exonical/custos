@@ -20,9 +20,10 @@ var assets embed.FS
 
 // File is one rendered bundle member.
 type File struct {
-	Name string // path relative to the extraction root, e.g. etc/custos/node/mounts.tsv
+	Name string // path relative to the extraction root, e.g. etc/custos/node/mounts.tsv; directories end in /
 	Mode int64
 	Data []byte
+	Dir  bool // directory entry, no Data
 }
 
 // Binding links a tenant to a Slurm account bound on the cluster.
@@ -45,6 +46,16 @@ type Rendered struct {
 	Files   []File
 	Skipped []string // accounts or tenants that produced no tenant mounts
 }
+
+// Bundle permissions. Everything under etc/custos/node is root-only: mounts.tsv names
+// every tenant's NFS shares and the account to tenant map, and hooks may be sensitive.
+// systemd units and the README carry no secrets and keep the usual 0644.
+const (
+	modeDirPrivate  = 0o700
+	modeDataPrivate = 0o600
+	modeExecPrivate = 0o700
+	modePublic      = 0o644
+)
 
 // Bundle path layout.
 const (
@@ -90,33 +101,38 @@ func Render(in RenderInput) (Rendered, error) {
 	add := func(name string, mode int64, data []byte) {
 		out.Files = append(out.Files, File{Name: name, Mode: mode, Data: data})
 	}
+	// Directory entries cover only the tree owned by Custos; entries for etc/ or
+	// etc/custos/ would make an extraction as root chmod existing system directories.
+	for _, dir := range []string{nodeDir, nodeDir + "lib/", nodeDir + "prolog.d/", nodeDir + "epilog.d/"} {
+		out.Files = append(out.Files, File{Name: dir, Mode: modeDirPrivate, Dir: true})
+	}
 
 	tsv, skipped := renderMounts(in)
 	out.Skipped = skipped
-	add(nodeDir+"mounts.tsv", 0o644, tsv)
-	add(nodeDir+"lib/common.sh", 0o644, asset("scripts/lib/common.sh"))
-	add(prologMounts, 0o755, asset("scripts/prolog-mounts.sh"))
-	add(epilogUnmount, 0o755, asset("scripts/epilog-unmount.sh"))
-	add(nodeDir+"custos-node-sync", 0o755, asset("scripts/custos-node-sync"))
+	add(nodeDir+"mounts.tsv", modeDataPrivate, tsv)
+	add(nodeDir+"lib/common.sh", modeDataPrivate, asset("scripts/lib/common.sh"))
+	add(prologMounts, modeExecPrivate, asset("scripts/prolog-mounts.sh"))
+	add(epilogUnmount, modeExecPrivate, asset("scripts/epilog-unmount.sh"))
+	add(nodeDir+"custos-node-sync", modeExecPrivate, asset("scripts/custos-node-sync"))
 	if cfg.IsolationMode == ModeNamespace {
-		add(nodeDir+"ns-clone.sh", 0o755, asset("scripts/ns-clone.sh"))
-		add(nodeDir+"ns-epilog.sh", 0o755, asset("scripts/ns-epilog.sh"))
+		add(nodeDir+"ns-clone.sh", modeExecPrivate, asset("scripts/ns-clone.sh"))
+		add(nodeDir+"ns-epilog.sh", modeExecPrivate, asset("scripts/ns-epilog.sh"))
 	}
 	for _, h := range cfg.Hooks {
 		script := h.Script
 		if !strings.HasSuffix(script, "\n") {
 			script += "\n"
 		}
-		add(HookFileName(h), 0o755, []byte(script))
+		add(HookFileName(h), modeExecPrivate, []byte(script))
 	}
-	add("etc/systemd/system/custos-node-sync.service", 0o644, asset("templates/custos-node-sync.service"))
-	add("etc/systemd/system/custos-node-sync.timer", 0o644, asset("templates/custos-node-sync.timer"))
+	add("etc/systemd/system/custos-node-sync.service", modePublic, asset("templates/custos-node-sync.service"))
+	add("etc/systemd/system/custos-node-sync.timer", modePublic, asset("templates/custos-node-sync.timer"))
 
 	readme, err := renderReadme(in)
 	if err != nil {
 		return out, err
 	}
-	add("README.md", 0o644, readme)
+	add("README.md", modePublic, readme)
 
 	sort.Slice(out.Files, func(i, j int) bool { return out.Files[i].Name < out.Files[j].Name })
 	return out, nil
@@ -245,8 +261,16 @@ func Archive(files []File) ([]byte, error) {
 			Typeflag: tar.TypeReg, Name: f.Name, Mode: f.Mode,
 			Size: int64(len(f.Data)), ModTime: time.Unix(0, 0), Format: tar.FormatUSTAR,
 		}
+		if f.Dir {
+			hdr.Typeflag = tar.TypeDir
+			hdr.Name = strings.TrimSuffix(f.Name, "/") + "/"
+			hdr.Size = 0
+		}
 		if err := tw.WriteHeader(hdr); err != nil {
 			return nil, err
+		}
+		if f.Dir {
+			continue
 		}
 		if _, err := tw.Write(f.Data); err != nil {
 			return nil, err

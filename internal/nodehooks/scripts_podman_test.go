@@ -158,9 +158,17 @@ func tarStream(t *testing.T, files []nodehooks.File, extra map[string]string) []
 		}
 	}
 	for _, f := range files {
-		if strings.HasPrefix(f.Name, "etc/custos/node/") {
-			write(f.Name, f.Mode, f.Data)
+		if !strings.HasPrefix(f.Name, "etc/custos/node/") {
+			continue
 		}
+		if f.Dir {
+			if err := tw.WriteHeader(&tar.Header{Typeflag: tar.TypeDir, Name: f.Name, Mode: f.Mode,
+				ModTime: time.Unix(0, 0)}); err != nil {
+				t.Fatal(err)
+			}
+			continue
+		}
+		write(f.Name, f.Mode, f.Data)
 	}
 	for name, body := range stubScripts {
 		write("stubs/"+name, 0o755, []byte(body))
@@ -365,6 +373,23 @@ expect_not_mounted /mnt/data /fake/ns_run_ns_b
 expect_rc 0 epi 1
 [ ! -e /run/custos/jobs/1 ] || fail "job dir not removed"
 expect_mounted /apps server:/hpc/apps
+`)
+	})
+
+	t.Run("bundle tree is root-only and unreadable to other users", func(t *testing.T) {
+		runPodmanCase(t, "namespace", `
+[ "$(stat -c '%a %U' /etc/custos/node)" = "700 root" ] || fail "node dir: $(stat -c '%a %U' /etc/custos/node)"
+[ "$(stat -c '%a %U' /etc/custos/node/mounts.tsv)" = "600 root" ] || fail "mounts.tsv mode"
+[ "$(stat -c '%a %U' /etc/custos/node/lib/common.sh)" = "600 root" ] || fail "common.sh mode"
+[ "$(stat -c '%a %U' /etc/custos/node/prolog.d)" = "700 root" ] || fail "prolog.d mode"
+[ "$(stat -c '%a %U' /etc/custos/node/epilog.d)" = "700 root" ] || fail "epilog.d mode"
+[ "$(stat -c '%a %U' /etc/custos/node/prolog.d/900-custos-mounts)" = "700 root" ] || fail "prolog mode"
+[ "$(stat -c '%a' /etc/custos)" = 755 ] || fail "/etc/custos must not be chmodded: $(stat -c '%a' /etc/custos)"
+NOBODY="setpriv --reuid=65534 --regid=65534 --clear-groups"
+! $NOBODY cat /etc/custos/node/mounts.tsv >/dev/null 2>&1 || fail "nobody read mounts.tsv"
+! $NOBODY ls /etc/custos/node >/dev/null 2>&1 || fail "nobody listed /etc/custos/node"
+! $NOBODY cat /etc/custos/node/lib/common.sh >/dev/null 2>&1 || fail "nobody read common.sh"
+expect_rc 0 cat /etc/custos/node/mounts.tsv
 `)
 	})
 

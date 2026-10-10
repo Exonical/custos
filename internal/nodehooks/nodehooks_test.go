@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -199,7 +200,7 @@ func TestRenderGolden(t *testing.T) {
 	var names []string
 	byName := map[string]nodehooks.File{}
 	for _, f := range r.Files {
-		names = append(names, f.Name)
+		names = append(names, fmt.Sprintf("%o %s", f.Mode, f.Name))
 		byName[f.Name] = f
 	}
 	golden(t, "FILES.txt", []byte(strings.Join(names, "\n")+"\n"))
@@ -311,10 +312,18 @@ func writeBundle(t *testing.T, dir string, files []nodehooks.File) {
 	t.Helper()
 	for _, f := range files {
 		p := filepath.Join(dir, filepath.FromSlash(f.Name))
+		if f.Dir {
+			if err := os.MkdirAll(p, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			continue
+		}
 		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(p, f.Data, os.FileMode(f.Mode)); err != nil {
+		// The shellcheck container reads these as another user, so the
+		// private bundle modes are widened for this host-side copy only.
+		if err := os.WriteFile(p, f.Data, os.FileMode(f.Mode|0o044)); err != nil {
 			t.Fatal(err)
 		}
 	}

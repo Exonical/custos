@@ -39,7 +39,7 @@ export function HooksPanel({ hooks, errors, editable, onChange }: {
         ) : null}
       </header>
       <p role="note" className="border border-status-degraded/40 bg-status-degraded/10 p-2 text-xs text-status-degraded">
-        Hooks run as root on every compute node of this cluster and a non-zero exit drains the node. Review them like any privileged change.
+        Hooks run as root on every compute node of this cluster and a non-zero exit drains the node. Review them like any privileged change. Never put secrets in hooks: scripts are stored in Custos and shipped to every node. Read credentials from root-only files provisioned on the node instead.
       </p>
       {hooks.length === 0 ? (
         <p className="border border-border p-3 font-mono text-[10px] text-muted-foreground">No custom hooks.</p>

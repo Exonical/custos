@@ -47,6 +47,7 @@ case "$node" in
 esac
 
 mkdir -p "$STATE/releases" /run/custos
+chmod 0700 -- "$STATE" "$STATE/releases"
 (umask 022 && mkdir -p /etc/custos)
 exec 8>/run/custos/sync.lock
 flock -n 8 || exit 0
@@ -103,9 +104,13 @@ rel="$STATE/releases/$etag"
 rm -rf -- "$rel"
 mkdir -p -- "$rel"
 cp -a -- "$src/." "$rel/"
+# The tree names every tenant's shares; keep it root-only even when the bundle
+# comes from an older Custos that shipped 0644/0755 modes.
+chmod -R go-rwx -- "$rel"
 
 if [ -e "$LINK" ] && [ ! -L "$LINK" ]; then
 	mv -- "$LINK" "$LINK.pre-custos-agent"
+	chmod -R go-rwx -- "$LINK.pre-custos-agent"
 fi
 # The temporary link lives next to $LINK so the final rename stays on one
 # filesystem and is atomic.

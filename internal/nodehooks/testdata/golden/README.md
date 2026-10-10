@@ -23,12 +23,16 @@ Custos instead (see docs/node-hooks.md).
 
 ## Install (manual)
 
-1. As root, unpack and install the node tree:
+1. As root, unpack and install the node tree (`-p` keeps the root-only modes):
 
    ```sh
-   tar -xzf custos-node-e2e-r7.tar.gz -C /
-   chmod 0755 /etc/custos/node/custos-node-sync
+   tar -xpzf custos-node-e2e-r7.tar.gz -C /
+   stat -c '%a %U %n' /etc/custos/node /etc/custos/node/mounts.tsv
    ```
+
+   The `stat` output must show `700 root` for the directory and `600 root` for
+   `mounts.tsv`. The tree is root-only because `mounts.tsv` names every tenant's
+   shares and the account-to-tenant map; Slurm runs all of these scripts as root.
 
 2. Add the following to `slurm.conf` and restart slurmd (`scontrol reconfigure`
    is not enough for PrologFlags):

@@ -1,12 +1,16 @@
-README.md
-etc/custos/node/custos-node-sync
-etc/custos/node/epilog.d/100-custos-unmount
-etc/custos/node/epilog.d/795-cleanup
-etc/custos/node/lib/common.sh
-etc/custos/node/mounts.tsv
-etc/custos/node/ns-clone.sh
-etc/custos/node/ns-epilog.sh
-etc/custos/node/prolog.d/800-metrics
-etc/custos/node/prolog.d/900-custos-mounts
-etc/systemd/system/custos-node-sync.service
-etc/systemd/system/custos-node-sync.timer
+644 README.md
+700 etc/custos/node/
+700 etc/custos/node/custos-node-sync
+700 etc/custos/node/epilog.d/
+700 etc/custos/node/epilog.d/100-custos-unmount
+700 etc/custos/node/epilog.d/795-cleanup
+700 etc/custos/node/lib/
+600 etc/custos/node/lib/common.sh
+600 etc/custos/node/mounts.tsv
+700 etc/custos/node/ns-clone.sh
+700 etc/custos/node/ns-epilog.sh
+700 etc/custos/node/prolog.d/
+700 etc/custos/node/prolog.d/800-metrics
+700 etc/custos/node/prolog.d/900-custos-mounts
+644 etc/systemd/system/custos-node-sync.service
+644 etc/systemd/system/custos-node-sync.timer
