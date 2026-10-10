@@ -557,7 +557,7 @@ Protocol: `POST /v1/shellcheck` with `{shell, script}` (bounded to the
 script limit), returns ShellCheck's `--format=json1` output; the sidecar
 runs `shellcheck` under a per-invocation `timeout`, `ulimit -v/-u`, in a
 fresh temp dir, and never writes outside it. The worker maps codes to
-`Diagnostic`. For non-Kubernetes deployments the same binary runs as a
+`Diagnostic`. On Kubernetes the Helm chart runs it as a native sidecar and probes it with the exec subcommand `custos-validator healthcheck` (the loopback listener is unreachable for kubelet HTTP probes). For non-Kubernetes deployments the same binary runs as a
 separate systemd service with `ProtectSystem=strict`, `PrivateNetwork=yes`,
 `DynamicUser=yes`. Fallback when the sidecar is unavailable: `CUSTOS900`
 fail-closed diagnostic (configurable to WARNING for dev only).

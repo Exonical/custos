@@ -178,12 +178,14 @@ deploy/
   compose/                hardened runtime compose stack (custos, worker,
                           validators, postgres:18)
   e2e/                    Slurm 26.05 + Keycloak 26.7 + nginx e2e stack
+  helm/custos/            Helm chart (serve, worker, web, optional CNPG/OpenBao;
+                          docs/kubernetes.md, ADR-033)
   Containerfile.validator validator sidecar image
 docs/                     this directory; docs/adr/
 ```
 
 Not yet present (later milestones): `internal/accounting`,
-`internal/artifacts` (M7), `deploy/helm`,
+`internal/artifacts` (M7),
 `web/` (M8).
 
 Changes from the prompt's suggestion and why:

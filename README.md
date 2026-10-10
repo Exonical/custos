@@ -116,7 +116,7 @@ custos admin platform-role grant \
 
 See [docs/authentication.md](docs/authentication.md#bootstrapping-the-first-platform-admin).
 
-For Kubernetes, see the Helm skeleton in `deploy/helm/custos`.
+For Kubernetes, see the Helm chart in `deploy/helm/custos` and the guide in [docs/kubernetes.md](docs/kubernetes.md).
 
 ## Non-goals
 

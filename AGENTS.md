@@ -22,6 +22,8 @@ design-level behaviour** — the docs are the contract.
   validate the YAML against `harness/harness-schema` v0 (`template.json`,
   `pipeline.json`).
 
+Helm chart (`deploy/helm/custos`, ADR-033): `bash scripts/helm-check.sh` runs `helm dependency build`, `helm lint --strict`, kubeconform (incl. CRD schemas) and `helm unittest` with pinned tools (helm v4.3.0, kubeconform v0.8.0, helm-unittest v1.2.0; CI job `helm`). On Windows point `HELM_BIN` / `KUBECONFORM_BIN` at the binaries in `%TEMP%\helmbin` and run it from Git Bash. `scripts/helm-kind.sh` is the local/nightly kind smoke install on rootful Podman; on this machine run it inside the Podman machine: `podman machine ssh "cd /mnt/c/Users/bryce/Documents/custos && bash scripts/helm-kind.sh"` (see `docs/kubernetes.md`).
+
 E2E (optional; local + nightly CI, never on PRs): `scripts/e2e.sh up`
 brings up real Slurm 26.05 + Keycloak 26.7 under Podman, then
 `CUSTOS_E2E=1 go test ./test/e2e/... -count=1 -v` — see `docs/e2e.md`.

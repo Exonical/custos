@@ -38,6 +38,7 @@ decisions get a new ADR that references the old one.
 | [ADR-030](ADR-030-draft-test-runs.md) | Draft test runs with create+execute authorization, spec locks and hash-pinned execution | [workflows.md](../workflows.md), [api.md](../api.md), [authorization.md](../authorization.md) |
 | [ADR-031](ADR-031-service-tasks.md) | Slurm-native service tasks with after-start dependencies and autoStop lifecycle | [workflows.md](../workflows.md), [slurm.md](../slurm.md), [script-validation.md](../script-validation.md), [threat-model.md](../threat-model.md), [workers.md](../workers.md) |
 | [ADR-032](ADR-032-node-hooks.md) | Admin-managed node prolog/epilog hooks for tenant NFS mounts with namespace, tenant-exclusive and node-exclusive isolation | [node-hooks.md](../node-hooks.md), [slurm.md](../slurm.md), [threat-model.md](../threat-model.md), [api.md](../api.md) |
+| [ADR-033](ADR-033-kubernetes-packaging.md) | Kubernetes packaging: Helm chart with optional dependency subcharts, per-revision migration Job, Gateway API, native sidecar validator | [kubernetes.md](../kubernetes.md), [architecture.md](../architecture.md) |
 
 ## Process
 
